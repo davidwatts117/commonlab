@@ -1,0 +1,476 @@
+/* ==========================================================================
+   Guided Experiments — overlay, HUD, callouts, launcher
+   Reuses the shared --sim-* design tokens from main.css.
+   ========================================================================== */
+
+/* ---------- Layer ---------- */
+.guided-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: var(--sim-radius-lg);
+}
+
+/* The `hidden` attribute must win over component display rules. */
+.guided-layer [hidden],
+.guided-launcher [hidden] {
+    display: none !important;
+}
+
+.guided-layer > * {
+    pointer-events: auto;
+}
+
+/* ---------- HUD ---------- */
+.guided-hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--sim-border);
+    border-radius: var(--sim-radius);
+    box-shadow: var(--sim-shadow);
+    backdrop-filter: blur(6px);
+}
+
+.guided-hud__left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.guided-hud__badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--sim-accent);
+    border-radius: 999px;
+    padding: 0.12rem 0.5rem;
+    flex-shrink: 0;
+}
+
+.guided-hud__title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--sim-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 26ch;
+}
+
+.guided-hud__dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.guided-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sim-border-strong);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.guided-dot.is-done { background: var(--sim-accent); }
+.guided-dot.is-current { background: var(--sim-accent-dark); transform: scale(1.35); }
+
+.guided-hud__steps {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--sim-muted);
+    white-space: nowrap;
+}
+
+.guided-hud__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+/* ---------- Buttons ---------- */
+.guided-btn {
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0.42rem 0.7rem;
+    border-radius: var(--sim-radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.guided-btn--primary {
+    background: var(--sim-accent);
+    color: #fff;
+}
+.guided-btn--primary:hover { background: var(--sim-accent-dark); }
+
+.guided-btn--ghost {
+    background: var(--sim-surface-2);
+    color: var(--sim-text);
+    border-color: var(--sim-border);
+}
+.guided-btn--ghost:hover { background: var(--sim-border); }
+
+.guided-btn--exit {
+    background: transparent;
+    color: var(--sim-muted);
+    border-color: var(--sim-border);
+}
+.guided-btn--exit:hover { color: var(--sim-danger); border-color: var(--sim-danger); }
+
+.guided-btn:disabled { opacity: 0.45; cursor: default; }
+.guided-btn:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 2px; }
+
+/* ---------- Spotlight (dim with a cutout) ---------- */
+/* Must never intercept clicks: it is a full-size wrapper. */
+.guided-spotlight {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.guided-spot {
+    position: absolute;
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.42);
+    transition: left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease;
+    pointer-events: none;
+}
+
+/* ---------- Step card (task / observe) ---------- */
+/* Positioned over the canvas (not the controls) by Overlay.positionCard(). */
+.guided-card {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    width: min(360px, calc(100% - 20px));
+    background: #fff;
+    border: 1px solid var(--sim-border);
+    border-left: 4px solid var(--sim-accent);
+    border-radius: var(--sim-radius);
+    box-shadow: var(--sim-shadow);
+    padding: 0.9rem 1rem;
+}
+
+.guided-card__footer {
+    margin-top: 0.75rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.guided-card__status {
+    margin-top: 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--sim-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.guided-card__status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sim-warn);
+    animation: guided-pulse 1.4s ease-in-out infinite;
+}
+
+.guided-card__status.is-done { color: var(--sim-success); }
+.guided-card__status.is-done::before { background: var(--sim-success); animation: none; }
+
+@keyframes guided-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* ---------- Modal (message / predict / checkpoint / conclusion) ---------- */
+.guided-modal-wrap {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.guided-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.guided-modal {
+    position: relative;
+    width: min(440px, 100%);
+    max-height: calc(100% - 2rem);
+    overflow-y: auto;
+    background: #fff;
+    border-radius: var(--sim-radius-lg);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+    padding: 1.25rem 1.35rem;
+    animation: guided-rise 0.22s ease;
+}
+
+@keyframes guided-rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.guided-modal__footer {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* ---------- Step content ---------- */
+.guided-step__title {
+    font-size: 1.02rem;
+    font-weight: 800;
+    color: var(--sim-ink);
+    margin-bottom: 0.5rem;
+}
+
+.guided-step__body {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--sim-text);
+}
+
+.guided-step__body p { margin: 0 0 0.6rem; }
+.guided-step__body p:last-child { margin-bottom: 0; }
+.guided-step__body ul { margin: 0 0 0.6rem 1.1rem; list-style: disc; }
+.guided-step__body code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--sim-surface-2);
+    border: 1px solid var(--sim-border);
+    border-radius: 4px;
+    padding: 0.05em 0.3em;
+}
+.guided-step__body a { color: var(--sim-accent); text-decoration: underline; }
+
+.guided-step__hint {
+    margin-top: 0.7rem;
+    font-size: 0.78rem;
+    color: var(--sim-warn);
+    background: var(--sim-warn-soft);
+    border-radius: var(--sim-radius-sm);
+    padding: 0.5rem 0.65rem;
+}
+
+/* ---------- Choices ---------- */
+.guided-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.guided-choice {
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--sim-border-strong);
+    border-radius: var(--sim-radius-sm);
+    background: #fff;
+    color: var(--sim-text);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.guided-choice:hover { border-color: var(--sim-accent); background: var(--sim-accent-soft); }
+.guided-choice.is-selected {
+    border-color: var(--sim-accent);
+    background: var(--sim-accent-soft);
+    color: var(--sim-ink);
+    font-weight: 600;
+}
+.guided-choice:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 2px; }
+
+.guided-feedback {
+    margin-top: 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    border-radius: var(--sim-radius-sm);
+    padding: 0.65rem 0.75rem;
+}
+.guided-feedback.is-correct { background: var(--sim-success-soft); color: var(--sim-success); }
+.guided-feedback.is-info { background: var(--sim-accent-soft); color: var(--sim-accent-dark); }
+
+/* ---------- Toast ---------- */
+.guided-toast {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(26, 26, 46, 0.92);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.6rem 1rem;
+    border-radius: var(--sim-radius);
+    box-shadow: var(--sim-shadow);
+    pointer-events: none;
+}
+
+/* ---------- Control gating / highlighting ---------- */
+.guided-gated {
+    opacity: 0.35 !important;
+    pointer-events: none !important;
+    filter: grayscale(0.4);
+}
+
+.guided-highlight {
+    position: relative;
+    animation: guided-glow 1.6s ease-in-out infinite;
+    border-radius: var(--sim-radius-sm);
+}
+
+@keyframes guided-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0.0); }
+    50% { box-shadow: 0 0 0 4px rgba(74, 111, 165, 0.35); }
+}
+
+input.guided-highlight { outline: 2px solid var(--sim-accent); outline-offset: 3px; }
+button.guided-highlight { outline: 2px solid var(--sim-accent); outline-offset: 2px; }
+
+/* ---------- Launcher ---------- */
+.guided-launcher {
+    position: relative;
+    margin: 0 0 1rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.guided-launcher__toggle {
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--sim-accent), var(--sim-accent-dark));
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 1.1rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: var(--sim-shadow);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.guided-launcher__toggle:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(74, 111, 165, 0.32); }
+.guided-launcher__toggle:focus-visible { outline: 2px solid var(--sim-accent-dark); outline-offset: 3px; }
+
+.guided-launcher__icon { font-size: 0.7rem; }
+
+.guided-launcher__panel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    z-index: 40;
+    width: min(360px, 90vw);
+    background: #fff;
+    border: 1px solid var(--sim-border);
+    border-radius: var(--sim-radius-lg);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+    padding: 0.9rem;
+}
+
+.guided-launcher__heading {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--sim-muted);
+    margin-bottom: 0.6rem;
+}
+
+.guided-launcher__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.guided-card-btn {
+    font: inherit;
+    text-align: left;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid var(--sim-border);
+    border-radius: var(--sim-radius);
+    background: var(--sim-surface-2);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.guided-card-btn:hover {
+    border-color: var(--sim-accent);
+    background: var(--sim-accent-soft);
+    transform: translateY(-1px);
+}
+
+.guided-card-btn:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 2px; }
+
+.guided-card-btn__title { font-size: 0.88rem; font-weight: 700; color: var(--sim-ink); }
+.guided-card-btn__summary { font-size: 0.78rem; color: var(--sim-text); line-height: 1.5; }
+.guided-card-btn__summary p { margin: 0; }
+.guided-card-btn__meta { font-size: 0.68rem; font-weight: 600; color: var(--sim-muted); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+    .guided-hud {
+        top: 6px;
+        left: 6px;
+        right: 6px;
+        padding: 0.45rem 0.55rem;
+        gap: 0.5rem;
+    }
+    .guided-hud__title { max-width: 40vw; }
+    .guided-hud__dots { order: 5; width: 100%; margin-left: 0; }
+    .guided-card {
+        left: 6px;
+        right: 6px;
+        bottom: 6px;
+        width: auto;
+    }
+    .guided-modal { width: 100%; }
+}
+
+@media (max-width: 480px) {
+    .guided-hud__steps { display: none; }
+    .guided-hud__title { max-width: 30vw; }
+    .guided-btn { padding: 0.4rem 0.55rem; font-size: 0.72rem; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+    .guided-modal { animation: none; }
+    .guided-spot { transition: none; }
+    .guided-highlight { animation: none; outline: 2px solid var(--sim-accent); outline-offset: 3px; }
+    .guided-card__status::before { animation: none; }
+}

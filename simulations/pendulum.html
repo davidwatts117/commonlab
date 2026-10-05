@@ -6,6 +6,7 @@
     <title>Pendulum Lab — CommonLab</title>
     <meta name="description" content="Interactive pendulum simulation. Explore period, amplitude, drag and gravity with an interactive pendulum and a live energy-vs-time graph.">
     <link rel="stylesheet" href="../main.css?v=3">
+    <link rel="stylesheet" href="../guided.css?v=2">
     <style>
         #pendulumCanvas { width: 100%; max-width: 700px; height: auto; aspect-ratio: 700 / 480; display: block; border-radius: 8px; background: #fafbfc; cursor: default; }
 
@@ -228,7 +229,8 @@
 </footer>
 
 <script src="../index.js?v=3"></script>
-<script src="../library.js?v=3"></script>
+<script src="../library.js?v=4"></script>
+<script src="../guided.js?v=3"></script>
 <script>
 (() => {
     'use strict';
@@ -533,6 +535,152 @@
     // attach and start
     const app = SimLib.attach({ canvas, logicalWidth: 700, logicalHeight: 480, SimulationClass: PendulumSim });
     app.sim.start();
+
+    // ----------------------------------------------------------------
+    // Guided experiments
+    // ----------------------------------------------------------------
+    const sim = app.sim;
+
+    // Programmatic control setters mirror the slider handlers above so that
+    // the UI stays in sync when a guided step drives the simulation.
+    const setLength = (v) => {
+        sim.length = v;
+        sim.lengthSlider.value = v;
+        sim.lengthValue.textContent = v.toFixed(2) + ' m';
+        sim._crossingTimes = []; sim.measuredPeriod = null; sim.periodTimer = 0; sim.lastSign = null;
+    };
+    const setMass = (v) => {
+        sim.mass = v; sim.massSlider.value = v; sim.massValue.textContent = v.toFixed(1) + ' kg';
+    };
+    const setDrag = (v) => {
+        sim.cd = v; sim.dragSlider.value = v; sim.dragValue.textContent = v.toFixed(2);
+    };
+    const setGravity = (v) => {
+        sim.gravity = v; sim.gravitySlider.value = v; sim.gravityValue.textContent = v.toFixed(1) + ' m/s²';
+        sim._crossingTimes = []; sim.measuredPeriod = null; sim.periodTimer = 0; sim.lastSign = null;
+    };
+    const setAngle = (deg) => {
+        sim.angle = deg * Math.PI / 180;
+        sim.angleSlider.value = deg; sim.angleValue.innerHTML = Math.round(deg) + '°';
+        sim.angularVel = 0; sim.tracePoints = []; sim._resetEnergy();
+        sim._crossingTimes = []; sim.measuredPeriod = null; sim.periodTimer = 0; sim.lastSign = null;
+    };
+    const pauseSim = () => { sim.paused = true; sim.pauseBtn.textContent = 'Resume'; };
+    const resumeSim = () => { sim.paused = false; sim.pauseBtn.textContent = 'Pause'; };
+
+    const adapter = SimLib.Guided.adapter(sim, {
+        id: 'pendulum',
+        controls: {
+            length:  { get: () => sim.length,  set: setLength,  el: () => sim.lengthSlider,  range: [0.3, 3.0], format: v => v.toFixed(2) + ' m' },
+            mass:    { get: () => sim.mass,    set: setMass,    el: () => sim.massSlider,    range: [0.1, 5.0] },
+            drag:    { get: () => sim.cd,      set: setDrag,    el: () => sim.dragSlider,    range: [0, 0.94] },
+            gravity: { get: () => sim.gravity, set: setGravity, el: () => sim.gravitySlider, range: [0.5, 20.0] },
+            angle:   { get: () => sim.angle * 180 / Math.PI, set: setAngle, el: () => sim.angleSlider, range: [1, 85] },
+        },
+        elements: {
+            release: () => sim.pauseBtn,
+            reset:   () => sim.resetBtn,
+            trace:   () => sim.traceBtn,
+        },
+        state: {
+            period:    () => sim.measuredPeriod != null ? sim.measuredPeriod : 2 * Math.PI * Math.sqrt(sim.length / sim.gravity),
+            angle:     () => sim.angle * 180 / Math.PI,
+            paused:    () => (sim.paused ? 1 : 0),
+            amplitude: () => Math.abs(sim.angle * 180 / Math.PI),
+        },
+        actions: {
+            pause:   pauseSim,
+            resume:  resumeSim,
+            reset:   () => { sim.angularVel = 0; sim.tracePoints = []; sim._resetEnergy(); },
+            release: resumeSim,
+        },
+        targets: {
+            bob:   () => ({ ...sim._bobPos(), r: sim._bobPixelRadius() }),
+            pivot: () => ({ x: sim.PIVOT_X, y: sim.PIVOT_Y, r: 12 }),
+        },
+        isPaused: () => sim.paused,
+        setLocked: (locked) => { sim.canvas.style.pointerEvents = locked ? 'none' : ''; },
+    });
+
+    const periodVsLength = SimLib.Guided.define({
+        id: 'pendulum-period-vs-length',
+        sim: 'pendulum',
+        title: 'What controls a pendulum\u2019s period?',
+        summary: 'Predict, then measure how string length changes the time for one full swing.',
+        subject: 'Physics',
+        level: 'Intro',
+        minutes: 6,
+        tags: ['period', 'isochronism', 'experimental design'],
+        setup: {
+            controls: { drag: 0, gravity: 9.8, mass: 1.0, angle: 20, length: 1.0 },
+            action: 'pause',
+        },
+        steps: [
+            {
+                id: 'intro',
+                type: 'message',
+                title: 'A question first',
+                body: 'The **period** T is the time for one full back-and-forth swing.\n\n' +
+                      'The string is 1.00 m long and the pendulum is paused. Before we measure anything, make a prediction.',
+            },
+            {
+                id: 'predict',
+                type: 'predict',
+                title: 'Your prediction',
+                body: 'If the string is **longer**, what happens to the period?',
+                choices: [
+                    { id: 'longer',  label: 'A longer string gives a longer period', correct: true },
+                    { id: 'same',    label: 'The period does not change' },
+                    { id: 'shorter', label: 'A longer string gives a shorter period' },
+                ],
+                feedback: {
+                    correct: 'Good \u2014 we will test that. The theory says T \u2248 2\u03c0\u221a(L/g).',
+                    any: 'Keep your prediction in mind; you will measure it in a moment.',
+                },
+            },
+            {
+                id: 'set-length',
+                type: 'task',
+                title: 'Set the length to 2.00 m',
+                body: 'Use the **L** slider (or the arrow keys) until it reads 2.00 m.',
+                highlight: ['length'],
+                allow: ['length'],
+                freeze: true,
+                hint: 'The slider is the row labelled L.',
+                when: { control: 'length', near: 2.0, tolerance: 0.02 },
+            },
+            {
+                id: 'release',
+                type: 'task',
+                title: 'Release the pendulum',
+                body: 'Press **Resume** and let it swing. The simulation will time the period for you.',
+                highlight: ['release'],
+                allow: ['release'],
+                when: { state: 'paused', equals: 0 },
+            },
+            {
+                id: 'observe',
+                type: 'observe',
+                title: 'Watch the period settle',
+                body: 'Let it swing for a few cycles. The highlighted **Period** readout converges once a full swing has been timed.',
+                highlight: ['bob'],
+                when: { state: 'period', settles: true, tolerance: 0.12, minElapsed: 6 },
+            },
+            {
+                id: 'conclude',
+                type: 'conclusion',
+                title: 'You tested it',
+                body: 'With drag removed, L = 1.00 m gives a period near **2.0 s**, while L = 2.00 m gives near **2.8 s**.\n\n' +
+                      'The period grows with the **square root** of the length \u2014 and, as you can check by changing mass, it does not depend on the bob\u2019s mass.',
+            },
+        ],
+    });
+
+    SimLib.Guided.mount({
+        app,
+        adapter,
+        experiments: [periodVsLength],
+    });
 
 })();
 </script>

@@ -133,6 +133,21 @@
       return SimLib.CanvasUtils.toLogical(canvas, src.clientX, src.clientY);
     },
 
+    /**
+     * Convert logical canvas coordinates into page (client) coordinates.
+     * Inverse of `toLogical`; used by the guided overlay to anchor callouts
+     * and spotlights to canvas-space targets. Multiply the result by the
+     * canvas' displayed scale implicitly via the rect.
+     */
+    logicalToCss(canvas, x, y) {
+      const r = canvas.getBoundingClientRect();
+      const L = SimLib.CanvasUtils.logicalSize(canvas);
+      return {
+        x: r.left + (x / (L.w || 1)) * r.width,
+        y: r.top + (y / (L.h || 1)) * r.height,
+      };
+    },
+
     clear(ctx, w, h) {
       if (!w || !h) {
         const L = SimLib.CanvasUtils.logicalSize(ctx.canvas);
@@ -486,6 +501,9 @@
       const dt = ((ts - this.lastTs) / 1000) * this.speed;
       this.lastTs = ts;
       try { this.onTick(dt); } catch (e) { console.error('Sim tick error', e); }
+      if (this.app && this.app.guidedTick) {
+        try { this.app.guidedTick(dt); } catch (e) { console.error('Guided tick error', e); }
+      }
       try { this.onDraw(this.ctx); } catch (e) { console.error('Sim draw error', e); }
       requestAnimationFrame(this._boundLoop);
     }

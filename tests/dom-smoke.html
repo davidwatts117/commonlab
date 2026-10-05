@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Guided DOM smoke test</title>
+  <style>
+    #host { position: relative; width: 420px; }
+    canvas { width: 400px; height: 300px; }
+  </style>
+</head>
+<body>
+  <div id="host"><canvas id="c"></canvas></div>
+  <div id="controls">
+    <input id="lengthSlider" type="range" min="0" max="3" step="0.05" value="1">
+    <input id="gravitySlider" type="range" min="1" max="20" step="0.1" value="9.8">
+    <button id="releaseBtn" type="button">Release</button>
+  </div>
+  <pre id="out">running</pre>
+
+  <script src="../library.js?v=4"></script>
+  <script src="../guided.js?v=4"></script>
+  <script>
+  (function () {
+    const results = [];
+    const ok = (name, cond) => { results.push((cond ? 'PASS ' : 'FAIL ') + name); return cond; };
+
+    try {
+      const canvas = document.getElementById('c');
+      const lengthSlider = document.getElementById('lengthSlider');
+      const releaseBtn = document.getElementById('releaseBtn');
+
+      class FakeSim extends SimLib.Simulation {
+        onInit() { this.length = 1; this.gravity = 9.8; this.paused = true; }
+        onTick() {}
+        onDraw(ctx) { ctx.clearRect(0, 0, 400, 300); }
+      }
+      const app = SimLib.attach({ canvas, logicalWidth: 400, logicalHeight: 300, SimulationClass: FakeSim });
+      const sim = app.sim;
+
+      const adapter = SimLib.Guided.adapter(sim, {
+        id: 'fake',
+        controls: {
+          length: {
+            get: () => sim.length,
+            set: (v) => { sim.length = v; lengthSlider.value = v; },
+            el: () => lengthSlider,
+            range: [0, 3],
+            format: (v) => v.toFixed(2) + ' m',
+          },
+          gravity: {
+            get: () => sim.gravity,
+            set: (v) => { sim.gravity = v; },
+            el: () => document.getElementById('gravitySlider'),
+            range: [1, 20],
+          },
+        },
+        elements: { release: () => releaseBtn },
+        state: { length: () => sim.length, paused: () => (sim.paused ? 1 : 0) },
+        actions: { release: () => { sim.paused = false; } },
+        targets: { nothing: () => null },
+        isPaused: () => sim.paused,
+      });
+
+      const exp = SimLib.Guided.define({
+        id: 'smoke',
+        title: 'Smoke',
+        setup: { controls: { length: 1 }, action: 'release' },
+        steps: [
+          { id: 'intro', type: 'message', title: 'Intro', body: 'Hello' },
+          { id: 'set', type: 'task', title: 'Set 2', highlight: ['length'], allow: ['length'],
+            when: { control: 'length', near: 2, tolerance: 0.05 } },
+          { id: 'done', type: 'conclusion', title: 'Done', body: 'Bye' },
+        ],
+      });
+
+      const host = SimLib.Guided.mount({ app, adapter, experiments: [exp] });
+      ok('mount returns a host', !!host);
+      ok('launcher button rendered', !!document.querySelector('.guided-launcher__toggle'));
+      ok('no overlay visible before starting', document.querySelector('.guided-hud').hidden
+        && document.querySelector('.guided-modal-wrap').hidden);
+      const cardCount = document.querySelectorAll('.guided-card-btn').length;
+      ok('launcher panel lists the experiment (count=' + cardCount + ')', cardCount === 1);
+
+      // Diagnostics (printed regardless of pass/fail).
+      results.push('DIAG guided.js version: ' + SimLib.Guided.version);
+      results.push('DIAG host.launcher present: ' + !!host.launcher);
+      if (host.launcher) {
+        results.push('DIAG launcher.experiments.length: ' + host.launcher.experiments.length);
+        results.push('DIAG panel children: ' + host.launcher.panel.children.length);
+        results.push('DIAG panel innerHTML length: ' + host.launcher.panel.innerHTML.length);
+        results.push('DIAG panel classes: ' + Array.from(host.launcher.panel.children).map(c => c.className).join(' | '));
+        results.push('DIAG panel html: ' + host.launcher.panel.innerHTML.slice(0, 220));
+        results.push('DIAG launcher parent: ' + (host.launcher.el.parentElement ? host.launcher.el.parentElement.id || host.launcher.el.parentElement.className : 'NONE'));
+      }
+      results.push('DIAG document panels: ' + document.querySelectorAll('.guided-launcher__panel').length);
+      results.push('DIAG document lists: ' + document.querySelectorAll('.guided-launcher__list').length);
+      results.push('DIAG document buttons: ' + document.querySelectorAll('.guided-card-btn').length);
+
+      host.start(exp);
+      const runner = host.runner;
+      ok('runner started at step 0', runner && runner.index === 0);
+      ok('HUD visible once started', !document.querySelector('.guided-hud').hidden);
+      ok('modal visible on message step', !document.querySelector('.guided-modal-wrap').hidden);
+
+      runner.next();
+      ok('advanced to task step', runner.index === 1);
+      ok('task uses the card, not the modal', !document.querySelector('.guided-card').hidden
+        && document.querySelector('.guided-modal-wrap').hidden);
+      ok('allow gating disables other controls',
+        document.getElementById('gravitySlider').classList.contains('guided-gated'));
+      ok('highlight applied to allowed control',
+        lengthSlider.classList.contains('guided-highlight'));
+      ok('allowed control is NOT gated or disabled',
+        !lengthSlider.classList.contains('guided-gated') && !lengthSlider.disabled);
+      ok('spotlight does not intercept pointer events',
+        getComputedStyle(document.querySelector('.guided-spotlight')).pointerEvents === 'none');
+      ok('card is positioned over the canvas, not the controls',
+        (function () {
+          const c = document.querySelector('.guided-card').getBoundingClientRect();
+          const cv = document.getElementById('c').getBoundingClientRect();
+          return c.top >= cv.top && c.bottom <= cv.bottom + 2;
+        })());
+      ok('spotlight shown for highlighted control', !document.querySelector('.guided-spotlight').hidden);
+
+      // Simulate the student moving the control, then let the sim tick.
+      lengthSlider.value = 2;
+      adapter.controls.length.set(2, {});
+      runner.tick(0.1);
+      ok('condition auto-advances after control satisfies it', runner.index === 2);
+
+      // Finish and confirm cleanup.
+      runner.next();
+      ok('gating cleared after completion', !document.getElementById('gravitySlider').classList.contains('guided-gated'));
+      ok('modal hidden after completion', document.querySelector('.guided-modal-wrap').hidden);
+
+      // Restart + exit path.
+      host.start(exp);
+      host.runner.exit();
+      ok('exit clears card and spotlight',
+        document.querySelector('.guided-card').hidden && document.querySelector('.guided-spotlight').hidden);
+    } catch (e) {
+      results.push('FAIL exception: ' + e.message);
+      results.push(String(e.stack || '').split('\n').slice(0, 4).join(' | '));
+    }
+
+    const failed = results.filter(r => r.indexOf('FAIL') === 0);
+    document.getElementById('out').textContent =
+      results.join('\n') + '\n\n' + (failed.length ? 'SMOKE: FAIL' : 'SMOKE: PASS');
+    document.title = failed.length ? 'FAIL' : 'PASS';
+  })();
+  </script>
+</body>
+</html>
