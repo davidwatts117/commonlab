@@ -16,7 +16,7 @@
 /* The `hidden` attribute must win over component display rules. */
 .guided-layer [hidden],
 .guided-launcher [hidden] {
-    display: none !important;
+    display: none;
 }
 
 .guided-layer > * {
@@ -26,6 +26,7 @@
 /* ---------- HUD ---------- */
 .guided-hud {
     position: absolute;
+    z-index: 30;
     top: 10px;
     left: 10px;
     right: 10px;
@@ -45,7 +46,9 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex: 1 1 20rem;
     min-width: 0;
+    max-width: 100%;
 }
 
 .guided-hud__badge {
@@ -64,10 +67,9 @@
     font-size: 0.82rem;
     font-weight: 700;
     color: var(--sim-ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 26ch;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .guided-hud__dots {
@@ -142,6 +144,7 @@
 /* Must never intercept clicks: it is a full-size wrapper. */
 .guided-spotlight {
     position: absolute;
+    z-index: 1;
     inset: 0;
     pointer-events: none;
 }
@@ -157,6 +160,7 @@
 /* Positioned over the canvas (not the controls) by Overlay.positionCard(). */
 .guided-card {
     position: absolute;
+    z-index: 2;
     left: 10px;
     bottom: 10px;
     width: min(360px, calc(100% - 20px));
@@ -204,6 +208,8 @@
 /* ---------- Modal (message / predict / checkpoint / conclusion) ---------- */
 .guided-modal-wrap {
     position: absolute;
+    z-index: 28;
+    box-sizing: border-box;
     inset: 0;
     display: flex;
     align-items: center;
@@ -221,7 +227,7 @@
 .guided-modal {
     position: relative;
     width: min(440px, 100%);
-    max-height: calc(100% - 2rem);
+    max-height: 100%;
     overflow-y: auto;
     background: #fff;
     border-radius: var(--sim-radius-lg);
@@ -321,6 +327,7 @@
 /* ---------- Toast ---------- */
 .guided-toast {
     position: absolute;
+    z-index: 31;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -334,10 +341,108 @@
     pointer-events: none;
 }
 
+/* ---------- Callouts ---------- */
+.guided-layer .guided-callout {
+    position: absolute;
+    z-index: 26;
+    max-width: 260px;
+    background: #fff;
+    border: 1px solid var(--sim-border);
+    border-radius: var(--sim-radius);
+    box-shadow: var(--sim-shadow);
+    padding: 0.6rem 0.75rem;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--sim-text);
+    pointer-events: none;
+}
+
+.guided-callout__title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--sim-ink);
+    margin-bottom: 0.3rem;
+}
+
+.guided-callout__body p { margin: 0 0 0.5rem; }
+.guided-callout__body p:last-child { margin-bottom: 0; }
+
+.guided-callout__arrow {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 1px solid var(--sim-border);
+    transform: rotate(45deg);
+}
+
+.guided-callout[data-placement="bottom"] .guided-callout__arrow {
+    top: -7px;
+    left: calc(var(--guided-arrow-x, 50%) - 6px);
+    border-right: none;
+    border-bottom: none;
+}
+.guided-callout[data-placement="top"] .guided-callout__arrow {
+    bottom: -7px;
+    left: calc(var(--guided-arrow-x, 50%) - 6px);
+    border-left: none;
+    border-top: none;
+}
+.guided-callout[data-placement="right"] .guided-callout__arrow {
+    left: -7px;
+    top: calc(var(--guided-arrow-y, 50%) - 6px);
+    border-top: none;
+    border-right: none;
+}
+.guided-callout[data-placement="left"] .guided-callout__arrow {
+    right: -7px;
+    top: calc(var(--guided-arrow-y, 50%) - 6px);
+    border-bottom: none;
+    border-left: none;
+}
+
+/* ---------- Completion recap ---------- */
+.guided-recap {
+    list-style: none;
+    margin: 0.9rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.guided-recap__item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--sim-border);
+    border-left: 3px solid var(--sim-warn);
+    border-radius: var(--sim-radius-sm);
+    background: var(--sim-surface-2);
+}
+.guided-recap__item.is-correct { border-left-color: var(--sim-success); }
+.guided-recap__q { font-size: 0.72rem; color: var(--sim-muted); }
+.guided-recap__a { font-size: 0.82rem; font-weight: 600; color: var(--sim-ink); }
+.guided-recap__item.is-correct .guided-recap__a { color: var(--sim-success); }
+
+/* ---------- Screen-reader only ---------- */
+.guided-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* ---------- Control gating / highlighting ---------- */
-.guided-gated {
-    opacity: 0.35 !important;
-    pointer-events: none !important;
+.guided-layer .guided-gated {
+    opacity: 0.35;
+    pointer-events: none;
     filter: grayscale(0.4);
 }
 
@@ -450,7 +555,6 @@ button.guided-highlight { outline: 2px solid var(--sim-accent); outline-offset: 
         padding: 0.45rem 0.55rem;
         gap: 0.5rem;
     }
-    .guided-hud__title { max-width: 40vw; }
     .guided-hud__dots { order: 5; width: 100%; margin-left: 0; }
     .guided-card {
         left: 6px;
@@ -463,7 +567,6 @@ button.guided-highlight { outline: 2px solid var(--sim-accent); outline-offset: 
 
 @media (max-width: 480px) {
     .guided-hud__steps { display: none; }
-    .guided-hud__title { max-width: 30vw; }
     .guided-btn { padding: 0.4rem 0.55rem; font-size: 0.72rem; }
 }
 

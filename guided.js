@@ -22,13 +22,10 @@
   'use strict';
 
   const SimLib = global.SimLib;
-  if (!SimLib) {
-    console.error('SimLib.Guided requires library.js to be loaded first');
-    return;
-  }
+  if (!SimLib) throw new Error('SimLib.Guided requires library.js to be loaded first');
 
   const Guided = {};
-  Guided.version = '1.1.0';
+  Guided.version = '1.3.0';
 
   /* ================================================================
    * Rich text (restricted, dependency-free)
@@ -204,7 +201,7 @@
     const steps = def.steps.map((s, i) => {
       if (!s.id) throw new Error('Guided.define: step at index ' + i + ' needs an id');
       const type = s.type || 'message';
-      if (STEP_TYPES.indexOf(type) === -1) {
+      if (!STEP_TYPES.includes(type)) {
         throw new Error('Guided.define: unknown step type "' + type + '"');
       }
       return Object.assign({
@@ -265,7 +262,7 @@
     if (when.all) return when.all.every(w => evalWhen(w, ctx));
     if (when.any) return when.any.some(w => evalWhen(w, ctx));
     if (when.not) return !evalWhen(when.not, ctx);
-    if (typeof when.fn === 'function') return !!when.fn(ctx);
+    if (typeof when.fn === 'function') return Boolean(when.fn(ctx));
 
     const a = ctx.adapter;
 
@@ -322,11 +319,75 @@
    * Overlay view
    * ================================================================ */
 
-  function el(tag, cls, html) {
+  function el(tag, cls, text) {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
-    if (html != null) node.innerHTML = html;
+    if (text != null) node.textContent = text;
     return node;
+  }
+
+  function button(text, cls, handler) {
+    const node = el('button', cls, text);
+    node.type = 'button';
+    if (handler) node.addEventListener('click', handler);
+    return node;
+  }
+
+  // Build restricted Markdown as DOM nodes, never interpreting content as HTML.
+  function appendInline(parent, text) {
+    const tokens = /\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
+    let offset = 0;
+    for (const match of String(text).matchAll(tokens)) {
+      parent.append(document.createTextNode(text.slice(offset, match.index)));
+      let node;
+      if (match[1] !== undefined) node = el('strong', '', match[1]);
+      else if (match[2] !== undefined) node = el('em', '', match[2]);
+      else if (match[3] !== undefined) node = el('code', '', match[3]);
+      else {
+        // Allow web/mail links and relative URLs, but never executable schemes.
+        const href = match[5];
+        const safe = /^(https?:|mailto:)/i.test(href)
+          || (!/[:\\\u0000-\u0020]/.test(href) && !href.startsWith('//'));
+        node = el(safe ? 'a' : 'span', '', match[4]);
+        if (safe) {
+          node.setAttribute('href', href);
+          node.setAttribute('target', '_blank');
+          node.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
+      parent.append(node);
+      offset = match.index + match[0].length;
+    }
+    parent.append(document.createTextNode(text.slice(offset)));
+  }
+
+  function richNode(tag, cls, text) {
+    const node = el(tag, cls);
+    let paragraph = null;
+    let list = null;
+    for (const line of String(text || '').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) { paragraph = null; list = null; continue; }
+      const bullet = trimmed.match(/^[-*]\s+(.*)$/);
+      if (bullet) {
+        paragraph = null;
+        if (!list) { list = el('ul'); node.append(list); }
+        const item = el('li');
+        appendInline(item, bullet[1]);
+        list.append(item);
+      } else {
+        list = null;
+        if (!paragraph) { paragraph = el('p'); node.append(paragraph); }
+        else paragraph.append(el('br'));
+        appendInline(paragraph, line);
+      }
+    }
+    return node;
+  }
+
+  function setRichText(node, text) {
+    const content = richNode('div', '', text);
+    node.replaceChildren(...content.childNodes);
   }
 
   class Overlay {
@@ -337,20 +398,27 @@
 
       this.hud = el('div', 'guided-hud');
       this.hud.hidden = true;
-      this.hud.innerHTML =
-        '<div class="guided-hud__left">' +
-          '<span class="guided-hud__badge">Guided</span>' +
-          '<span class="guided-hud__title" data-title></span>' +
-        '</div>' +
-        '<div class="guided-hud__dots" data-dots aria-hidden="true"></div>' +
-        '<div class="guided-hud__steps" data-count></div>' +
-        '<div class="guided-hud__actions">' +
-          '<button type="button" class="guided-btn guided-btn--ghost" data-back>Back</button>' +
-          '<button type="button" class="guided-btn guided-btn--ghost" data-hint hidden>Hint</button>' +
-          '<button type="button" class="guided-btn guided-btn--primary" data-next hidden>Next</button>' +
-          '<button type="button" class="guided-btn guided-btn--ghost" data-skip>Skip</button>' +
-          '<button type="button" class="guided-btn guided-btn--exit" data-exit aria-label="Exit guided experiment">Exit</button>' +
-        '</div>';
+      const left = el('div', 'guided-hud__left');
+      const title = el('span', 'guided-hud__title');
+      title.setAttribute('data-title', '');
+      left.append(el('span', 'guided-hud__badge', 'Guided'), title);
+      const dots = el('div', 'guided-hud__dots');
+      dots.setAttribute('data-dots', '');
+      dots.setAttribute('aria-hidden', 'true');
+      const count = el('div', 'guided-hud__steps');
+      count.setAttribute('data-count', '');
+      const actions = el('div', 'guided-hud__actions');
+      for (const name of ['back', 'restart', 'hint', 'next', 'skip', 'exit']) {
+        let variant = 'ghost';
+        if (name === 'next') variant = 'primary';
+        else if (name === 'exit') variant = 'exit';
+        const btn = button(name[0].toUpperCase() + name.slice(1), `guided-btn guided-btn--${variant}`);
+        btn.setAttribute(`data-${name}`, '');
+        btn.hidden = name === 'hint' || name === 'next';
+        if (name === 'exit') btn.setAttribute('aria-label', 'Exit guided experiment');
+        actions.append(btn);
+      }
+      this.hud.append(left, dots, count, actions);
       this.root.appendChild(this.hud);
 
       this.spotlight = el('div', 'guided-spotlight');
@@ -363,23 +431,66 @@
 
       this.modalWrap = el('div', 'guided-modal-wrap');
       this.modalWrap.hidden = true;
-      this.modalWrap.innerHTML =
-        '<div class="guided-backdrop" data-backdrop></div>' +
-        '<div class="guided-modal" role="dialog" aria-modal="true" aria-labelledby="guided-modal-title">' +
-          '<div class="guided-modal__body" data-body></div>' +
-          '<div class="guided-modal__footer" data-footer></div>' +
-        '</div>';
+      // HUD and panel share a dialog scope, so lesson navigation stays reachable.
+      this.modalWrap.setAttribute('role', 'dialog');
+      this.modalWrap.setAttribute('aria-modal', 'true');
+      this.modalWrap.setAttribute('aria-labelledby', 'guided-modal-title');
+      this.modalWrap.setAttribute('aria-describedby', 'guided-modal-desc');
+      const backdrop = el('div', 'guided-backdrop');
+      backdrop.setAttribute('data-backdrop', '');
+      const modal = el('div', 'guided-modal');
+      const body = el('div', 'guided-modal__body');
+      body.setAttribute('data-body', '');
+      const footer = el('div', 'guided-modal__footer');
+      footer.setAttribute('data-footer', '');
+      modal.append(body, footer);
+      this.modalWrap.append(backdrop, modal);
       this.root.appendChild(this.modalWrap);
 
       this.toastEl = el('div', 'guided-toast');
       this.toastEl.hidden = true;
       this.root.appendChild(this.toastEl);
 
+      // Region semantics + a polite live region that announces step changes.
+      this.root.setAttribute('role', 'region');
+      this.root.setAttribute('aria-label', 'Guided experiment');
+      this.live = el('div', 'guided-sr-only');
+      this.live.setAttribute('aria-live', 'polite');
+      this.live.setAttribute('aria-atomic', 'true');
+      this.root.appendChild(this.live);
+
+      this._callouts = [];
+      this._modalMode = null;
+      this._preModalFocus = null;
+      this.onEscape = null;
+
       this._listeners = [];
       this._reposition = () => this.reposition();
       global.addEventListener('resize', this._reposition);
       document.addEventListener('fullscreenchange', this._reposition);
       document.addEventListener('webkitfullscreenchange', this._reposition);
+
+      // One document-level key handler: modal-aware Escape + focus trap.
+      this._onKeydown = (e) => {
+        if (this.modalWrap.hidden) {
+          if (e.key === 'Escape' && this.onEscape) this.onEscape();
+          return;
+        }
+        if (e.key === 'Escape') {
+          if (this._modalMode === 'complete') {
+            if (this.onEscape) this.onEscape();
+            return;
+          }
+          const btn = (this._modalNextBtn && !this._modalNextBtn.disabled)
+            ? this._modalNextBtn
+            : this.modalWrap.querySelector('.guided-btn:not([disabled])');
+          if (btn) btn.click();
+          else if (this.onEscape) this.onEscape();
+          return;
+        }
+        if (e.key === 'Tab') this._trapFocus(e);
+      };
+      document.addEventListener('keydown', this._onKeydown);
     }
 
     on(sel, type, fn) {
@@ -396,7 +507,7 @@
       this.hud.querySelector('[data-count]').textContent =
         'Step ' + (state.index + 1) + ' of ' + state.total;
       const dots = this.hud.querySelector('[data-dots]');
-      dots.innerHTML = '';
+      dots.replaceChildren();
       for (let i = 0; i < state.total; i++) {
         const d = el('span', 'guided-dot');
         if (i < state.index) d.classList.add('is-done');
@@ -404,6 +515,7 @@
         dots.appendChild(d);
       }
       const back = this.hud.querySelector('[data-back]');
+      back.hidden = false;
       back.disabled = state.index === 0;
       const hint = this.hud.querySelector('[data-hint]');
       hint.hidden = !state.hint;
@@ -411,10 +523,13 @@
       nextBtn.hidden = !state.showNext;
       this.hud.querySelector('[data-skip]').hidden = !state.showSkip;
       this._hintText = state.hint || '';
+      this.live.textContent =
+        (state.title ? state.title + '. ' : '') + 'Step ' + (state.index + 1) + ' of ' + state.total;
 
       // bind once (idempotent: replace handlers each render)
       handlers = handlers || {};
       this._bindHud('data-back', handlers.onBack);
+      this._bindHud('data-restart', handlers.onRestart);
       this._bindHud('data-next', handlers.onNext);
       this._bindHud('data-skip', handlers.onSkip);
       this._bindHud('data-exit', handlers.onExit);
@@ -432,27 +547,47 @@
 
     /** Render a step content panel. `mode` is 'modal' or 'card'. */
     showStep(step, mode, handlers) {
+      this._modalNextBtn = null;
       if (mode === 'modal') {
         this.card.hidden = true;
+        if (this.modalWrap.hidden) this._preModalFocus = document.activeElement;
         this.modalWrap.hidden = false;
+        this.modalWrap.append(this.hud);
+        this._modalMode = 'step';
         const body = this.modalWrap.querySelector('[data-body]');
         const footer = this.modalWrap.querySelector('[data-footer]');
-        body.innerHTML = this._stepHtml(step, 'modal');
-        footer.innerHTML = '';
+        body.replaceChildren(this._stepContent(step, 'modal'));
+        footer.replaceChildren();
         this._renderChoices(step, body, handlers);
         this._renderFooter(step, footer, handlers);
+        this._reserveHudSpace();
         const focusable = this.modalWrap.querySelector('.guided-choice, [data-footer] .guided-btn');
         if (focusable) focusable.focus();
       } else {
+        const leavingDialog = !this.modalWrap.hidden;
+        this.root.append(this.hud);
         this.modalWrap.hidden = true;
+        this._modalMode = null;
         this.card.hidden = false;
-        this.card.innerHTML =
-          '<div class="guided-card__body">' + this._stepHtml(step, 'card') + '</div>' +
-          (step.advance === 'on-next'
-            ? '<div class="guided-card__footer"><button type="button" class="guided-btn guided-btn--primary" data-card-next>Next</button></div>'
-            : '<div class="guided-card__status" data-card-status>' + this._waitingLabel(step) + '</div>');
-        const nextBtn = this.card.querySelector('[data-card-next]');
-        if (nextBtn) nextBtn.addEventListener('click', handlers.onNext);
+        const body = el('div', 'guided-card__body');
+        body.append(this._stepContent(step, 'card'));
+        this.card.replaceChildren(body);
+        if (step.advance === 'on-next') {
+          const footer = el('div', 'guided-card__footer');
+          const next = button('Next', 'guided-btn guided-btn--primary', handlers.onNext);
+          next.setAttribute('data-card-next', '');
+          footer.append(next);
+          this.card.append(footer);
+        } else {
+          const status = el('div', 'guided-card__status', this._waitingLabel(step));
+          status.setAttribute('data-card-status', '');
+          this.card.append(status);
+        }
+        if (leavingDialog) {
+          const allowed = this.adapter.elementFor((step.allow || step.highlight || [])[0]);
+          const focus = allowed || this.hud.querySelector('[data-restart]');
+          if (focus) focus.focus();
+        }
         this.positionCard();
       }
     }
@@ -476,13 +611,24 @@
       this.card.style.width = Math.min(360, Math.max(180, cr.width - 20)) + 'px';
     }
 
-    _stepHtml(step, mode) {
-      let html = '';
-      const idAttr = mode === 'modal' ? ' id="guided-modal-title"' : '';
-      if (step.title) html += '<h3 class="guided-step__title"' + idAttr + '>' + richText(step.title) + '</h3>';
-      if (step.body) html += '<div class="guided-step__body">' + richText(step.body) + '</div>';
-      html += '<div class="guided-step__hint" data-hint-text hidden></div>';
-      return html;
+    _stepContent(step, mode) {
+      const content = el('div');
+      const title = richNode('h3', 'guided-step__title', step.title || 'Guided experiment');
+      const body = richNode('div', 'guided-step__body', step.body);
+      if (mode === 'modal') {
+        title.id = 'guided-modal-title';
+        body.id = 'guided-modal-desc';
+      }
+      const hint = el('div', 'guided-step__hint');
+      hint.setAttribute('data-hint-text', '');
+      hint.hidden = true;
+      content.append(title, body, hint);
+      return content;
+    }
+
+    _reserveHudSpace() {
+      if (this.modalWrap.hidden) return;
+      this.modalWrap.style.paddingTop = `${this.hud.offsetHeight + 26}px`;
     }
 
     _waitingLabel(step) {
@@ -513,17 +659,20 @@
     showFeedback(text, tone) {
       const fb = this.modalWrap.querySelector('.guided-feedback');
       if (!fb) return;
-      fb.innerHTML = richText(text);
+      setRichText(fb, text);
+      fb.setAttribute('role', 'status');
       fb.className = 'guided-feedback is-' + (tone || 'info');
       fb.hidden = false;
     }
 
     revealHint() {
-      const node = this.modalWrap.querySelector('[data-hint-text]')
-        || this.card.querySelector('[data-hint-text]');
-      if (node && this._hintText) { node.innerHTML = richText(this._hintText); node.hidden = false; }
-      const status = this.card && this.card.querySelector('[data-card-status]');
-      void status;
+      const panel = this.modalWrap.hidden ? this.card : this.modalWrap;
+      const node = panel.querySelector('[data-hint-text]');
+      if (node && this._hintText) {
+        setRichText(node, this._hintText);
+        node.hidden = false;
+        node.setAttribute('role', 'status');
+      }
     }
 
     _renderFooter(step, footer, handlers) {
@@ -532,9 +681,9 @@
       const answered = this._answered;
       const btn = el('button', 'guided-btn guided-btn--primary');
       btn.type = 'button';
-      btn.textContent = step.advance === 'on-next'
-        ? (step.type === 'conclusion' ? 'Finish' : 'Next')
-        : (step.type === 'checkpoint' ? 'Continue' : 'Next');
+      btn.textContent = 'Next';
+      if (step.advance === 'on-next' && step.type === 'conclusion') btn.textContent = 'Finish';
+      else if (step.advance === 'on-answer' && step.type === 'checkpoint') btn.textContent = 'Continue';
       if (step.advance === 'on-answer' && !answered) btn.disabled = true;
       btn.addEventListener('click', handlers.onNext);
       footer.appendChild(btn);
@@ -546,6 +695,61 @@
       if (this._modalNextBtn) this._modalNextBtn.disabled = false;
     }
 
+    /** Completion recap with a Restart action. */
+    showComplete(experiment, answers, handlers) {
+      this.hud.hidden = false;
+      for (const name of ['back', 'next', 'skip', 'hint']) {
+        this.hud.querySelector(`[data-${name}]`).hidden = true;
+      }
+      this._bindHud('data-restart', handlers.onRestart);
+      this._bindHud('data-exit', handlers.onExit);
+      this.hud.querySelector('[data-count]').textContent = 'Complete';
+      this.card.hidden = true;
+      this.spotlight.hidden = true;
+      this._clearCallouts();
+      if (this.modalWrap.hidden) this._preModalFocus = document.activeElement;
+      this.modalWrap.hidden = false;
+      this.modalWrap.append(this.hud);
+      this._modalMode = 'complete';
+      this._modalNextBtn = null;
+
+      const body = this.modalWrap.querySelector('[data-body]');
+      const footer = this.modalWrap.querySelector('[data-footer]');
+      body.replaceChildren(this._stepContent({
+        title: 'Experiment complete', body: experiment.title,
+      }, 'modal'));
+      const recap = el('ul', 'guided-recap');
+      for (const step of experiment.steps) {
+        if (!step.choices || answers[step.id] == null) continue;
+        const chosen = step.choices.find((c) => c.id === answers[step.id]);
+        if (!chosen) continue;
+        const item = el('li', 'guided-recap__item');
+        if (chosen.correct === true) item.classList.add('is-correct');
+        item.append(
+          richNode('div', 'guided-recap__q', step.title || 'Your answer'),
+          el('span', 'guided-recap__a', chosen.label),
+          el('span', 'guided-recap__result', chosen.correct === true ? 'Correct prediction' : 'Your prediction'),
+        );
+        recap.append(item);
+      }
+      if (recap.children.length) body.append(recap);
+
+      footer.replaceChildren();
+      const restart = el('button', 'guided-btn guided-btn--ghost');
+      restart.type = 'button';
+      restart.textContent = 'Restart';
+      restart.addEventListener('click', handlers.onRestart);
+      const done = el('button', 'guided-btn guided-btn--primary');
+      done.type = 'button';
+      done.textContent = 'Done';
+      done.addEventListener('click', handlers.onExit);
+      footer.appendChild(restart);
+      footer.appendChild(done);
+      this._reserveHudSpace();
+      done.focus();
+      this.live.textContent = 'Experiment complete';
+    }
+
     setCardStatus(text, done) {
       const status = this.card && this.card.querySelector('[data-card-status]');
       if (!status) return;
@@ -554,17 +758,25 @@
     }
 
     toast(message, ms) {
-      this.toastEl.innerHTML = richText(message);
+      setRichText(this.toastEl, message);
       this.toastEl.hidden = false;
       clearTimeout(this._toastTimer);
       this._toastTimer = setTimeout(() => { this.toastEl.hidden = true; }, ms || 2200);
     }
 
     clearStep() {
+      this.root.append(this.hud);
       this.hud.hidden = true;
       this.modalWrap.hidden = true;
       this.card.hidden = true;
       this.spotlight.hidden = true;
+      this._modalMode = null;
+      this._modalNextBtn = null;
+      this._clearCallouts();
+      if (this._preModalFocus && this._preModalFocus.focus) {
+        try { this._preModalFocus.focus(); } catch { /* ignore */ }
+      }
+      this._preModalFocus = null;
     }
 
     /* ----- highlighting / gating ----- */
@@ -581,11 +793,20 @@
           node.disabled = node._guidedPrevDisabled;
           delete node._guidedPrevDisabled;
         }
+        if (node._guidedPrevInert !== undefined && 'inert' in node) {
+          node.inert = node._guidedPrevInert;
+          delete node._guidedPrevInert;
+        }
         if (allow && !allow.includes(this._nameOf(node))) {
           node.classList.add('guided-gated');
           if ('disabled' in node) {
             node._guidedPrevDisabled = node.disabled;
             node.disabled = true;
+          }
+          // `inert` removes gated controls from the tab order where supported.
+          if ('inert' in node) {
+            node._guidedPrevInert = node.inert;
+            node.inert = true;
           }
         } else if (set.has(this._nameOf(node))) {
           node.classList.add('guided-highlight');
@@ -602,12 +823,32 @@
       }
       this.spotlight.hidden = this._spotTargets.length === 0;
       if (!this.spotlight.hidden) {
-        this.spotlight.innerHTML = '';
+        this.spotlight.replaceChildren();
         const spot = el('div', 'guided-spot');
         this.spotlight.appendChild(spot);
         this._spotNode = spot;
-        this.reposition();
+      } else {
+        this._spotNode = null;
       }
+
+      // Auto-callouts: one anchored bubble per highlighted target, showing the
+      // step's title/body. Purely additive; the step card still explains it.
+      this._clearCallouts();
+      if (step.title || step.body) {
+        for (const anchor of this._spotTargets) {
+          const callout = new Callout(step);
+          this.root.appendChild(callout.el);
+          this._callouts.push({ callout, anchor });
+        }
+      }
+
+      this.reposition();
+    }
+
+    _clearCallouts() {
+      if (!this._callouts) { this._callouts = []; return; }
+      for (const item of this._callouts) item.callout.destroy();
+      this._callouts = [];
     }
 
     _nameOf(node) {
@@ -628,34 +869,86 @@
           node.disabled = node._guidedPrevDisabled;
           delete node._guidedPrevDisabled;
         }
+        if (node._guidedPrevInert !== undefined && 'inert' in node) {
+          node.inert = node._guidedPrevInert;
+          delete node._guidedPrevInert;
+        }
       }
       this.spotlight.hidden = true;
+      this._spotNode = null;
+      this._clearCallouts();
     }
 
-    /** Reposition the spotlight after a resize / fullscreen change. */
+    /** Reposition the spotlight and callouts after a resize / fullscreen change. */
     reposition() {
       this.positionCard();
-      if (!this._spotNode || !this._spotTargets || !this._spotTargets.length) return;
+      this._reserveHudSpace();
       const rootRect = this.root.getBoundingClientRect();
-      const first = this._spotTargets[0];
-      let x, y, w, h, radius;
-      if (first.kind === 'canvas') {
-        const p = SimLib.CanvasUtils.logicalToCss(this.adapter.sim.canvas, first.target.x, first.target.y);
-        radius = this._canvasRadius(first.target.r || 16);
-        x = p.x - rootRect.left - radius;
-        y = p.y - rootRect.top - radius;
-        w = h = radius * 2;
-      } else {
-        const r = first.el.getBoundingClientRect();
-        x = r.left - rootRect.left - 4;
-        y = r.top - rootRect.top - 4;
-        w = r.width + 8;
-        h = r.height + 8;
+      if (this._spotNode && this._spotTargets && this._spotTargets.length) {
+        const first = this._spotTargets[0];
+        let x, y, w, h, radius;
+        if (first.kind === 'canvas') {
+          const p = SimLib.CanvasUtils.logicalToCss(this.adapter.sim.canvas, first.target.x, first.target.y);
+          radius = this._canvasRadius(first.target.r || 16);
+          x = p.x - rootRect.left - radius;
+          y = p.y - rootRect.top - radius;
+          w = h = radius * 2;
+        } else {
+          const r = first.el.getBoundingClientRect();
+          x = r.left - rootRect.left - 4;
+          y = r.top - rootRect.top - 4;
+          w = r.width + 8;
+          h = r.height + 8;
+        }
+        Object.assign(this._spotNode.style, {
+          left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px',
+          borderRadius: first.kind === 'canvas' ? '50%' : '10px',
+        });
       }
-      Object.assign(this._spotNode.style, {
-        left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px',
-        borderRadius: first.kind === 'canvas' ? '50%' : '10px',
-      });
+      if (this._callouts && this._callouts.length) {
+        for (const item of this._callouts) {
+          const rect = this._anchorRect(item.anchor);
+          if (rect) item.callout.position(rect, rootRect);
+        }
+      }
+    }
+
+    /** Client-space rect for a spotlight/callout anchor ({kind, target|el}). */
+    _anchorRect(anchor) {
+      if (anchor.kind === 'dom') {
+        const r = anchor.el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      }
+      const canvas = this.adapter.sim.canvas;
+      const t = anchor.target;
+      if (!canvas || !t) return null;
+      if (t.w != null && t.h != null) {
+        const p1 = SimLib.CanvasUtils.logicalToCss(canvas, t.x, t.y);
+        const p2 = SimLib.CanvasUtils.logicalToCss(canvas, t.x + t.w, t.y + t.h);
+        return { left: p1.x, top: p1.y, right: p2.x, bottom: p2.y, width: p2.x - p1.x, height: p2.y - p1.y };
+      }
+      const p = SimLib.CanvasUtils.logicalToCss(canvas, t.x, t.y);
+      const radius = this._canvasRadius(t.r || 16);
+      return { left: p.x - radius, top: p.y - radius, right: p.x + radius, bottom: p.y + radius, width: radius * 2, height: radius * 2 };
+    }
+
+    /** Keep keyboard focus inside an open modal. */
+    _trapFocus(e) {
+      const nodes = this.modalWrap.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const list = Array.prototype.filter.call(nodes, (n) => n.offsetParent !== null || n === document.activeElement);
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      const inside = this.modalWrap.contains(document.activeElement);
+      if (e.shiftKey && (!inside || document.activeElement === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+        e.preventDefault();
+        first.focus();
+      }
     }
 
     _canvasRadius(logicalR) {
@@ -671,10 +964,84 @@
       global.removeEventListener('resize', this._reposition);
       document.removeEventListener('fullscreenchange', this._reposition);
       document.removeEventListener('webkitfullscreenchange', this._reposition);
+      document.removeEventListener('keydown', this._onKeydown);
       this.clearGating();
       this.root.remove();
     }
   }
+  /**
+   * A small anchored bubble pointing at a highlighted control or canvas target.
+   * Positioning is relative to the overlay root; `placement` may be
+   * 'auto' | 'top' | 'bottom' | 'left' | 'right'.
+   */
+  class Callout {
+    constructor(content, placement) {
+      this.placement = placement || 'auto';
+      this.el = el('div', 'guided-callout');
+      const wrap = el('div', 'guided-callout__content');
+      if (typeof content === 'string') wrap.append(richNode('div', 'guided-callout__body', content));
+      else {
+        if (content.title) wrap.append(richNode('div', 'guided-callout__title', content.title));
+        if (content.body) wrap.append(richNode('div', 'guided-callout__body', content.body));
+      }
+      const arrow = el('span', 'guided-callout__arrow');
+      arrow.setAttribute('aria-hidden', 'true');
+      this.el.append(wrap, arrow);
+    }
+
+    /** anchorRect/rootRect are client rects ({left, top, right, bottom, width, height}). */
+    position(anchorRect, rootRect) {
+      const a = anchorRect;
+      const cw = this.el.offsetWidth || 240;
+      const ch = this.el.offsetHeight || 60;
+      const gap = 12;
+      const spaceAbove = a.top - rootRect.top;
+      const spaceBelow = rootRect.bottom - a.bottom;
+      const spaceRight = rootRect.right - a.right;
+
+      let placement = this.placement;
+      if (placement === 'auto') {
+        if (spaceBelow >= ch + gap) placement = 'bottom';
+        else if (spaceAbove >= ch + gap) placement = 'top';
+        else if (spaceRight >= cw + gap) placement = 'right';
+        else placement = 'left';
+      }
+
+      const anchorCenterX = a.left - rootRect.left + a.width / 2;
+      const anchorCenterY = a.top - rootRect.top + a.height / 2;
+      let left;
+      let top;
+      if (placement === 'top' || placement === 'bottom') {
+        left = anchorCenterX - cw / 2;
+        top = placement === 'top'
+          ? (a.top - rootRect.top) - ch - gap
+          : (a.bottom - rootRect.top) + gap;
+      } else {
+        top = anchorCenterY - ch / 2;
+        left = placement === 'left'
+          ? (a.left - rootRect.left) - cw - gap
+          : (a.right - rootRect.left) + gap;
+      }
+
+      left = Math.max(6, Math.min(left, Math.max(6, rootRect.width - cw - 6)));
+      top = Math.max(6, Math.min(top, Math.max(6, rootRect.height - ch - 6)));
+
+      const arrowX = Math.max(14, Math.min(anchorCenterX - left, cw - 14));
+      const arrowY = Math.max(14, Math.min(anchorCenterY - top, ch - 14));
+
+      this.el.dataset.placement = placement;
+      this.el.style.left = left + 'px';
+      this.el.style.top = top + 'px';
+      this.el.style.setProperty('--guided-arrow-x', arrowX + 'px');
+      this.el.style.setProperty('--guided-arrow-y', arrowY + 'px');
+    }
+
+    destroy() {
+      this.el.remove();
+    }
+  }
+  Guided.Callout = Callout;
+
   Guided.Overlay = Overlay;
 
   /* ================================================================
@@ -713,11 +1080,34 @@
       if (this.app) this.app.guidedTick = (dt) => this.tick(dt);
     }
 
+    /** Re-apply setup and return to the first step, keeping the lesson open. */
+    restart() {
+      if (!this.running) { this.start(0); return; }
+      const step = this.step;
+      if (step && step.freeze) this.restorePause();
+      this.answers = {};
+      this.applySetup();
+      this.enter(0);
+      this.emit('guided:restart', { experimentId: this.experiment.id });
+    }
+
+    /** Escape from the page: exit a running lesson, or dismiss the recap. */
+    handleEscape() {
+      if (!this.running) { this.dismiss(); return; }
+      this.exit();
+    }
+
+    /** Tear down the completion recap without an active run. */
+    dismiss() {
+      this.overlay.clearStep();
+      this.onExit(this.getProgress());
+    }
+
     applySetup() {
       const setup = this.experiment.setup;
       this.baseline = {};
       for (const [name, c] of Object.entries(this.adapter.controls)) {
-        try { this.baseline[name] = Number(c.get()); } catch (e) { /* ignore */ }
+        try { this.baseline[name] = Number(c.get()); } catch { /* ignore */ }
       }
       if (!setup) return;
       if (setup.controls) {
@@ -733,7 +1123,7 @@
       }
       // Re-baseline after setup so `changedBy` measures student changes.
       for (const [name, c] of Object.entries(this.adapter.controls)) {
-        try { this.baseline[name] = Number(c.get()); } catch (e) { /* ignore */ }
+        try { this.baseline[name] = Number(c.get()); } catch { /* ignore */ }
       }
     }
 
@@ -750,7 +1140,7 @@
 
       // Stabilize a step's baseline for `changedBy` at step entry.
       for (const [name, c] of Object.entries(this.adapter.controls)) {
-        try { this.baseline[name] = Number(c.get()); } catch (e) { /* ignore */ }
+        try { this.baseline[name] = Number(c.get()); } catch { /* ignore */ }
       }
 
       if (step.freeze) {
@@ -759,7 +1149,7 @@
       }
 
       if (this.adapter.setLocked) {
-        try { this.adapter.setLocked(!!step.allow); } catch (e) { /* ignore */ }
+        try { this.adapter.setLocked(Boolean(step.allow)); } catch { /* ignore */ }
       }
 
       this.overlay.applyHighlightAndGating(step);
@@ -773,6 +1163,7 @@
       const handlers = {
         onBack: () => this.back(),
         onNext: () => this.next(),
+        onRestart: () => this.restart(),
         onSkip: () => this.skip(),
         onExit: () => this.exit(),
         onHint: () => this.overlay.revealHint(),
@@ -787,6 +1178,7 @@
         hint: step.hint,
         showNext,
         showSkip: true,
+        showRestart: true,
       }, handlers);
       this.overlay.showStep(step, isModal ? 'modal' : 'card', handlers);
       this.updateProgress();
@@ -905,20 +1297,22 @@
       if (this.app) this.app.guidedTick = null;
       Guided._runner = null;
       this.overlay.clearGating();
-      this.overlay.clearStep();
-      this.overlay.toast('Guided experiment complete');
       this.emit('guided:complete', { experimentId: this.experiment.id, answers: this.answers });
       this.onComplete(this.getProgress());
+      this.overlay.showComplete(this.experiment, this.answers, {
+        onRestart: () => this.restart(),
+        onExit: () => this.dismiss(),
+      });
     }
 
     exit(silent) {
-      if (!this.running) return;
+      if (!this.running) { this.dismiss(); return; }
       const step = this.step;
       if (step && step.freeze) this.restorePause();
       this.running = false;
       if (this.app) this.app.guidedTick = null;
       Guided._runner = null;
-      if (this.adapter.setLocked) { try { this.adapter.setLocked(false); } catch (e) { /* ignore */ } }
+      if (this.adapter.setLocked) { try { this.adapter.setLocked(false); } catch { /* ignore */ } }
       this.overlay.clearGating();
       this.overlay.clearStep();
       this.emit('guided:exit', { experimentId: this.experiment.id });
@@ -953,7 +1347,9 @@
 
       this.button = el('button', 'guided-launcher__toggle');
       this.button.type = 'button';
-      this.button.innerHTML = '<span class="guided-launcher__icon" aria-hidden="true">\u25B6</span> Guided Experiments';
+      const icon = el('span', 'guided-launcher__icon', '\u25B6');
+      icon.setAttribute('aria-hidden', 'true');
+      this.button.append(icon, document.createTextNode(' Guided Experiments'));
       this.button.setAttribute('aria-expanded', 'false');
 
       this.panel = el('div', 'guided-launcher__panel');
@@ -981,10 +1377,9 @@
       if (exp.subject) meta.push(exp.subject);
       if (exp.minutes) meta.push('~' + exp.minutes + ' min');
       meta.push(exp.steps.length + ' steps');
-      card.innerHTML =
-        '<span class="guided-card-btn__title">' + escapeHtml(exp.title) + '</span>' +
-        (exp.summary ? '<span class="guided-card-btn__summary">' + richText(exp.summary) + '</span>' : '') +
-        '<span class="guided-card-btn__meta">' + escapeHtml(meta.join(' \u00b7 ')) + '</span>';
+      card.append(el('span', 'guided-card-btn__title', exp.title));
+      if (exp.summary) card.append(richNode('span', 'guided-card-btn__summary', exp.summary));
+      card.append(el('span', 'guided-card-btn__meta', meta.join(' \u00b7 ')));
       card.addEventListener('click', () => {
         this.close();
         this.onStart(exp);
@@ -992,7 +1387,10 @@
       return card;
     }
 
-    toggle() { this.panel.hidden ? this.open() : this.close(); }
+    toggle() {
+      if (this.panel.hidden) this.open();
+      else this.close();
+    }
 
     open() {
       this.panel.hidden = false;
@@ -1044,11 +1442,9 @@
     let runner = null;
     let activeExp = null;
 
-    const launcherHost = opts.launcherMount
-      ? (typeof opts.launcherMount === 'string'
-        ? document.querySelector(opts.launcherMount)
-        : opts.launcherMount)
-      : (document.querySelector('.sim-page-header .container') || overlayRoot);
+    let launcherHost = document.querySelector('.sim-page-header .container') || overlayRoot;
+    if (typeof opts.launcherMount === 'string') launcherHost = document.querySelector(opts.launcherMount);
+    else if (opts.launcherMount) launcherHost = opts.launcherMount;
 
     const launcher = new Launcher(launcherHost, experiments, (exp) => start(exp));
 
@@ -1062,6 +1458,7 @@
         overlay,
         onExit: () => { runner = null; activeExp = null; },
       });
+      overlay.onEscape = () => { if (runner) runner.handleEscape(); };
       runner.start();
     }
 

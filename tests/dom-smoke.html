@@ -18,7 +18,7 @@
   <pre id="out">running</pre>
 
   <script src="../library.js?v=4"></script>
-  <script src="../guided.js?v=4"></script>
+  <script src="../guided.js?v=5"></script>
   <script>
   (function () {
     const results = [];
@@ -131,7 +131,10 @@
       // Finish and confirm cleanup.
       runner.next();
       ok('gating cleared after completion', !document.getElementById('gravitySlider').classList.contains('guided-gated'));
-      ok('modal hidden after completion', document.querySelector('.guided-modal-wrap').hidden);
+      ok('completion recap visible', !document.querySelector('.guided-modal-wrap').hidden);
+      ok('HUD still accessible at completion', !document.querySelector('.guided-hud').hidden);
+      runner.dismiss();
+      ok('Done dismisses recap', document.querySelector('.guided-modal-wrap').hidden);
 
       // Restart + exit path.
       host.start(exp);

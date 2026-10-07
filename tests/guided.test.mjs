@@ -157,3 +157,53 @@ test('settleStates discovers nested settle conditions', () => {
   const adapter = Guided.adapter({}, { state: {} });
   assert.equal(Guided.evalWhen({ state: 'missing', settles: true }, ctx(adapter)), false);
 });
+
+/** Minimal overlay double for exercising the Runner without a DOM. */
+function runnerHarness() {
+  const sim = { paused: false };
+  const adapter = Guided.adapter(sim, {
+    controls: { len: { get: () => sim.len || 1, set: (v) => { sim.len = v; } } },
+    actions: { pause() { sim.paused = true; }, resume() { sim.paused = false; } },
+  });
+  const calls = { complete: 0 };
+  const overlay = {
+    applyHighlightAndGating() {}, setHud() {}, showStep() {}, setCardStatus() {},
+    clearGating() {}, clearStep() {}, toast() {}, enableNext() {}, revealHint() {},
+    showComplete() { calls.complete += 1; },
+  };
+  const app = { guidedTick: null, bus: { emit() {} } };
+  const experiment = Guided.define({
+    id: 'demo',
+    title: 'Demo',
+    steps: [
+      { id: 'a', type: 'message' },
+      { id: 'b', type: 'predict', choices: [{ id: 'x', label: 'X', correct: true }] },
+    ],
+  });
+  const runner = new Guided.Runner({ experiment, adapter, app, overlay });
+  return { runner, overlay, calls };
+}
+
+test('Runner.restart resets answers and re-enters the first step', () => {
+  const { runner } = runnerHarness();
+  runner.start();
+  assert.equal(runner.index, 0);
+  runner.enter(1);
+  runner.answers.b = 'x';
+  assert.equal(runner.index, 1);
+  runner.restart();
+  assert.equal(runner.index, 0);
+  assert.equal(Object.keys(runner.answers).length, 0);
+  assert.equal(typeof runner.app.guidedTick, 'function');
+});
+
+test('Runner.complete shows the recap and stays restartable', () => {
+  const { runner, calls } = runnerHarness();
+  runner.start();
+  runner.complete();
+  assert.equal(calls.complete, 1);
+  assert.equal(runner.running, false);
+  runner.restart();
+  assert.equal(runner.running, true);
+  assert.equal(runner.index, 0);
+});

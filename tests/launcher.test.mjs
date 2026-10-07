@@ -32,6 +32,9 @@ function makeNode(tag) {
       };
     },
     appendChild(child) { this.children.push(child); child.parent = this; return child; },
+    append(...children) { for (const child of children) this.appendChild(child); },
+    get textContent() { return (this._text || '') + this.children.map(child => child.textContent).join(''); },
+    set textContent(value) { this._text = String(value); this.children = []; },
     setAttribute(k, v) { this.attrs[k] = v; },
     getAttribute(k) { return this.attrs[k]; },
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
@@ -49,6 +52,7 @@ function makeDocument() {
   return {
     _all: [],
     createElement(tag) { const n = makeNode(tag); this._all.push(n); return n; },
+    createTextNode(text) { return { textContent: String(text) }; },
     addEventListener() {},
     removeEventListener() {},
     querySelector() { return null; },
@@ -98,8 +102,8 @@ test('Launcher creates one card per experiment and toggles the panel', () => {
     .flatMap(c => c.children)
     .filter(c => c.className === 'guided-card-btn');
   assert.equal(cards.length, 1, 'one card rendered');
-  assert.match(cards[0].innerHTML, /Experiment A/);
-  assert.match(cards[0].innerHTML, /2 steps/);
+  assert.match(cards[0].textContent, /Experiment A/);
+  assert.match(cards[0].textContent, /2 steps/);
 
   // Simulate a click on the toggle.
   launcher.button.listeners.click[0]();

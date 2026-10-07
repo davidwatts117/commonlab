@@ -6,7 +6,7 @@
     <title>Pendulum Lab — CommonLab</title>
     <meta name="description" content="Interactive pendulum simulation. Explore period, amplitude, drag and gravity with an interactive pendulum and a live energy-vs-time graph.">
     <link rel="stylesheet" href="../main.css?v=3">
-    <link rel="stylesheet" href="../guided.css?v=2">
+    <link rel="stylesheet" href="../guided.css?v=5">
     <style>
         #pendulumCanvas { width: 100%; max-width: 700px; height: auto; aspect-ratio: 700 / 480; display: block; border-radius: 8px; background: #fafbfc; cursor: default; }
 
@@ -230,7 +230,7 @@
 
 <script src="../index.js?v=3"></script>
 <script src="../library.js?v=4"></script>
-<script src="../guided.js?v=3"></script>
+<script src="../guided.js?v=5"></script>
 <script>
 (() => {
     'use strict';
@@ -309,7 +309,7 @@
                     const dx = pos.x - this.PIVOT_X; const dy = pos.y - this.PIVOT_Y; const dist = Math.sqrt(dx*dx + dy*dy);
                     const maxDist = this.length * this.PX_PER_METER; const clampedDist = Math.min(dist, maxDist * 0.98);
                     const newAngle = Math.atan2(dx, dy); this.angle = -newAngle; const deg = this.angle * 180 / Math.PI;
-                    this.angleSlider.value = Math.max(1, Math.min(85, Math.abs(Math.round(deg)))); this.angleValue.innerHTML = Math.abs(deg).toFixed(0) + '°'; this.angularVel = 0; this._crossingTimes = []; this.measuredPeriod = null; this.periodTimer = 0; this.lastSign = null; this.tracePoints = []; e.preventDefault();
+                    this.angleSlider.value = Math.max(1, Math.min(85, Math.abs(Math.round(deg)))); this.angleValue.textContent = Math.abs(deg).toFixed(0) + '°'; this.angularVel = 0; this._crossingTimes = []; this.measuredPeriod = null; this.periodTimer = 0; this.lastSign = null; this.tracePoints = []; e.preventDefault();
                 } else if (!this.paused) {
                     const pos = this._getCanvasPos(e); this.canvas.style.cursor = this._isNearBob(pos.x, pos.y) ? 'grab' : 'default';
                 }
@@ -561,7 +561,7 @@
     };
     const setAngle = (deg) => {
         sim.angle = deg * Math.PI / 180;
-        sim.angleSlider.value = deg; sim.angleValue.innerHTML = Math.round(deg) + '°';
+        sim.angleSlider.value = deg; sim.angleValue.textContent = Math.round(deg) + '°';
         sim.angularVel = 0; sim.tracePoints = []; sim._resetEnergy();
         sim._crossingTimes = []; sim.measuredPeriod = null; sim.periodTimer = 0; sim.lastSign = null;
     };
