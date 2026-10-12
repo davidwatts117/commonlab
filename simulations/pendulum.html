@@ -7,6 +7,7 @@
     <meta name="description" content="Interactive pendulum simulation. Explore period, amplitude, drag and gravity with an interactive pendulum and a live energy-vs-time graph.">
     <link rel="stylesheet" href="../main.css?v=3">
     <link rel="stylesheet" href="../guided.css?v=5">
+    <link rel="stylesheet" href="../cfu.css?v=1">
     <style>
         #pendulumCanvas { width: 100%; max-width: 700px; height: auto; aspect-ratio: 700 / 480; display: block; border-radius: 8px; background: #fafbfc; cursor: default; }
 
@@ -104,6 +105,7 @@
                 </div>
 
                 <div class="controls-panel">
+                    <div id="pendulum-cfu-host"></div>
                     <div class="control-row">
                         <span class="control-label" style="flex-shrink:0;min-width:14px;font-size:0.85rem;font-weight:700;color:#1a1a2e;">L</span>
                         <input type="range" id="lengthSlider" min="0.3" max="3.0" value="1.2" step="0.05">
@@ -230,7 +232,9 @@
 
 <script src="../index.js?v=3"></script>
 <script src="../library.js?v=4"></script>
-<script src="../guided.js?v=5"></script>
+<script src="../cfu.js?v=1"></script>
+<script src="pendulum-cfu.js?v=1"></script>
+<script src="../guided.js?v=6"></script>
 <script>
 (() => {
     'use strict';
@@ -612,7 +616,7 @@
         minutes: 6,
         tags: ['period', 'isochronism', 'experimental design'],
         setup: {
-            controls: { drag: 0, gravity: 9.8, mass: 1.0, angle: 20, length: 1.0 },
+            controls: { drag: 0, gravity: 9.8, mass: 1.0, angle: 10, length: 1.0 },
             action: 'pause',
         },
         steps: [
@@ -666,6 +670,12 @@
                 highlight: ['bob'],
                 when: { state: 'period', settles: true, tolerance: 0.12, minElapsed: 6 },
             },
+            { id: 'check-length', type: 'checkpoint', title: 'Check the length relationship',
+              question: SimLib.PendulumCFU.questions.find(q => q.id === 'length') },
+            { id: 'check-mass', type: 'checkpoint', title: 'What about mass?',
+              question: SimLib.PendulumCFU.questions.find(q => q.id === 'mass') },
+            { id: 'check-gravity', type: 'checkpoint', title: 'What about gravity?',
+              question: SimLib.PendulumCFU.questions.find(q => q.id === 'gravity') },
             {
                 id: 'conclude',
                 type: 'conclusion',
@@ -676,10 +686,17 @@
         ],
     });
 
-    SimLib.Guided.mount({
+    let check;
+    const guided = SimLib.Guided.mount({
         app,
         adapter,
         experiments: [periodVsLength],
+        beforeStart: () => { if (check) check.close(); },
+    });
+    check = SimLib.CFU.mount({
+        bank: SimLib.PendulumCFU,
+        host: document.getElementById('pendulum-cfu-host'),
+        beforeOpen: () => { if (guided.runner) guided.runner.exit(); },
     });
 
 })();

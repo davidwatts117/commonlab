@@ -200,6 +200,10 @@
     }
     const steps = def.steps.map((s, i) => {
       if (!s.id) throw new Error('Guided.define: step at index ' + i + ' needs an id');
+      if (s.question && (!SimLib.CFU || !['lesson', 'both'].includes(s.question.use))) {
+        throw new Error('Guided.define: checkpoint question requires CFU and a lesson/both tag');
+      }
+      if (s.question && s.type !== 'checkpoint') throw new Error('Guided.define: questions belong in checkpoints');
       const type = s.type || 'message';
       if (!STEP_TYPES.includes(type)) {
         throw new Error('Guided.define: unknown step type "' + type + '"');
@@ -558,10 +562,19 @@
         const footer = this.modalWrap.querySelector('[data-footer]');
         body.replaceChildren(this._stepContent(step, 'modal'));
         footer.replaceChildren();
-        this._renderChoices(step, body, handlers);
-        this._renderFooter(step, footer, handlers);
+        if (step.question) {
+          body.append(el('p', '', 'Practice check — not part of your standalone score.'));
+          SimLib.CFU.renderQuestion(body, step.question, {
+            answer: handlers.answer,
+            onSubmit: handlers.onSubmit,
+            onContinue: handlers.onNext,
+          });
+        } else {
+          this._renderChoices(step, body, handlers);
+          this._renderFooter(step, footer, handlers);
+        }
         this._reserveHudSpace();
-        const focusable = this.modalWrap.querySelector('.guided-choice, [data-footer] .guided-btn');
+        const focusable = this.modalWrap.querySelector('.guided-choice, .cfu-choice input:not([disabled]), .cfu-button:not([disabled]), [data-footer] .guided-btn');
         if (focusable) focusable.focus();
       } else {
         const leavingDialog = !this.modalWrap.hidden;
@@ -720,6 +733,13 @@
       }, 'modal'));
       const recap = el('ul', 'guided-recap');
       for (const step of experiment.steps) {
+        if (step.question && answers[step.id] != null) {
+          const item = el('li', 'guided-recap__item');
+          item.append(el('div', 'guided-recap__q', step.question.prompt),
+            el('span', 'guided-recap__result', 'Practice completed (not scored)'));
+          recap.append(item);
+          continue;
+        }
         if (!step.choices || answers[step.id] == null) continue;
         const chosen = step.choices.find((c) => c.id === answers[step.id]);
         if (!chosen) continue;
@@ -1168,9 +1188,16 @@
         onExit: () => this.exit(),
         onHint: () => this.overlay.revealHint(),
         onAnswer: (choice) => this.answer(choice, step),
+        answer: step.question ? this.answers[step.id] : null,
+        onSubmit: selection => {
+          if (this.answers[step.id] != null) return;
+          this.answers[step.id] = [...selection];
+          this._answered = true;
+          this.updateProgress();
+        },
       };
-      const showNext = step.advance === 'on-next'
-        || (step.advance === 'on-answer' && this.answers[step.id] != null);
+      const showNext = !step.question && (step.advance === 'on-next'
+        || (step.advance === 'on-answer' && this.answers[step.id] != null));
       this.overlay.setHud({
         title: this.experiment.title,
         index: this.index,
@@ -1265,6 +1292,7 @@
     next() {
       if (!this.running) return;
       const step = this.step;
+      if (step && step.question && this.answers[step.id] == null) return;
       if (step && step.freeze) this.restorePause();
       if (this.index + 1 >= this.experiment.steps.length) return this.complete();
       this.enter(this.index + 1);
@@ -1279,7 +1307,10 @@
 
     skip() {
       if (!this.running) return;
-      this.next();
+      if (this.step && this.step.question) {
+        if (this.step.freeze) this.restorePause();
+        this.enter(this.index + 1);
+      } else this.next();
     }
 
     goTo(id) {
@@ -1449,6 +1480,7 @@
     const launcher = new Launcher(launcherHost, experiments, (exp) => start(exp));
 
     function start(exp) {
+      if (opts.beforeStart) opts.beforeStart();
       if (runner) runner.exit(true);
       activeExp = exp;
       runner = new Runner({

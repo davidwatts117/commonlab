@@ -1,6 +1,6 @@
 # Guided Experiments — Implementation Plan
 
-**Status:** Draft plan
+**Status:** Historical draft plan. The implemented API is documented in [the authoring guide](guided-experiments-authoring.md). The CFU addition now provides practice checkpoints and versioned localStorage for standalone checks only; statements below about no persistence/grading still apply to the legacy lesson engine, not standalone CFU.
 **Working name:** "Guided Experiment" (see [Naming](#11-naming-open-question))
 **Depends on:** `library.js` (SimLib), `main.css`, existing `simulations/*.html`
 

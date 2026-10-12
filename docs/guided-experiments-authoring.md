@@ -114,7 +114,8 @@ Common fields:
 - `hint`: revealed through the HUD hint button.
 - `when`: completion condition for `on-condition` steps.
 - `advance`: override with `on-next`, `on-answer`, or `on-condition`.
-- `choices`, `feedback`: prediction/checkpoint content (see below).
+- `choices`, `feedback`: legacy prediction/checkpoint content (see below).
+- `question`: a shared CFU bank question for a practice-only `checkpoint` (see section 9). Do not combine with legacy `choices`.
 
 Skip is currently available on every step; `optional` does not restrict it. Back re-enters a step but does not undo simulation changes. Restart reapplies setup and clears answers. Exit removes the lesson UI/gating, but **does not restore a full pre-lesson simulation snapshot**. Do not promise rollback.
 
@@ -155,7 +156,7 @@ For an unusual condition, use `when: { fn: ctx => ... }`. Context includes `adap
 }
 ```
 
-Use unique choice IDs and plain-text labels. Default `on-answer` shows feedback and enables Next after **any** answer; it does not require correctness. Answers are stored by step ID and displayed in the completion recap. For a correctness-gated checkpoint, `advance: 'on-condition'` advances after a correct choice (with a short delay); Skip still remains available. There is no persistent scorebook or outcome-recording API.
+Use unique choice IDs and plain-text labels. Default `on-answer` shows feedback and enables Next after **any** answer; it does not require correctness. Answers are stored by step ID and displayed in the completion recap. For a correctness-gated checkpoint, `advance: 'on-condition'` advances after a correct choice (with a short delay); Skip still remains available. Legacy prediction answers remain in memory. Standalone CFU checks use a separate locally persisted result (section 9); lesson practice never contributes to that score.
 
 ## 7. Text and pedagogy
 
@@ -173,3 +174,60 @@ Prefer one learning objective and one action per step. State units, hold confoun
 6. Confirm free exploration is unchanged before starting and after leaving; inspect the console and frame performance.
 
 Current automated tests use isolated engine contexts and a lightweight DOM shim. Passing them does not replace real-browser accessibility, layout, or performance checks.
+
+## 9. Shared Check Understanding (CFU) questions
+
+Load `cfu.css?v=1`, then `library.js`, `cfu.js?v=1`, the simulation's bank file, and `guided.js?v=6`. CFU is opt-in; legacy lessons do not require it. The Pendulum bank is `simulations/pendulum-cfu.js`.
+
+```js
+const bank = SimLib.CFU.bank({
+  id: 'my-sim-period', version: 1,
+  questions: [{
+    id: 'variables', use: 'both', type: 'multi',
+    prompt: 'Which variables set the ideal small-angle period?',
+    choices: [
+      { id: 'length', label: 'Length' },
+      { id: 'gravity', label: 'Gravity' },
+      { id: 'mass', label: 'Mass' },
+    ],
+    correct: ['length', 'gravity'],
+    explanation: 'T = 2π√(L/g); mass is absent from this approximation.',
+  }],
+});
+// Within the normal Guided.define steps array:
+const checkpoint = {
+  id: 'practice-variables', type: 'checkpoint', title: 'Check the relationship',
+  question: bank.questions.find(q => q.id === 'variables'),
+};
+```
+
+Bank IDs and question/choice IDs must be stable and unique. `version` is a positive integer. Each question has `use: 'lesson' | 'assessment' | 'both'`, `type: 'single' | 'multi'`, a prompt, at least two choices, a nonempty `correct` array of choice IDs, and an explanation. Single-choice keys have exactly one answer. Bank creation rejects missing/duplicate IDs, invalid tags/types, and malformed keys. Questions are frozen after validation. CFU text is plain text rendered through DOM nodes, not HTML or Markdown.
+
+Both modes use **explicit Submit answer**, followed by immediate correctness, the correct answer, explanation, and **Continue**. Multi-choice grading is exact-set matching: missing or extra selections are incorrect; there is no partial credit. Empty answers cannot be submitted. Submit locks all choices, even for incorrect answers. In a lesson, Back/re-entry preserves that lock until **lesson restart**; HUD Next is hidden and runner advancement blocked before submission. Deliberate lesson Skip remains available. These checkpoints are practice only, with no standalone score or persistence. Legacy `predict`/`choices` behavior is unchanged.
+
+Mount a standalone check separately:
+
+```js
+let check;
+const guided = SimLib.Guided.mount({
+  app, adapter, experiments: [lesson],
+  beforeStart: () => { if (check) check.close(); },
+});
+check = SimLib.CFU.mount({
+  bank,
+  host: document.getElementById('my-cfu-host'),
+  beforeOpen: () => { if (guided.runner) guided.runner.exit(); },
+});
+```
+
+`mount` returns `session`, `panel`, `launcher`, `open()`, `close()`, and `destroy()`. Optional `launcherHost` defaults to `host`. Mount within the simulation's fullscreen container, **not the reference sidebar** (which fullscreen hides). Pendulum mounts in its scrollable controls panel. The standalone panel is non-modal: it does not pause, reset, gate, or otherwise modify the simulation. The hooks above ensure a lesson and standalone panel cannot be open together; closing a check preserves its progress.
+
+Standalone questions are the `assessment`/`both` entries, in authored bank order, without randomization. Each is scored once. Final Continue displays score and a full review (prompt, selected answers, correct answers, correctness, and explanation). Restart starts a fresh attempt while retaining the latest completed result; a prior result's score remains visible during the new attempt.
+
+### Persistence and privacy
+
+Only standalone progress is persisted. The key is `commonlab:cfu:<bank.id>`. A JSON envelope contains `schema: 1`, `bankVersion`, `active` (question index, drafts, submitted answers/lock), and `latest` (answers and completion timestamp). Scores are recalculated from validated answers, not trusted from storage. Unfinished checks resume when the launcher is opened, including locked submitted answers awaiting Continue. The latest completed review is reopened when there is no unfinished attempt.
+
+**Bump the bank version whenever content, keys, question/choice IDs, or order change.** Schema or bank-version mismatches invalidate old progress/results. Corrupt JSON or invalid records are ignored safely; valid completed and active records are validated independently. Missing/denied storage and quota errors do not stop the check; an unavailable-storage message indicates that progress is only reliable for this visit. There is no server, account, submission, or cross-device synchronization. Local records are not tamper-proof grading evidence.
+
+Verify keyboard radio/checkbox selection, explicit submit, feedback announcements, focus on checkpoint entry and Continue, Back/re-entry locks, Skip, both restart types, and mutual exclusion. Test reload before/after submit, final review, bank-version changes, corrupt storage, storage denial/quota, and fullscreen scrolling. `tests/cfu.test.mjs` covers the core contracts in Node; real-browser layout/accessibility checks remain necessary.

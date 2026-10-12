@@ -10,7 +10,16 @@ Then visit `http://localhost:8000`.
 
 ## Guided experiments / lessons
 
-The shared engine (`guided.js`) and overlay styles (`guided.css`) are implemented. The Pendulum simulation includes the first pilot lesson, **“What controls a pendulum’s period?”**, with predictions, guided tasks, observation, hints, restart/exit, and a completion recap.
+The shared engine (`guided.js`) and overlay styles (`guided.css`) are implemented. The Pendulum simulation includes the first pilot lesson, **“What controls a pendulum’s period?”**, with predictions, guided tasks, observation, three practice-only CFU checkpoints, hints, restart/exit, and a completion recap.
+
+### Check Understanding
+
+Pendulum also has a **Check Understanding** launcher in its controls panel. This non-modal self-check keeps the simulation usable and asks five fixed-order questions about length, mass, gravity, and the ideal small-angle period. Single- and multi-choice answers require explicit submission, lock until restart, and show immediate explanations. Finish for a score and full answer review.
+
+- Shared engine/styles: `cfu.js`, `cfu.css`; authored bank: `simulations/pendulum-cfu.js`.
+- Lesson practice and standalone scoring share bank content but keep their answers separate. Opening either mode closes the other.
+- Versioned localStorage resumes unfinished standalone checks and retains the latest completed result. Corrupt/unavailable storage is handled safely; there is no backend or cross-device synchronization.
+- See [CFU authoring and persistence](docs/guided-experiments-authoring.md#9-shared-check-understanding-cfu-questions) for schema, integration, versioning, and verification.
 
 - [Authoring guide](docs/guided-experiments-authoring.md): current API, integration example, conditions, and verification checklist.
 - [Implementation plan](docs/guided-experiments-plan.md): broader design and planned rollout. Some proposed features are not implemented; consult the authoring guide for current behavior.
@@ -31,4 +40,4 @@ Requires Node.js with the built-in test runner:
 node --test tests/*.test.mjs
 ```
 
-For browser smoke checks, serve the repository and open `tests/dom-smoke.html`. Automated coverage currently includes the guided engine, launcher, restart/completion, and overlay/dialog behavior using a lightweight DOM shim.
+For browser smoke checks, serve the repository and open `tests/dom-smoke.html`. Automated coverage includes the guided engine, launcher, restart/completion, overlay/dialog behavior, and CFU bank validation, exact-match grading, submit locks/re-entry, persistence/version invalidation, storage failures, full review, and mutual exclusion using a lightweight DOM shim. Real-browser accessibility, mobile layout, and fullscreen checks remain manual verification work.

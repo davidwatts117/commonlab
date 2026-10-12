@@ -1,0 +1,15 @@
+/* Shared CFU controls and non-modal assessment panel. */
+.cfu-panel { background: var(--sim-surface, #fff); border: 1px solid var(--sim-border); border-radius: var(--sim-radius); padding: 1rem; margin-bottom: 1rem; color: var(--sim-text); overflow-wrap: anywhere; }
+.cfu-panel[hidden] { display: none; }
+.cfu-panel p, .cfu-feedback { font-size: .85rem; line-height: 1.55; margin: .65rem 0; }
+.cfu-choices { border: 0; margin: .8rem 0; padding: 0; min-width: 0; }
+.cfu-choices legend { font-weight: 700; font-size: .95rem; }
+.cfu-instruction { font-size: .8rem; }
+.cfu-choice { display: flex; align-items: baseline; gap: .6rem; padding: .65rem; margin: .4rem 0; border: 1px solid var(--sim-border); border-radius: var(--sim-radius-sm); cursor: pointer; }
+.cfu-choice input { flex-shrink: 0; accent-color: var(--sim-accent); }
+.cfu-choice:has(input:checked) { background: var(--sim-accent-soft); border-color: var(--sim-accent); }
+.cfu-button { font: inherit; font-size: .82rem; font-weight: 700; border: 1px solid var(--sim-border); border-radius: var(--sim-radius-sm); padding: .55rem .8rem; background: var(--sim-accent); color: #fff; cursor: pointer; margin: .25rem .35rem .25rem 0; }
+.cfu-button:disabled { opacity: .5; cursor: default; }
+.cfu-button:focus-visible, .cfu-choice input:focus-visible { outline: 2px solid var(--sim-accent-dark); outline-offset: 3px; }
+.cfu-feedback:not(:empty) { padding: .7rem; background: var(--sim-accent-soft); border-radius: var(--sim-radius-sm); }
+.cfu-review { border-top: 1px solid var(--sim-border); padding-top: .8rem; margin-top: .8rem; }
