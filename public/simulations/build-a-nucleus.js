@@ -1,114 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Build a Nucleus — CommonLab</title>
-    <meta name="description" content="Build atomic nuclei by adding protons and neutrons. Explore stability, isotopes, and the chart of nuclides.">
-    <link rel="stylesheet" href="../main.css?v=3">
-    <style>
-        #nucleusCanvas { width: 100%; max-width: 600px; height: auto; aspect-ratio: 1/1; display: block; border-radius: 8px; background: #0d1117; cursor: default; }
-
-        .ni-halflife { display: flex; flex-direction: column; align-items: center; min-width: 140px; }
-        .ni-hl-val { font-size: 1rem; font-weight: 800; color: #1a1a2e; text-align: center; }
-
-        .sim-layout { grid-template-columns: 1fr; max-width: 700px; margin: 0 auto; }
-        .sim-main { max-width: 100%; }
-
-        .warn-msg { font-size: 0.78rem; color: #ef4444; text-align: center; margin-top: 0.25rem; min-height: 1.2em; }
-
-        .half-life-bar { height: 14px; border-radius: 7px; background: #e5e7eb; margin-top: 0.3rem; overflow: visible; position: relative; }
-        .half-life-fill { height: 100%; border-radius: 7px; transition: width 0.3s; }
-        .hl-scale { display: flex; justify-content: space-between; padding: 2px 0 0 0; margin-bottom: -2px; }
-        .hl-tick { font-size: 0.55rem; color: #b0b0b0; text-align: center; min-width: 28px; }
-    </style>
-</head>
-<body>
-
-<header class="site-header">
-    <div class="container nav-container">
-        <a href="../index.html" class="logo"><span class="logo-icon">&#9670;</span><span class="logo-text">CommonLab</span></a>
-        <nav class="primary-nav"><ul>
-            <li><a href="../index.html#simulations">Simulations</a></li>
-            <li><a href="../index.html#about">About</a></li>
-            <li><a href="../index.html#contact">Contact</a></li>
-        </ul></nav>
-    </div>
-</header>
-
-<main>
-    <div class="sim-page-header">
-        <div class="container"><h1>Build a Nucleus</h1><p>Add protons and neutrons to build atomic nuclei. Explore stability, isotopes, and the chart of nuclides.</p></div>
-    </div>
-    <section class="sim-canvas-area">
-        <div class="container sim-layout">
-
-            <div class="sim-main">
-                <div class="canvas-wrapper"><canvas id="nucleusCanvas" width="600" height="600"></canvas></div>
-
-                <div class="controls-panel">
-                    <div class="sim-stepper">
-                        <button class="sim-iconbtn sim-iconbtn--proton" id="btnProtonMinus" title="Remove proton">−</button>
-                        <span class="sim-stepper__display"><span style="color:#dc2626;font-weight:800;">●</span> Protons: <strong id="protonCount">6</strong></span>
-                        <button class="sim-iconbtn sim-iconbtn--proton" id="btnProtonPlus" title="Add proton">+</button>
-                    </div>
-                    <div class="sim-stepper">
-                        <button class="sim-iconbtn sim-iconbtn--neutron" id="btnNeutronMinus" title="Remove neutron">−</button>
-                        <span class="sim-stepper__display"><span style="color:#6b7280;font-weight:800;">●</span> Neutrons: <strong id="neutronCount">6</strong></span>
-                        <button class="sim-iconbtn sim-iconbtn--neutron" id="btnNeutronPlus" title="Add neutron">+</button>
-                    </div>
-                    <div class="warn-msg" id="warnMsg"></div>
-                </div>
-
-                <div class="sim-infobar">
-                    <div class="sim-infobar__header">
-                        <span class="sim-infobar__name" id="elementName">Carbon</span>
-                        <span class="sim-infobar__symbol" id="isotopeNotation">¹²C</span>
-                        <span id="stabilityBadge"></span>
-                    </div>
-                    <div class="sim-infobar__props">
-                        <div class="sim-infobar__item"><div class="sim-infobar__value" id="zVal">6</div><div class="sim-infobar__label">Protons (Z)</div></div>
-                        <div class="sim-infobar__item"><div class="sim-infobar__value" id="nVal">6</div><div class="sim-infobar__label">Neutrons (N)</div></div>
-                        <div class="sim-infobar__item"><div class="sim-infobar__value" id="aVal">12</div><div class="sim-infobar__label">Mass (A)</div></div>
-                        <div class="sim-infobar__item"><div class="sim-infobar__value" id="ratioVal">1.00</div><div class="sim-infobar__label">N/Z Ratio</div></div>
-                    </div>
-                    <div class="ni-halflife">
-                        <span class="ni-hl-val" id="hlVal">Stable</span>
-                        <div class="half-life-bar"><div class="half-life-fill" id="hlBar" style="width:100%;background:#10b981;"></div></div>
-                        <div class="hl-scale">
-                            <span class="hl-tick">1 s</span>
-                            <span class="hl-tick">1 h</span>
-                            <span class="hl-tick">1 yr</span>
-                            <span class="hl-tick">1 Myr</span>
-                            <span class="hl-tick">1 Gyr</span>
-                        </div>
-                    </div>
-                    <p class="sim-infobar__desc" id="stabilityDesc">Stable isotope.</p>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- Full-width Chart of Nuclides -->
-        <div class="container" style="margin-top:1.5rem;">
-            <div class="equation-card" style="max-width:100%;">
-                <h3>Chart of Nuclides</h3>
-                <canvas id="chartCanvas" width="900" height="550" style="width:100%;height:auto;aspect-ratio:900/550;display:block;border-radius:4px;"></canvas>
-                <p style="font-size:0.72rem;color:#999;margin-top:0.3rem;text-align:center;">Green = stable · Light green = exists · Click a cell to select</p>
-            </div>
-        </div>
-
-        <div class="container" style="margin-top:1.5rem;text-align:center;">
-            <a href="../index.html#simulations" class="sim-back-link">← Back to Simulations</a>
-        </div>
-    </section>
-</main>
-
-<footer class="site-footer"><div class="container footer-container"><p>&copy; 2026 CommonLab. Free science simulations for everyone.</p></div></footer>
-
-<script src="../index.js?v=3"></script>
-<script src="../library.js?v=4"></script>
-<script>
+// Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
+export function mount(ui) {
+    const document = ui;
 'use strict';
 
 // ═══════════════════════════════════════
@@ -479,7 +371,9 @@ function updateUI() {
     document.getElementById('ratioVal').textContent=ratio;
     document.getElementById('elementName').textContent=name;
     document.getElementById('isotopeNotation').textContent=a>0?a+sym:'—';
-    document.getElementById('stabilityBadge').innerHTML='<span class="sim-badge sim-badge--'+stab.level+'">'+stab.level.charAt(0).toUpperCase()+stab.level.slice(1)+'</span>';
+    const badge = document.getElementById('stabilityBadge');
+    badge.textContent = stab.level.charAt(0).toUpperCase()+stab.level.slice(1);
+    badge.className = 'sim-badge sim-badge--' + stab.level;
     document.getElementById('stabilityDesc').textContent=stab.desc;
     document.getElementById('hlVal').textContent=fmtHalfLife(hl);
 
@@ -533,6 +427,5 @@ app.sim.start();
 
 loadNuclearData().then(() => rebuild());
 setTimeout(() => { if (!dataLoaded) { loadFallbackData(); rebuild(); } }, 3000);
-</script>
-</body>
-</html>
+    return { app };
+}

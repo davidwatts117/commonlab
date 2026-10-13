@@ -1,10 +1,10 @@
 # Authoring guided experiments
 
-This guide describes the **implemented API**, not every feature proposed in the [design plan](guided-experiments-plan.md). Use `simulations/pendulum.html` as the complete working example. Lessons are trusted, in-repository JavaScript definitions; there is no build step or external lesson loader.
+This guide describes the **guided engine API**, not every feature proposed in the [design plan](guided-experiments-plan.md). Current application authoring is data-driven: see [Simulation authoring](simulation-authoring.md), `public/simulations/catalog.json` (lesson/question data), and `public/simulations/pendulum.js` (semantic adapter). Browser assets live under `public/`; no frontend build step is needed. JavaScript examples below explain the engine API used by the shared shell; do not create separate simulation pages or mount learning UI inside physics modules.
 
 ## 1. Opt a simulation in
 
-Load the guided stylesheet alongside the simulation styles, and load the engine **after** `library.js`:
+The shared shell already loads these assets and mounts learning UI. Opt a simulation in by adding `lessons` data to its catalog entry and returning `{ app, adapter }` from its module. For reference, the engine depends on these assets in this order:
 
 ```html
 <link rel="stylesheet" href="../guided.css?v=5">
@@ -12,7 +12,7 @@ Load the guided stylesheet alongside the simulation styles, and load the engine 
 <script src="../guided.js?v=5"></script>
 ```
 
-Keep asset versions consistent with the page's current cache-busting convention. Create the adapter and lessons after `SimLib.attach` has produced `app` and initialized `app.sim`. The shared simulation loop calls `app.guidedTick(dt)` automatically; do not add another animation loop. Custom loops must forward elapsed seconds themselves.
+Keep asset versions consistent in the shared shell. Create the adapter after `SimLib.attach` has produced `app` and initialized `app.sim`; the shell creates lessons from catalog data. The shared simulation loop calls `app.guidedTick(dt)` automatically; do not add another animation loop. Custom loops must forward elapsed seconds themselves.
 
 ## 2. Expose a semantic adapter
 
@@ -57,6 +57,8 @@ const adapter = SimLib.Guided.adapter(sim, {
 For action-based conditions, notify the engine from the real user action handler with `SimLib.Guided.action('release')`. It is safe when no lesson is active. An adapter action function does not automatically send this notification. State-based conditions are often simpler.
 
 ## 3. Define and mount a lesson
+
+In the app, put the equivalent JSON object in the simulation's `lessons` array, including `sim: '<simulation-id>'`. `simulation-ui.mjs` calls `define` and `mount` centrally. These calls are shown for engine reference only:
 
 ```js
 const lesson = SimLib.Guided.define({
@@ -137,7 +139,7 @@ Controls support `near`/`tolerance`, `equals`, `min`, `max`, `changed`, and `cha
 
 Put `minElapsed` and settling `tolerance` on the **top-level** `when` object, including when using combinators. Settling uses a rolling 1.2-second window, requires at least six samples spanning 0.8 seconds, and checks the value's range. Default tolerance is the larger of 0.02 and 2% of the window midpoint. Stability is not proof that a real measurement was taken: expose measurement readiness explicitly when necessary.
 
-For an unusual condition, use `when: { fn: ctx => ... }`. Context includes `adapter`, `baseline`, `settle`, `lastAction`, `elapsed`, and `answers`. Keep callbacks cheap and side-effect-free. Conditions advance immediately when met; use sensible tolerances and a minimum observation time.
+The underlying engine also supports `when: { fn: ctx => ... }`, but callbacks are **not allowed in catalog definitions**. For app lessons, expose another semantic state getter and use the built-in JSON comparisons/combinators instead. Context includes `adapter`, `baseline`, `settle`, `lastAction`, `elapsed`, and `answers`. Keep callbacks cheap and side-effect-free. Conditions advance immediately when met; use sensible tolerances and a minimum observation time.
 
 ## 6. Predictions and feedback
 
@@ -167,7 +169,7 @@ Prefer one learning objective and one action per step. State units, hold confoun
 ## 8. Verify before publishing
 
 1. Run `node --test tests/*.test.mjs` and add tests for new behavior.
-2. Serve the repository (for example `python -m http.server 8000`) and open the simulation and `tests/dom-smoke.html`.
+2. Run `cargo run` and open the simulation at `http://localhost:8000/simulations/<sim>.html`. For the development-only smoke page, separately run `python -m http.server 8001 --bind 127.0.0.1` from the repository root and open `http://localhost:8001/tests/dom-smoke.html`; Axum intentionally does not expose tests.
 3. Complete the lesson with mouse, touch, and keyboard; check focus, hints, gated controls, and Escape.
 4. Test Back, Skip, Restart, Exit, and completion/Done, including while dialogs are open. Confirm DOM and canvas interaction are restored.
 5. Check narrow mobile, tablet, desktop, fullscreen, resize, and theme changes. Ensure cards/callouts do not hide required controls.
@@ -177,7 +179,7 @@ Current automated tests use isolated engine contexts and a lightweight DOM shim.
 
 ## 9. Shared Check Understanding (CFU) questions
 
-Load `cfu.css?v=1`, then `library.js`, `cfu.js?v=1`, the simulation's bank file, and `guided.js?v=6`. CFU is opt-in; legacy lessons do not require it. The Pendulum bank is `simulations/pendulum-cfu.js`.
+The shared shell loads `cfu.css`, `library.js`, `cfu.js`, and `guided.js`. Author `assessment: {id, version, questions}` in the catalog entry. A lesson checkpoint uses `question: '<question-id>'`; the shell resolves it to the shared bank object. Pendulum's bank is in `public/simulations/catalog.json`. The following JavaScript demonstrates the equivalent engine API, not a separate bank file to load:
 
 ```js
 const bank = SimLib.CFU.bank({
@@ -205,7 +207,7 @@ Bank IDs and question/choice IDs must be stable and unique. `version` is a posit
 
 Both modes use **explicit Submit answer**, followed by immediate correctness, the correct answer, explanation, and **Continue**. Multi-choice grading is exact-set matching: missing or extra selections are incorrect; there is no partial credit. Empty answers cannot be submitted. Submit locks all choices, even for incorrect answers. In a lesson, Back/re-entry preserves that lock until **lesson restart**; HUD Next is hidden and runner advancement blocked before submission. Deliberate lesson Skip remains available. These checkpoints are practice only, with no standalone score or persistence. Legacy `predict`/`choices` behavior is unchanged.
 
-Mount a standalone check separately:
+The shared shell mounts standalone checks and mutual-exclusion hooks centrally. Equivalent engine calls, for reference:
 
 ```js
 let check;
@@ -228,6 +230,6 @@ Standalone questions are the `assessment`/`both` entries, in authored bank order
 
 Only standalone progress is persisted. The key is `commonlab:cfu:<bank.id>`. A JSON envelope contains `schema: 1`, `bankVersion`, `active` (question index, drafts, submitted answers/lock), and `latest` (answers and completion timestamp). Scores are recalculated from validated answers, not trusted from storage. Unfinished checks resume when the launcher is opened, including locked submitted answers awaiting Continue. The latest completed review is reopened when there is no unfinished attempt.
 
-**Bump the bank version whenever content, keys, question/choice IDs, or order change.** Schema or bank-version mismatches invalidate old progress/results. Corrupt JSON or invalid records are ignored safely; valid completed and active records are validated independently. Missing/denied storage and quota errors do not stop the check; an unavailable-storage message indicates that progress is only reliable for this visit. There is no server, account, submission, or cross-device synchronization. Local records are not tamper-proof grading evidence.
+**Bump the bank version whenever content, keys, question/choice IDs, or order change.** Schema or bank-version mismatches invalidate old progress/results. Corrupt JSON or invalid records are ignored safely; valid completed and active records are validated independently. Missing/denied storage and quota errors do not stop the check; an unavailable-storage message indicates that progress is only reliable for this visit. There is no results backend, account, submission, or cross-device synchronization; Axum only serves the app assets. Local records are not tamper-proof grading evidence.
 
 Verify keyboard radio/checkbox selection, explicit submit, feedback announcements, focus on checkpoint entry and Continue, Back/re-entry locks, Skip, both restart types, and mutual exclusion. Test reload before/after submit, final review, bank-version changes, corrupt storage, storage denial/quota, and fullscreen scrolling. `tests/cfu.test.mjs` covers the core contracts in Node; real-browser layout/accessibility checks remain necessary.

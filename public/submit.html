@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Submit a simulation — CommonLab</title>
+  <link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/simulation.css"><link rel="stylesheet" href="/authoring.css">
+</head>
+<body>
+  <header class="site-header"><div class="container nav-container"><a class="logo" href="/">◆ CommonLab</a><nav aria-label="Authoring navigation"><a href="/#simulations">Simulations</a> · <a href="/review.html">Review queue</a></nav></div></header>
+  <main class="container authoring-page">
+    <h1>Submit a simulation</h1>
+    <p>Build a definition for our shared science lab. Use an installed physics engine or submit a new JavaScript engine for a maintainer to review.</p>
+    <p class="authoring-warning">Submissions are private drafts until approved. This preview renders data only: uploaded code never runs here. Do not include passwords, API keys, personal data, or code you do not have permission to share.</p>
+    <p id="authoring-status" role="status">Checking submission availability…</p>
+    <form id="submission-form">
+      <fieldset id="submission-fields" disabled>
+        <legend>Simulation definition</legend>
+        <div class="authoring-fields">
+          <label>Physics engine / template<select id="engine"><option value="">Loading…</option></select></label>
+          <label>Your name (optional, visible to reviewers)<input id="submitted-by" maxlength="100" autocomplete="name"></label>
+          <label>Simulation ID<input id="definition-id" required maxlength="80" pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*" aria-describedby="id-help"></label>
+          <label>Title<input id="definition-title" required maxlength="200"></label>
+          <label>Subject<select id="definition-subject"><option value="physics">Physics</option><option value="chemistry">Chemistry</option></select></label>
+          <label>Canvas width<input id="canvas-width" type="number" min="1" max="4096" required></label>
+          <label>Canvas height<input id="canvas-height" type="number" min="1" max="4096" required></label>
+        </div>
+        <p id="id-help" class="authoring-hint">Choose a unique lowercase ID, for example <code>spring-lab</code>. Changing the engine loads its template and replaces your definition. Keep the declared slot IDs when reusing an installed engine.</p>
+        <label>Summary<textarea id="definition-summary" required rows="2" maxlength="2000"></textarea></label>
+        <div class="authoring-actions">
+          <label>Component to add<select id="component-type"><option value="slider">Slider</option><option value="actions">Actions</option><option value="choices">Choices</option><option value="select">Select</option><option value="readouts">Readouts</option><option value="text">Text</option><option value="stepper">Stepper</option><option value="meter">Meter</option></select></label>
+          <button id="add-component" type="button" class="sim-btn sim-btn--soft">Add component</button>
+          <button id="add-card" type="button" class="sim-btn sim-btn--soft">Add explanation card</button>
+          <button id="add-graph" type="button" class="sim-btn sim-btn--soft">Add graph</button>
+        </div>
+        <details open>
+          <summary>Definition editor: controls, explanations, graphs, lessons, and checks</summary>
+          <p class="authoring-hint">Edit the approved components as JSON. Use a template for examples. Text is displayed literally, never as HTML. Existing engines need their original controls and slot IDs; new controls require engine bindings. Lessons need an engine adapter.</p>
+          <label>Import definition JSON<input id="definition-file" type="file" accept=".json,application/json"></label>
+          <label>Definition JSON<textarea id="definition-json" class="code-editor" rows="18" spellcheck="false" required></textarea></label>
+        </details>
+        <section id="module-section" hidden aria-labelledby="module-heading">
+          <h2 id="module-heading">New engine code</h2>
+          <p>Export <code>mount(ui)</code>, use <code>ui.getElementById(id)</code> for declared slots, and return <code>{ app }</code> created with <code>SimLib.attach</code>. Keep page UI, lessons, and checks in the definition. This code becomes trusted, same-origin application code only after manual review.</p>
+          <label>Import JavaScript module<input id="module-file" type="file" accept=".js,.mjs,text/javascript"></label>
+          <label>JavaScript module<textarea id="module-code" class="code-editor" rows="16" spellcheck="false"></textarea></label>
+        </section>
+        <div class="authoring-actions">
+          <button id="validate-preview" type="button" class="sim-btn sim-btn--soft">Validate &amp; preview layout</button>
+          <button id="export-definition" type="button" class="sim-btn sim-btn--soft">Download definition</button>
+          <button id="submit-draft" type="submit" class="sim-btn sim-btn--primary">Submit for review</button>
+        </div>
+      </fieldset>
+    </form>
+    <section id="preview-section" hidden aria-labelledby="preview-heading"><h2 id="preview-heading">Layout preview — engine code is not running</h2><p id="preview-title"></p><div id="definition-preview"></div></section>
+    <noscript><p>Enable JavaScript to use the authoring interface.</p></noscript>
+  </main>
+  <script type="module" src="/submission-page.mjs"></script>
+</body>
+</html>

@@ -23,6 +23,7 @@
                     <li><a href="#features">Features</a></li>
                     <li><a href="#simulations">Simulations</a></li>
                     <li><a href="#contact">Contact</a></li>
+                    <li><a href="/submit.html">Submit a simulation</a></li>
                 </ul>
             </nav>
         </div>
@@ -153,46 +154,12 @@
             <div class="container">
                 <h2 class="section-title">Simulations</h2>
                 <p class="section-intro">
-                    Click a simulation to launch it. Each one is a self-contained
-                    interactive lab built with vanilla JavaScript.
+                    Choose a simulation to launch it in our shared interactive lab.
                 </p>
-                <div class="sim-grid">
-                    <a href="simulations/pendulum.html" class="sim-card">
-                        <span class="sim-name">Pendulum Lab</span>
-                        <span class="sim-desc">Explore period, amplitude, and gravity with an interactive pendulum with adjustable parameters.</span>
-                        <span class="sim-tag physics">Physics</span>
-                    </a>
-                    <a href="simulations/circuits.html" class="sim-card">
-                        <span class="sim-name">Circuit Builder</span>
-                        <span class="sim-desc">Build series and parallel circuits. Measure voltage, current, and resistance.</span>
-                        <span class="sim-tag physics">Physics</span>
-                    </a>
-                    <a href="simulations/projectile.html" class="sim-card">
-                        <span class="sim-name">Projectile Motion</span>
-                        <span class="sim-desc">Launch projectiles at various angles and speeds. Track trajectory and range.</span>
-                        <span class="sim-tag physics">Physics</span>
-                    </a>
-                    <a href="simulations/titration.html" class="sim-card">
-                        <span class="sim-name">Titration Lab</span>
-                        <span class="sim-desc">Perform acid-base titrations. Track pH and find equivalence points.</span>
-                        <span class="sim-tag chemistry">Chemistry</span>
-                    </a>
-                    <a href="simulations/gas-laws.html" class="sim-card">
-                        <span class="sim-name">Gas Laws</span>
-                        <span class="sim-desc">Manipulate pressure, volume, and temperature of an ideal gas in real time.</span>
-                        <span class="sim-tag chemistry">Chemistry</span>
-                    </a>
-                    <a href="simulations/states-of-matter.html" class="sim-card">
-                        <span class="sim-name">States of Matter</span>
-                        <span class="sim-desc">Heat and cool substances. Observe phase changes at the molecular level.</span>
-                        <span class="sim-tag chemistry">Chemistry</span>
-                    </a>
-                    <a href="simulations/build-a-nucleus.html" class="sim-card">
-                        <span class="sim-name">Build a Nucleus</span>
-                        <span class="sim-desc">Add protons and neutrons to build atomic nuclei. Explore stability and the chart of nuclides.</span>
-                        <span class="sim-tag physics">Physics</span>
-                    </a>
-                </div>
+                <p><a href="/submit.html">Create and submit a new simulation →</a></p>
+                <p id="catalog-status" role="status">Loading simulations…</p>
+                <div class="sim-grid" id="simulation-catalog"></div>
+                <noscript><p>Enable JavaScript to browse and run simulations.</p></noscript>
             </div>
         </section>
 
@@ -230,6 +197,7 @@
         </div>
     </footer>
 
-    <script src="index.js?v=3"></script>
+    <script src="index.js?v=4"></script>
+    <script type="module" src="catalog-page.mjs"></script>
 </body>
 </html>

@@ -1,0 +1,33 @@
+/* The only simulation-page stylesheet. Definitions cannot supply CSS or markup. */
+#simulation-root[hidden], .simulation-readouts[hidden] { display: none; }
+.simulation-canvas { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--sim-bg, #fafbfc); touch-action: none; }
+.simulation-canvas:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 3px; }
+.simulation-no-sidebar { grid-template-columns: minmax(0, 1fr); max-width: 1000px; }
+.simulation-no-sidebar .sim-sidebar { display: none; }
+.simulation-choices { min-width: 0; padding: 0; margin: .7rem 0; border: 0; }
+.simulation-label { font-size: .8rem; font-weight: 600; margin-bottom: .4rem; }
+.simulation-select { display: flex; gap: .75rem; align-items: center; margin: .7rem 0; }
+.simulation-select select { min-width: 0; flex: 1; padding: .4rem; font: inherit; font-size: .8rem; border: 1px solid var(--sim-border); border-radius: 6px; }
+.simulation-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.simulation-readouts { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
+.simulation-note { font-size: .78rem; line-height: 1.5; color: var(--sim-muted, #6c757d); margin: .5rem 0; overflow-wrap: anywhere; }
+.simulation-note p { margin: .3rem 0; }
+.control-row .control-label { min-width: 2rem; flex-shrink: 0; }
+.simulation-info { border: 0; background: none; color: var(--sim-accent); font: inherit; font-size: .7rem; cursor: pointer; text-decoration: underline; }
+.simulation-graph { margin-top: 1rem; padding: .75rem; background: var(--sim-surface, #fff); border: 1px solid var(--sim-border); border-radius: 8px; }
+.simulation-graph h3 { font-size: .9rem; margin: 0 0 .5rem; }
+.simulation-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .75rem; margin-bottom: .5rem; }
+.simulation-legend span { border-left: 9px solid; padding-left: .4rem; }
+.simulation-meter { margin: .75rem 0; }
+.simulation-meter > span { margin-left: 1rem; font-size: .85rem; }
+.simulation-meter-track { height: 14px; background: #e5e7eb; border-radius: 7px; overflow: hidden; margin: .5rem 0; }
+.simulation-meter-fill { width: 100%; height: 100%; background: #10b981; transition: width .3s; }
+.simulation-meter-ticks { display: flex; justify-content: space-between; font-size: .7rem; color: #777; }
+.simulation-dialog { max-width: min(560px, 90vw); border: 1px solid var(--sim-border); border-radius: 12px; padding: 1.5rem; line-height: 1.6; }
+.simulation-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.simulation-back { margin-top: 1.5rem; text-align: center; }
+@media (max-width: 600px) {
+  .control-row { flex-wrap: wrap; }
+  .simulation-info { width: 100%; text-align: left; }
+  .sim-stepper { flex-wrap: wrap; }
+}

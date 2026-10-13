@@ -1,0 +1,999 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/slug"
+    },
+    "title": {
+      "$ref": "#/$defs/text"
+    },
+    "subject": {
+      "enum": [
+        "physics",
+        "chemistry"
+      ]
+    },
+    "summary": {
+      "$ref": "#/$defs/text"
+    },
+    "canvas": {
+      "$ref": "#/$defs/canvas"
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      },
+      "minItems": 0,
+      "maxItems": 100
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "$ref": "#/$defs/text"
+          },
+          "formulas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "minItems": 0,
+            "maxItems": 30
+          },
+          "paragraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/text"
+            },
+            "minItems": 0,
+            "maxItems": 30
+          }
+        },
+        "required": [
+          "title",
+          "formulas",
+          "paragraphs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 30
+    },
+    "graphs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/graph"
+      },
+      "minItems": 0,
+      "maxItems": 20
+    },
+    "lessons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/lesson"
+      },
+      "minItems": 0,
+      "maxItems": 20
+    },
+    "assessment": {
+      "$ref": "#/$defs/bank"
+    },
+    "info": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/slug"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "$ref": "#/$defs/text"
+          },
+          "formula": {
+            "$ref": "#/$defs/text"
+          },
+          "explanation": {
+            "$ref": "#/$defs/text"
+          },
+          "detail": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "required": [
+          "title",
+          "formula",
+          "explanation",
+          "detail"
+        ],
+        "additionalProperties": false
+      },
+      "maxProperties": 50
+    }
+  },
+  "required": [
+    "id",
+    "title",
+    "subject",
+    "summary",
+    "canvas",
+    "controls",
+    "cards",
+    "graphs",
+    "lessons"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "pattern": "\\S"
+    },
+    "content": {
+      "type": "string",
+      "maxLength": 8192
+    },
+    "slug": {
+      "type": "string",
+      "maxLength": 80,
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "slot": {
+      "type": "string",
+      "maxLength": 80,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slot"
+        },
+        "text": {
+          "$ref": "#/$defs/content"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "button": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slot"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "variant": {
+          "enum": [
+            "primary",
+            "ghost",
+            "soft",
+            "outline",
+            "display"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "pressed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "variant"
+      ],
+      "additionalProperties": false
+    },
+    "option": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/text"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "required": [
+        "value",
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "canvas": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slot"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "graph": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slot"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "caption": {
+          "$ref": "#/$defs/text"
+        },
+        "legend": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "$ref": "#/$defs/text"
+              },
+              "color": {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              }
+            },
+            "required": [
+              "label",
+              "color"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "component": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "slider"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "value": {
+              "type": "number"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            },
+            "icons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/output"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "info": {
+              "$ref": "#/$defs/slug"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "min",
+            "max",
+            "step",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "actions"
+            },
+            "buttons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/button"
+              },
+              "minItems": 1,
+              "maxItems": 30
+            }
+          },
+          "required": [
+            "type",
+            "buttons"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "choices"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/option"
+              },
+              "minItems": 2,
+              "maxItems": 30
+            },
+            "value": {
+              "$ref": "#/$defs/text"
+            },
+            "style": {
+              "enum": [
+                "toolbar",
+                "segments",
+                "chips"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "options",
+            "value",
+            "style"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "select"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/option"
+              },
+              "minItems": 2,
+              "maxItems": 30
+            },
+            "value": {
+              "$ref": "#/$defs/text"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "options",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "readouts"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "hidden": {
+              "type": "boolean"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/slot"
+                  },
+                  "label": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "value": {
+                    "$ref": "#/$defs/content"
+                  },
+                  "tone": {
+                    "enum": [
+                      "default",
+                      "highlight",
+                      "success"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "value",
+                  "tone"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 30
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "text"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "text": {
+              "$ref": "#/$defs/content"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "stepper"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            },
+            "increase": {
+              "$ref": "#/$defs/button"
+            },
+            "decrease": {
+              "$ref": "#/$defs/button"
+            }
+          },
+          "required": [
+            "type",
+            "label",
+            "output",
+            "increase"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "meter"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            },
+            "ticks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/text"
+              },
+              "minItems": 0,
+              "maxItems": 30
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "output",
+            "ticks"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "question": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "use": {
+          "enum": [
+            "lesson",
+            "assessment",
+            "both"
+          ]
+        },
+        "type": {
+          "enum": [
+            "single",
+            "multi"
+          ]
+        },
+        "prompt": {
+          "$ref": "#/$defs/text"
+        },
+        "explanation": {
+          "$ref": "#/$defs/text"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/slug"
+              },
+              "label": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 2,
+          "maxItems": 30
+        },
+        "correct": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/slug"
+          },
+          "minItems": 1,
+          "maxItems": 30,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "use",
+        "type",
+        "prompt",
+        "explanation",
+        "choices",
+        "correct"
+      ],
+      "additionalProperties": false
+    },
+    "bank": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/question"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "questions"
+      ],
+      "additionalProperties": false
+    },
+    "setup": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/slot"
+        },
+        "controls": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/slot"
+          },
+          "additionalProperties": {
+            "type": "number"
+          },
+          "maxProperties": 50
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "condition": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "control": {
+              "$ref": "#/$defs/slot"
+            },
+            "state": {
+              "$ref": "#/$defs/slot"
+            },
+            "action": {
+              "$ref": "#/$defs/slot"
+            },
+            "near": {
+              "type": "number"
+            },
+            "equals": {
+              "type": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "tolerance": {
+              "type": "number",
+              "minimum": 0
+            },
+            "changedBy": {
+              "type": "number",
+              "minimum": 0
+            },
+            "minElapsed": {
+              "type": "number",
+              "minimum": 0
+            },
+            "changed": {
+              "type": "boolean"
+            },
+            "settles": {
+              "type": "boolean"
+            },
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "not": {
+              "$ref": "#/$defs/condition"
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "all"
+              ]
+            },
+            {
+              "required": [
+                "any"
+              ]
+            },
+            {
+              "required": [
+                "not"
+              ]
+            },
+            {
+              "required": [
+                "control"
+              ]
+            },
+            {
+              "required": [
+                "state"
+              ]
+            },
+            {
+              "required": [
+                "action"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "minItems": 1,
+          "maxItems": 30
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "type": {
+          "enum": [
+            "message",
+            "predict",
+            "task",
+            "observe",
+            "checkpoint",
+            "conclusion"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "body": {
+          "$ref": "#/$defs/text"
+        },
+        "hint": {
+          "$ref": "#/$defs/text"
+        },
+        "highlight": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/slot"
+              },
+              "minItems": 0,
+              "maxItems": 30
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allow": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/slot"
+              },
+              "minItems": 0,
+              "maxItems": 30
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "freeze": {
+          "type": "boolean"
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "advance": {
+          "enum": [
+            "on-next",
+            "on-answer",
+            "on-condition"
+          ]
+        },
+        "when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/condition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "question": {
+          "$ref": "#/$defs/slug"
+        },
+        "choices": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/slug"
+                  },
+                  "label": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "correct": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 2,
+              "maxItems": 30
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "feedback": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "correct": {
+                  "$ref": "#/$defs/text"
+                },
+                "any": {
+                  "$ref": "#/$defs/text"
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "lesson": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "sim": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "subject": {
+          "$ref": "#/$defs/text"
+        },
+        "level": {
+          "$ref": "#/$defs/text"
+        },
+        "minutes": {
+          "type": "number"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "setup": {
+          "$ref": "#/$defs/setup"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "id",
+        "sim",
+        "title",
+        "summary",
+        "subject",
+        "level",
+        "minutes",
+        "tags",
+        "steps"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

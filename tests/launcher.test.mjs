@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..');
+const root = join(__dirname, '..', 'public');
 
 function makeNode(tag) {
   const node = {

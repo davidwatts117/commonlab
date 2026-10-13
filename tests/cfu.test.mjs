@@ -9,9 +9,11 @@ function load(storage) {
   const sandbox = { document, console, setTimeout, clearTimeout, localStorage: storage,
     getComputedStyle: () => ({ position: 'relative' }),
     addEventListener() {}, removeEventListener() {}, SimLib: { CanvasUtils: {} } };
-  for (const file of ['cfu.js', 'guided.js', 'simulations/pendulum-cfu.js']) {
-    vm.runInNewContext(readFileSync(new URL('../' + file, import.meta.url), 'utf8'), sandbox);
+  for (const file of ['cfu.js', 'guided.js']) {
+    vm.runInNewContext(readFileSync(new URL('../public/' + file, import.meta.url), 'utf8'), sandbox);
   }
+  const catalog = JSON.parse(readFileSync(new URL('../public/simulations/catalog.json', import.meta.url), 'utf8'));
+  sandbox.SimLib.PendulumCFU = sandbox.SimLib.CFU.bank(catalog.simulations.find(sim => sim.id === 'pendulum').assessment);
   return { ...sandbox.SimLib, document };
 }
 function memory() {

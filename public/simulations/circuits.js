@@ -1,149 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circuit Builder — CommonLab</title>
-    <meta name="description" content="Build and test series and parallel circuits. Measure voltage, current, and resistance.">
-    <link rel="stylesheet" href="../main.css?v=3">
-    <style>
-        #circuitCanvas { width: 100%; max-width: 800px; height: auto; aspect-ratio: 800 / 520; display: block; border-radius: 8px; background: #fafbfc; cursor: default; }
-
-    </style>
-</head>
-<body>
-
-<header class="site-header">
-    <div class="container nav-container">
-        <a href="../index.html" class="logo"><span class="logo-icon">&#9670;</span><span class="logo-text">CommonLab</span></a>
-        <nav class="primary-nav"><ul>
-            <li><a href="../index.html#simulations">Simulations</a></li>
-            <li><a href="../index.html#about">About</a></li>
-            <li><a href="../index.html#contact">Contact</a></li>
-        </ul></nav>
-    </div>
-</header>
-
-<main>
-    <div class="sim-page-header">
-        <div class="container">
-            <h1>Circuit Builder</h1>
-            <p>Build series and parallel circuits. Click to place components, then measure voltage, current, and resistance.</p>
-        </div>
-    </div>
-
-    <section class="sim-canvas-area">
-        <div class="container sim-layout">
-
-            <div class="sim-main">
-                <div class="canvas-wrapper">
-                    <canvas id="circuitCanvas" width="800" height="520"></canvas>
-                </div>
-
-                <div class="controls-panel">
-                    <div class="sim-toolbar">
-                        <button class="sim-tool is-active" data-tool="battery">
-                            <span class="sim-tool__icon">&#9889;</span> Battery
-                        </button>
-                        <button class="sim-tool" data-tool="resistor">
-                            <span class="sim-tool__icon">&#9776;</span> Resistor
-                        </button>
-                        <button class="sim-tool" data-tool="bulb">
-                            <span class="sim-tool__icon">&#128161;</span> Bulb
-                        </button>
-                        <button class="sim-tool" data-tool="wire">
-                            <span class="sim-tool__icon">&#8212;</span> Wire
-                        </button>
-                        <button class="sim-tool" data-tool="switch">
-                            <span class="sim-tool__icon">&#9211;</span> Switch
-                        </button>
-                        <button class="sim-tool" data-tool="delete">
-                            <span class="sim-tool__icon">&#10005;</span> Delete
-                        </button>
-                    </div>
-
-                    <div class="sim-actions">
-                        <button class="sim-btn sim-btn--soft" id="presetSeries">Preset: Series</button>
-                        <button class="sim-btn sim-btn--soft" id="presetParallel">Preset: Parallel</button>
-                        <button class="sim-btn sim-btn--primary" id="runBtn">&#9654; Simulate</button>
-                        <button class="sim-btn sim-btn--ghost" id="clearBtn">Clear All</button>
-                    </div>
-
-                    <div class="sim-readouts sim-readouts--4">
-                        <div class="sim-readout sim-readout--highlight">
-                            <div class="sim-readout__value" id="vBat">9.00</div>
-                            <div class="sim-readout__label">Battery (V)</div>
-                        </div>
-                        <div class="sim-readout">
-                            <div class="sim-readout__value" id="current">0.00</div>
-                            <div class="sim-readout__label">Current (A)</div>
-                        </div>
-                        <div class="sim-readout">
-                            <div class="sim-readout__value" id="req">0.00</div>
-                            <div class="sim-readout__label">Req (&Omega;)</div>
-                        </div>
-                        <div class="sim-readout">
-                            <div class="sim-readout__value" id="power">0.00</div>
-                            <div class="sim-readout__label">Power (W)</div>
-                        </div>
-                    </div>
-
-                    <div class="sim-help">Click a tool then click the canvas to place it. Drag components to move them.</div>
-                </div>
-            </div>
-
-            <aside class="sim-sidebar">
-                <div class="equation-card">
-                    <h3>Ohm's Law</h3>
-                    <div class="equation-formula">V = IR</div>
-                    <p class="eq-explanation">
-                        Voltage (V) equals current (I) times resistance (R).
-                        The fundamental relationship governing all circuits.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Series Circuits</h3>
-                    <div class="equation-formula">R<sub>eq</sub> = R<sub>1</sub> + R<sub>2</sub> + ...</div>
-                    <p class="eq-explanation">
-                        In series, resistances add directly. The same current flows
-                        through every component. Voltage divides across resistors.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Parallel Circuits</h3>
-                    <div class="equation-formula">1/R<sub>eq</sub> = 1/R<sub>1</sub> + 1/R<sub>2</sub> + ...</div>
-                    <p class="eq-explanation">
-                        In parallel, the reciprocal of Req is the sum of reciprocals.
-                        Voltage is the same across each branch; current divides.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Power</h3>
-                    <div class="equation-formula">P = IV = I&sup2;R = V&sup2;/R</div>
-                    <p class="eq-explanation">
-                        Power dissipated as heat (or light in a bulb). Measured
-                        in watts (W). Higher current means more power.
-                    </p>
-                </div>
-            </aside>
-
-        </div>
-
-        <div class="container" style="margin-top: 1.5rem; text-align: center;">
-            <a href="../index.html#simulations" class="sim-back-link">← Back to Simulations</a>
-        </div>
-    </section>
-</main>
-
-<footer class="site-footer">
-    <div class="container footer-container">
-        <p>&copy; 2026 CommonLab. Free science simulations for everyone.</p>
-    </div>
-</footer>
-
-<script src="../index.js?v=3"></script>
-<script src="../library.js?v=4"></script>
-<script>
+// Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
+export function mount(ui) {
+    const document = ui;
 'use strict';
 
 // ═══ Canvas & State ═══
@@ -643,7 +500,7 @@ toolButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         toolButtons.forEach(b => b.classList.remove('is-active'));
         btn.classList.add('is-active');
-        selectedTool = btn.dataset.tool;
+        selectedTool = btn.dataset.value;
         selectedComp = null;
     });
 });
@@ -873,6 +730,5 @@ const app = SimLib.attach({
     }
 });
 app.sim.start();
-</script>
-</body>
-</html>
+    return { app };
+}

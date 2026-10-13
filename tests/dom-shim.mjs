@@ -126,6 +126,6 @@ export function loadGuided() {
     addEventListener() {}, removeEventListener() {},
     SimLib: { CanvasUtils: {}, Simulation: class {}, Theme: { get: () => ({}) } },
   };
-  vm.runInNewContext(readFileSync(new URL('../guided.js', import.meta.url), 'utf8'), sandbox);
+  vm.runInNewContext(readFileSync(new URL('../public/guided.js', import.meta.url), 'utf8'), sandbox);
   return { Guided: sandbox.SimLib.Guided, document };
 }

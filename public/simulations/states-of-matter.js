@@ -1,114 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>States of Matter — CommonLab</title>
-    <meta name="description" content="Heat and cool substances to observe solid, liquid, and gas phases at the molecular level.">
-    <link rel="stylesheet" href="../main.css?v=3">
-    <style>
-        #matterCanvas { width: 100%; max-width: 900px; height: auto; aspect-ratio: 900 / 600; display: block; border-radius: 8px; background: #f5f5f0; cursor: default; }
-
-        .sim-seg__dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
-        #heatLabel { transition: color 0.3s; }
-    </style>
-</head>
-<body>
-
-<header class="site-header">
-    <div class="container nav-container">
-        <a href="../index.html" class="logo"><span class="logo-icon">&#9670;</span><span class="logo-text">CommonLab</span></a>
-        <nav class="primary-nav"><ul>
-            <li><a href="../index.html#simulations">Simulations</a></li>
-            <li><a href="../index.html#about">About</a></li>
-            <li><a href="../index.html#contact">Contact</a></li>
-        </ul></nav>
-    </div>
-</header>
-
-<main>
-    <div class="sim-page-header">
-        <div class="container"><h1>States of Matter</h1><p>Heat and cool atoms &amp; molecules to observe solid, liquid, and gas phases.</p></div>
-    </div>
-    <section class="sim-canvas-area">
-        <div class="container sim-layout">
-
-            <div class="sim-main">
-                <div class="canvas-wrapper"><canvas id="matterCanvas" width="900" height="600"></canvas></div>
-
-                <!-- Inline readout bar -->
-                <div class="sim-statbar">
-                    <div class="sim-statbar__item">
-                        <span class="sim-statbar__label">Phase</span>
-                        <span id="phasePill" class="sim-badge sim-badge--solid">Solid</span>
-                    </div>
-                    <div class="sim-statbar__item">
-                        <span class="sim-statbar__label">Temp</span>
-                        <span class="sim-statbar__value" id="tempValK">250</span><span class="sim-statbar__unit">K</span>
-                        <span class="sim-statbar__value" id="tempValC" style="font-size:0.85rem;">-23</span><span class="sim-statbar__unit">°C</span>
-                    </div>
-                    <div class="sim-statbar__item">
-                        <span class="sim-statbar__label">Melting</span>
-                        <span class="sim-statbar__value" id="mpVal">273 K</span>
-                    </div>
-                    <div class="sim-statbar__item">
-                        <span class="sim-statbar__label">Boiling</span>
-                        <span class="sim-statbar__value" id="bpVal">373 K</span>
-                    </div>
-                </div>
-
-                <div class="controls-panel">
-                    <!-- Substance buttons -->
-                    <div class="sim-seg" id="substancePick">
-                        <button class="sim-seg__btn" data-sub="neon"><span class="sim-seg__dot" style="background:#e890a0;"></span>Neon</button>
-                        <button class="sim-seg__btn" data-sub="nitrogen"><span class="sim-seg__dot" style="background:#6090d0;"></span>Nitrogen</button>
-                        <button class="sim-seg__btn" data-sub="argon"><span class="sim-seg__dot" style="background:#60c090;"></span>Argon</button>
-                        <button class="sim-seg__btn" data-sub="oxygen"><span class="sim-seg__dot" style="background:#e05050;"></span>Oxygen</button>
-                        <button class="sim-seg__btn is-active" data-sub="water"><span class="sim-seg__dot" style="background:#e05050;"></span>Water</button>
-                    </div>
-
-                    <!-- Heat / Cool control -->
-                    <div class="control-row">
-                        <span class="control-icon" id="tcIcon">🧊</span>
-                        <input type="range" id="heatSlider" min="-100" max="100" value="0" step="1">
-                        <span class="control-icon" id="tcIconR">🔥</span>
-                    </div>
-                    <div style="text-align:center;font-size:0.75rem;color:#999;margin-top:-0.3rem;" id="heatLabel">Heat / Cool</div>
-                    <button class="sim-btn sim-btn--outline sim-btn--block" id="btnReset">↺ Reset</button>
-                </div>
-            </div>
-
-            <aside class="sim-sidebar">
-                <div class="equation-card">
-                    <h3>How It Works</h3>
-                    <p class="eq-explanation">
-                        Drag the slider to heat or cool. Particles interact through intermolecular forces:
-                        <strong>solid</strong> at low temperatures, <strong>liquid</strong> between the melting
-                        and boiling points, and <strong>gas</strong> above the boiling point.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>About Phase Changes</h3>
-                    <p class="eq-explanation">
-                        During a phase change, temperature stays constant while energy is absorbed
-                        or released — this is <strong>latent heat</strong>, the energy needed to overcome
-                        or form intermolecular bonds.
-                    </p>
-                </div>
-            </aside>
-
-        </div>
-        <div class="container" style="margin-top:1.5rem;text-align:center;">
-            <a href="../index.html#simulations" class="sim-back-link">← Back to Simulations</a>
-        </div>
-    </section>
-</main>
-
-<footer class="site-footer"><div class="container footer-container"><p>&copy; 2026 CommonLab. Free science simulations for everyone.</p></div></footer>
-
-<script src="../index.js?v=3"></script>
-<script src="../library.js?v=4"></script>
-<script>
+// Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
+export function mount(ui) {
+    const document = ui;
 'use strict';
 
 // ═══════════════════════════════════════
@@ -768,7 +660,7 @@ heatSlider.addEventListener('change', () => {
 document.getElementById('substancePick').addEventListener('click', e => {
     const btn = e.target.closest('.sim-seg__btn');
     if (!btn) return;
-    const key = btn.getAttribute('data-sub');
+    const key = btn.getAttribute('data-value');
     if (key === subKey) return;
     subKey = key;
     sub = SUBS[key];
@@ -815,6 +707,5 @@ const app = SimLib.attach({
     }
 });
 app.sim.start();
-</script>
-</body>
-</html>
+    return { app };
+}

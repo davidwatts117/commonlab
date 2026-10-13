@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <title>Review submissions — CommonLab</title>
+  <link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/simulation.css"><link rel="stylesheet" href="/authoring.css">
+</head>
+<body>
+  <header class="site-header"><div class="container nav-container"><a class="logo" href="/">◆ CommonLab</a><nav aria-label="Authoring navigation"><a href="/submit.html">Submit a simulation</a> · <a href="/#simulations">Simulations</a></nav></div></header>
+  <main class="container authoring-page">
+    <h1>Review submissions</h1>
+    <p>Only trusted maintainers can publish simulations. Draft definitions and source code are private; neither authoring nor review previews execute submitted engines.</p>
+    <p id="review-status" role="status">Enter your administrator token to open the queue.</p>
+    <form id="review-login" class="authoring-actions">
+      <label>Administrator token<input id="admin-token" type="password" required autocomplete="off" spellcheck="false"></label>
+      <button type="submit" class="sim-btn sim-btn--primary">Open review queue</button>
+    </form>
+    <p class="authoring-hint">The token stays in this tab's memory, not browser storage or URLs. Use HTTPS outside localhost. Close the tab or lock the queue when finished.</p>
+    <section id="review-workspace" hidden>
+      <div class="authoring-actions">
+        <label>Queue status<select id="queue-status"><option value="pending">Pending</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option></select></label>
+        <button id="refresh-queue" type="button" class="sim-btn sim-btn--soft">Refresh queue</button>
+        <button id="lock-queue" type="button" class="sim-btn sim-btn--soft">Lock queue</button>
+      </div>
+      <ul id="review-queue" class="review-list" aria-label="Submitted simulations"></ul>
+      <button id="more-submissions" type="button" class="sim-btn sim-btn--soft" hidden>Load more submissions</button>
+      <section id="review-detail" hidden aria-labelledby="review-title">
+        <h2 id="review-title"></h2><p id="review-meta"></p>
+        <label>Submitted definition<textarea id="review-definition" class="code-editor" rows="14" readonly spellcheck="false"></textarea></label>
+        <div id="review-module-section" hidden><label>Submitted JavaScript (text only)<textarea id="review-module" class="code-editor" rows="18" readonly spellcheck="false"></textarea></label></div>
+        <p id="review-engine"></p>
+        <button id="review-preview-button" type="button" class="sim-btn sim-btn--soft">Preview definition layout only</button>
+        <section id="review-preview-section" hidden><h3>Layout preview — no engine running</h3><div id="review-preview"></div></section>
+        <form id="review-form">
+          <p class="authoring-warning">Publishing new JavaScript grants it the same privileges as CommonLab's own code. Check every import and dependency, network/storage access, UI manipulation, scientific accuracy, slot bindings, and the mount contract. Test untrusted code only in an isolated disposable environment, never in this review tab. Clicking approval is not a security audit.</p>
+          <label id="code-review-label"><input id="code-reviewed" type="checkbox"> I have personally reviewed this new engine and all its dependencies, and approve it as trusted same-origin application code.</label>
+          <label>Review note (required for rejection or withdrawal)<textarea id="review-note" maxlength="1000" rows="3"></textarea></label>
+          <div class="authoring-actions">
+            <button id="publish-submission" type="submit" value="publish" class="sim-btn sim-btn--primary">Publish simulation</button>
+            <button id="reject-submission" type="submit" value="reject" class="sim-btn sim-btn--soft">Reject submission</button>
+            <button id="withdraw-submission" type="submit" value="withdraw" class="sim-btn sim-btn--soft" hidden>Withdraw publication</button>
+          </div>
+        </form>
+      </section>
+    </section>
+    <noscript><p>Enable JavaScript to review submissions.</p></noscript>
+  </main>
+  <script type="module" src="/review-page.mjs"></script>
+</body>
+</html>

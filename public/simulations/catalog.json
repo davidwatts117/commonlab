@@ -1,0 +1,1443 @@
+{
+  "schemaVersion": 1,
+  "simulations": [
+    {
+      "id": "pendulum",
+      "title": "Pendulum Lab",
+      "subject": "physics",
+      "summary": "Explore how length, mass, gravity, and amplitude affect a pendulum's period. Drag the bob to set the angle, or use the slider.",
+      "canvas": {
+        "id": "pendulumCanvas",
+        "label": "Pendulum Lab",
+        "width": 700,
+        "height": 480
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "id": "lengthSlider",
+          "label": "L",
+          "min": 0.3,
+          "max": 3.0,
+          "step": 0.05,
+          "value": 1.2,
+          "output": {
+            "id": "lengthValue",
+            "text": "1.20 m"
+          }
+        },
+        {
+          "type": "slider",
+          "id": "massSlider",
+          "label": "m",
+          "min": 0.1,
+          "max": 5.0,
+          "step": 0.1,
+          "value": 1.0,
+          "output": {
+            "id": "massValue",
+            "text": "1.0 kg"
+          }
+        },
+        {
+          "type": "slider",
+          "id": "dragSlider",
+          "label": "C _d",
+          "min": 0.0,
+          "max": 0.94,
+          "step": 0.01,
+          "value": 0.47,
+          "output": {
+            "id": "dragValue",
+            "text": "0.47"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Drag coefficient — 0.00 is an ideal pendulum, 0.47 is a real sphere in air, 0.94 is double air drag."
+        },
+        {
+          "type": "slider",
+          "id": "gravitySlider",
+          "label": "g",
+          "min": 0.5,
+          "max": 20.0,
+          "step": 0.1,
+          "value": 9.8,
+          "output": {
+            "id": "gravityValue",
+            "text": "9.8 m/s²"
+          }
+        },
+        {
+          "type": "slider",
+          "id": "angleSlider",
+          "label": "θ",
+          "min": 1.0,
+          "max": 85.0,
+          "step": 0.5,
+          "value": 30.0,
+          "output": {
+            "id": "angleValue",
+            "text": "30°"
+          }
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "periodReadout",
+              "label": "Period (s)",
+              "value": "2.20",
+              "tone": "highlight"
+            },
+            {
+              "id": "freqReadout",
+              "label": "Frequency (Hz)",
+              "value": "0.45",
+              "tone": "default"
+            },
+            {
+              "id": "angleReadout",
+              "label": "Angle (°)",
+              "value": "30.0",
+              "tone": "default"
+            },
+            {
+              "id": "speedReadout",
+              "label": "Max Speed (m/s)",
+              "value": "0.00",
+              "tone": "default"
+            }
+          ]
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "pauseBtn",
+              "label": "Pause",
+              "variant": "primary",
+              "active": false
+            },
+            {
+              "id": "resetBtn",
+              "label": "Reset",
+              "variant": "ghost",
+              "active": false
+            },
+            {
+              "id": "traceBtn",
+              "label": "Show Trace",
+              "variant": "soft",
+              "active": true
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "title": "Period of a Pendulum",
+          "formulas": [
+            "T = 2π√(L/g)"
+          ],
+          "paragraphs": [
+            "For small angles (< 15°), the period depends only on length and gravity — not on mass or amplitude. This is isochronism ."
+          ]
+        },
+        {
+          "title": "Energy Dynamics",
+          "formulas": [
+            "E _tot = K + P + E _thermal"
+          ],
+          "paragraphs": [
+            "Energy transitions smoothly between Kinetic (K) and Potential (P). Air drag continuously dissipates mechanical energy into Thermal energy, so the Total line stays flat even as the pendulum slows."
+          ]
+        },
+        {
+          "title": "Large-Angle Correction",
+          "formulas": [
+            "T ≈ 2π√(L/g) · (1 + θ²/16)"
+          ],
+          "paragraphs": [
+            "For angles above ~15°, the small-angle approximation breaks down. The true period increases slightly with amplitude."
+          ]
+        },
+        {
+          "title": "Explore",
+          "formulas": [],
+          "paragraphs": [
+            "Try this: Set the drag coefficient to C _d = 0.00 for an ideal, non-damped pendulum and watch K and P swap forever with a flat Total line. Raise it to 0.47 (a real sphere in air) or 0.94 (twice normal air drag) to watch Thermal climb while Total stays flat — energy is conserved, just converted.",
+            "Drag the bob to change the angle. Change gravity to see how a pendulum would swing on the Moon (1.6 m/s²) or Jupiter (24.8 m/s²)."
+          ]
+        }
+      ],
+      "graphs": [
+        {
+          "id": "energyGraphCanvas",
+          "label": "Energy vs. Time",
+          "width": 650,
+          "height": 150,
+          "legend": [
+            {
+              "label": "Potential",
+              "color": "#4a6fa5"
+            },
+            {
+              "label": "Kinetic",
+              "color": "#e05252"
+            },
+            {
+              "label": "Thermal",
+              "color": "#d97706"
+            },
+            {
+              "label": "Total",
+              "color": "#22c55e"
+            }
+          ]
+        }
+      ],
+      "lessons": [
+        {
+          "id": "pendulum-period-vs-length",
+          "sim": "pendulum",
+          "title": "What controls a pendulum’s period?",
+          "summary": "Predict, then measure how string length changes the time for one full swing.",
+          "subject": "Physics",
+          "level": "Intro",
+          "minutes": 6,
+          "tags": [
+            "period",
+            "isochronism",
+            "experimental design"
+          ],
+          "setup": {
+            "controls": {
+              "drag": 0,
+              "gravity": 9.8,
+              "mass": 1,
+              "angle": 10,
+              "length": 1
+            },
+            "action": "pause"
+          },
+          "steps": [
+            {
+              "id": "intro",
+              "type": "message",
+              "title": "A question first",
+              "body": "The **period** T is the time for one full back-and-forth swing.\n\nThe string is 1.00 m long and the pendulum is paused. Before we measure anything, make a prediction."
+            },
+            {
+              "id": "predict",
+              "type": "predict",
+              "title": "Your prediction",
+              "body": "If the string is **longer**, what happens to the period?",
+              "choices": [
+                {
+                  "id": "longer",
+                  "label": "A longer string gives a longer period",
+                  "correct": true
+                },
+                {
+                  "id": "same",
+                  "label": "The period does not change"
+                },
+                {
+                  "id": "shorter",
+                  "label": "A longer string gives a shorter period"
+                }
+              ],
+              "feedback": {
+                "correct": "Good — we will test that. The theory says T ≈ 2π√(L/g).",
+                "any": "Keep your prediction in mind; you will measure it in a moment."
+              }
+            },
+            {
+              "id": "set-length",
+              "type": "task",
+              "title": "Set the length to 2.00 m",
+              "body": "Use the **L** slider (or the arrow keys) until it reads 2.00 m.",
+              "highlight": [
+                "length"
+              ],
+              "allow": [
+                "length"
+              ],
+              "freeze": true,
+              "hint": "The slider is the row labelled L.",
+              "when": {
+                "control": "length",
+                "near": 2,
+                "tolerance": 0.02
+              }
+            },
+            {
+              "id": "release",
+              "type": "task",
+              "title": "Release the pendulum",
+              "body": "Press **Resume** and let it swing. The simulation will time the period for you.",
+              "highlight": [
+                "release"
+              ],
+              "allow": [
+                "release"
+              ],
+              "when": {
+                "state": "paused",
+                "equals": 0
+              }
+            },
+            {
+              "id": "observe",
+              "type": "observe",
+              "title": "Watch the period settle",
+              "body": "Let it swing for a few cycles. The highlighted **Period** readout converges once a full swing has been timed.",
+              "highlight": [
+                "bob"
+              ],
+              "when": {
+                "state": "period",
+                "settles": true,
+                "tolerance": 0.12,
+                "minElapsed": 6
+              }
+            },
+            {
+              "id": "check-length",
+              "type": "checkpoint",
+              "title": "Check the length relationship",
+              "question": "length"
+            },
+            {
+              "id": "check-mass",
+              "type": "checkpoint",
+              "title": "What about mass?",
+              "question": "mass"
+            },
+            {
+              "id": "check-gravity",
+              "type": "checkpoint",
+              "title": "What about gravity?",
+              "question": "gravity"
+            },
+            {
+              "id": "conclude",
+              "type": "conclusion",
+              "title": "You tested it",
+              "body": "With drag removed, L = 1.00 m gives a period near **2.0 s**, while L = 2.00 m gives near **2.8 s**.\n\nThe period grows with the **square root** of the length — and, as you can check by changing mass, it does not depend on the bob’s mass."
+            }
+          ]
+        }
+      ],
+      "assessment": {
+        "id": "pendulum-period",
+        "version": 1,
+        "questions": [
+          {
+            "id": "length",
+            "use": "both",
+            "type": "single",
+            "prompt": "For an ideal small-angle pendulum, increasing length while keeping gravity fixed makes the period…",
+            "choices": [
+              {
+                "id": "increase",
+                "label": "Increase"
+              },
+              {
+                "id": "same",
+                "label": "Stay the same"
+              },
+              {
+                "id": "decrease",
+                "label": "Decrease"
+              }
+            ],
+            "correct": [
+              "increase"
+            ],
+            "explanation": "T = 2π√(L/g). A longer pendulum takes longer to complete one full back-and-forth swing."
+          },
+          {
+            "id": "mass",
+            "use": "both",
+            "type": "single",
+            "prompt": "With no drag, at small angles, doubling the bob mass while keeping length and gravity fixed makes the period…",
+            "choices": [
+              {
+                "id": "double",
+                "label": "Double"
+              },
+              {
+                "id": "same",
+                "label": "Stay the same"
+              },
+              {
+                "id": "half",
+                "label": "Halve"
+              }
+            ],
+            "correct": [
+              "same"
+            ],
+            "explanation": "Mass cancels from the ideal pendulum equation. It is absent from T = 2π√(L/g); this claim assumes no drag."
+          },
+          {
+            "id": "gravity",
+            "use": "both",
+            "type": "single",
+            "prompt": "The same ideal small-angle pendulum is moved to a place with weaker gravity. Its period will…",
+            "choices": [
+              {
+                "id": "shorter",
+                "label": "Be shorter"
+              },
+              {
+                "id": "longer",
+                "label": "Be longer"
+              },
+              {
+                "id": "same",
+                "label": "Be unchanged"
+              }
+            ],
+            "correct": [
+              "longer"
+            ],
+            "explanation": "T is proportional to 1/√g. Weaker gravity gives a longer period, with length held fixed."
+          },
+          {
+            "id": "scaling",
+            "use": "assessment",
+            "type": "single",
+            "prompt": "If length is multiplied by four at fixed gravity, what happens to the ideal small-angle period?",
+            "choices": [
+              {
+                "id": "four",
+                "label": "It is multiplied by four"
+              },
+              {
+                "id": "two",
+                "label": "It is multiplied by two"
+              },
+              {
+                "id": "half",
+                "label": "It is divided by two"
+              }
+            ],
+            "correct": [
+              "two"
+            ],
+            "explanation": "The square root of four is two. Period scales with √L, not directly with L."
+          },
+          {
+            "id": "dependencies",
+            "use": "assessment",
+            "type": "multi",
+            "prompt": "Which changes increase the period of an ideal small-angle pendulum? Hold other variables fixed for each change.",
+            "choices": [
+              {
+                "id": "length",
+                "label": "Increase length"
+              },
+              {
+                "id": "mass",
+                "label": "Increase mass"
+              },
+              {
+                "id": "gravity",
+                "label": "Decrease gravity"
+              },
+              {
+                "id": "angle",
+                "label": "Increase amplitude from 5° to 10° (small-angle approximation)"
+              }
+            ],
+            "correct": [
+              "length",
+              "gravity"
+            ],
+            "explanation": "In the small-angle approximation, only L and g set the period: increasing L or decreasing g increases T. Mass and small amplitude do not appear in this approximation."
+          },
+          {
+            "id": "limits",
+            "use": "lesson",
+            "type": "multi",
+            "prompt": "Which assumptions support using T = 2π√(L/g)?",
+            "choices": [
+              {
+                "id": "small",
+                "label": "Small swing angles"
+              },
+              {
+                "id": "ideal",
+                "label": "Negligible drag"
+              },
+              {
+                "id": "heavy",
+                "label": "A very heavy bob is required"
+              }
+            ],
+            "correct": [
+              "small",
+              "ideal"
+            ],
+            "explanation": "The formula describes an ideal, small-angle pendulum. At large angles the period increases with amplitude; a heavy bob is not a requirement."
+          }
+        ]
+      }
+    },
+    {
+      "id": "circuits",
+      "title": "Circuit Builder",
+      "subject": "physics",
+      "summary": "Build series and parallel circuits. Click to place components, then measure voltage, current, and resistance.",
+      "canvas": {
+        "id": "circuitCanvas",
+        "label": "Circuit Builder",
+        "width": 800,
+        "height": 520
+      },
+      "controls": [
+        {
+          "type": "choices",
+          "id": "tools",
+          "label": "Tool",
+          "style": "toolbar",
+          "options": [
+            {
+              "value": "battery",
+              "label": "⚡ Battery"
+            },
+            {
+              "value": "resistor",
+              "label": "☰ Resistor"
+            },
+            {
+              "value": "bulb",
+              "label": "💡 Bulb"
+            },
+            {
+              "value": "wire",
+              "label": "— Wire"
+            },
+            {
+              "value": "switch",
+              "label": "⏻ Switch"
+            },
+            {
+              "value": "delete",
+              "label": "✕ Delete"
+            }
+          ],
+          "value": "battery"
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "presetSeries",
+              "label": "Preset: Series",
+              "variant": "soft",
+              "active": false
+            },
+            {
+              "id": "presetParallel",
+              "label": "Preset: Parallel",
+              "variant": "soft",
+              "active": false
+            },
+            {
+              "id": "runBtn",
+              "label": "▶ Simulate",
+              "variant": "primary",
+              "active": false
+            },
+            {
+              "id": "clearBtn",
+              "label": "Clear All",
+              "variant": "ghost",
+              "active": false
+            }
+          ]
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "vBat",
+              "label": "Battery (V)",
+              "value": "9.00",
+              "tone": "highlight"
+            },
+            {
+              "id": "current",
+              "label": "Current (A)",
+              "value": "0.00",
+              "tone": "default"
+            },
+            {
+              "id": "req",
+              "label": "Req (Ω)",
+              "value": "0.00",
+              "tone": "default"
+            },
+            {
+              "id": "power",
+              "label": "Power (W)",
+              "value": "0.00",
+              "tone": "default"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "text": "Click a tool then click the canvas to place it. Drag components to move them."
+        }
+      ],
+      "cards": [
+        {
+          "title": "Ohm's Law",
+          "formulas": [
+            "V = IR"
+          ],
+          "paragraphs": [
+            "Voltage (V) equals current (I) times resistance (R). The fundamental relationship governing all circuits."
+          ]
+        },
+        {
+          "title": "Series Circuits",
+          "formulas": [
+            "R _eq = R _1 + R _2 + ..."
+          ],
+          "paragraphs": [
+            "In series, resistances add directly. The same current flows through every component. Voltage divides across resistors."
+          ]
+        },
+        {
+          "title": "Parallel Circuits",
+          "formulas": [
+            "1/R _eq = 1/R _1 + 1/R _2 + ..."
+          ],
+          "paragraphs": [
+            "In parallel, the reciprocal of Req is the sum of reciprocals. Voltage is the same across each branch; current divides."
+          ]
+        },
+        {
+          "title": "Power",
+          "formulas": [
+            "P = IV = I²R = V²/R"
+          ],
+          "paragraphs": [
+            "Power dissipated as heat (or light in a bulb). Measured in watts (W). Higher current means more power."
+          ]
+        }
+      ],
+      "graphs": [],
+      "lessons": []
+    },
+    {
+      "id": "projectile",
+      "title": "Projectile Motion",
+      "subject": "physics",
+      "summary": "Launch a cannonball and explore projectile motion. Drag the cannon to reposition it, adjust angle and velocity, and watch the trajectory.",
+      "canvas": {
+        "id": "projCanvas",
+        "label": "Projectile Motion",
+        "width": 800,
+        "height": 500
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "id": "angleSlider",
+          "label": "θ",
+          "min": 0.0,
+          "max": 90.0,
+          "step": 1.0,
+          "value": 45.0,
+          "output": {
+            "id": "angleValue",
+            "text": "45°"
+          }
+        },
+        {
+          "type": "slider",
+          "id": "velSlider",
+          "label": "v",
+          "min": 1.0,
+          "max": 60.0,
+          "step": 0.5,
+          "value": 20.0,
+          "output": {
+            "id": "velValue",
+            "text": "20.0 m/s"
+          }
+        },
+        {
+          "type": "slider",
+          "id": "heightSlider",
+          "label": "h",
+          "min": 0.0,
+          "max": 40.0,
+          "step": 0.5,
+          "value": 0.0,
+          "output": {
+            "id": "heightValue",
+            "text": "0.0 m"
+          }
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "launchBtn",
+              "label": "Launch",
+              "variant": "primary",
+              "active": false
+            },
+            {
+              "id": "clearBtn",
+              "label": "Clear",
+              "variant": "ghost",
+              "active": false
+            },
+            {
+              "id": "zoomOutBtn",
+              "label": "−",
+              "variant": "soft",
+              "active": false
+            },
+            {
+              "id": "zoomDisplay",
+              "label": "1.00x",
+              "variant": "display"
+            },
+            {
+              "id": "zoomInBtn",
+              "label": "+",
+              "variant": "soft",
+              "active": false
+            }
+          ]
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "statRange",
+              "label": "Range (m)",
+              "value": "--",
+              "tone": "highlight"
+            },
+            {
+              "id": "statMaxH",
+              "label": "Max Height (m)",
+              "value": "--",
+              "tone": "highlight"
+            },
+            {
+              "id": "statTime",
+              "label": "Time (s)",
+              "value": "--",
+              "tone": "highlight"
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "title": "Equations of Motion",
+          "formulas": [
+            "x = x _0 + v _x t",
+            "y = y _0 + v _y t − ½gt ^2"
+          ],
+          "paragraphs": [
+            "Horizontal motion is constant velocity. Vertical motion is constant acceleration due to gravity (g = 9.8 m/s²)."
+          ]
+        },
+        {
+          "title": "Components",
+          "formulas": [
+            "v _x = v cos(θ)",
+            "v _y = v sin(θ)"
+          ],
+          "paragraphs": [
+            "The initial velocity vector is split into horizontal and vertical components using the launch angle."
+          ]
+        },
+        {
+          "title": "Key Quantities",
+          "formulas": [],
+          "paragraphs": [
+            "Range = (v² sin(2θ)) / g (level ground) Max height = y _0 + (v _y ²) / (2g) Time of flight depends on launch height and vertical velocity."
+          ]
+        },
+        {
+          "title": "Tips",
+          "formulas": [],
+          "paragraphs": [
+            "Drag the cannon anywhere on the canvas. Change the angle to see how 45° gives the longest range on level ground. Add height to clear obstacles."
+          ]
+        }
+      ],
+      "graphs": [],
+      "lessons": [],
+      "assessment": {
+        "id": "projectile-motion",
+        "version": 1,
+        "questions": [
+          {
+            "id": "complementary",
+            "use": "assessment",
+            "type": "single",
+            "prompt": "On level ground, a projectile launched at 60° has the same range as one launched at which angle?",
+            "choices": [
+              {
+                "id": "a",
+                "label": "15°"
+              },
+              {
+                "id": "b",
+                "label": "30°"
+              },
+              {
+                "id": "c",
+                "label": "45°"
+              },
+              {
+                "id": "d",
+                "label": "75°"
+              }
+            ],
+            "correct": [
+              "b"
+            ],
+            "explanation": "30° — Correct! Complementary angles (summing to 90°) produce the same range on level ground. 60° + 30° = 90°, so they have equal range."
+          },
+          {
+            "id": "scaling",
+            "use": "assessment",
+            "type": "single",
+            "prompt": "On level ground, if you double launch speed while keeping the angle fixed, the range will:",
+            "choices": [
+              {
+                "id": "a",
+                "label": "Double"
+              },
+              {
+                "id": "b",
+                "label": "Quadruple"
+              },
+              {
+                "id": "c",
+                "label": "Stay the same"
+              },
+              {
+                "id": "d",
+                "label": "Increase by half"
+              }
+            ],
+            "correct": [
+              "b"
+            ],
+            "explanation": "Quadruple — Correct! Range ∝ v² (R = v² sin(2θ) / g). Doubling v makes R four times larger."
+          },
+          {
+            "id": "height",
+            "use": "assessment",
+            "type": "single",
+            "prompt": "What happens to the time of flight if you increase the launch height (keeping angle and speed the same)?",
+            "choices": [
+              {
+                "id": "a",
+                "label": "It increases"
+              },
+              {
+                "id": "b",
+                "label": "It decreases"
+              },
+              {
+                "id": "c",
+                "label": "It stays the same"
+              },
+              {
+                "id": "d",
+                "label": "It depends on the angle"
+              }
+            ],
+            "correct": [
+              "a"
+            ],
+            "explanation": "It increases — Correct! A higher launch point means the projectile has farther to fall to reach the ground, so it stays in the air longer."
+          },
+          {
+            "id": "components",
+            "use": "assessment",
+            "type": "single",
+            "prompt": "At what launch angle are the horizontal and vertical components of velocity equal (ignoring the sign)?",
+            "choices": [
+              {
+                "id": "a",
+                "label": "30°"
+              },
+              {
+                "id": "b",
+                "label": "45°"
+              },
+              {
+                "id": "c",
+                "label": "60°"
+              },
+              {
+                "id": "d",
+                "label": "90°"
+              }
+            ],
+            "correct": [
+              "b"
+            ],
+            "explanation": "45° — Correct! At 45°, cos(45°) = sin(45°) = √2/2, so v _x = v cos(θ) = v sin(θ) = v _y ."
+          }
+        ]
+      }
+    },
+    {
+      "id": "titration",
+      "title": "Titration Lab",
+      "subject": "chemistry",
+      "summary": "Perform acid-base titrations. Track pH in real time and identify the equivalence point.",
+      "canvas": {
+        "id": "titrCanvas",
+        "label": "Titration Lab",
+        "width": 700,
+        "height": 480
+      },
+      "controls": [
+        { "type": "choices", "id": "scenarioPick", "label": "Reaction", "style": "segments", "value": "strong-strong", "options": [
+          { "value": "strong-strong", "label": "Strong Acid + Strong Base" },
+          { "value": "weak-strong", "label": "Weak Acid + Strong Base" },
+          { "value": "strong-weak", "label": "Strong Acid + Weak Base" },
+          { "value": "weak-weak", "label": "Weak Acid + Weak Base" }
+        ] },
+        { "type": "select", "id": "indicatorPick", "label": "Indicator", "value": "phenolphthalein", "options": [
+          { "value": "methylorange", "label": "Methyl Orange (3.1–4.4)" },
+          { "value": "bromothymol", "label": "Bromothymol Blue (6.0–7.6)" },
+          { "value": "phenolphthalein", "label": "Phenolphthalein (8.2–10.0)" }
+        ] },
+        { "type": "stepper", "label": "mL titrant added", "output": { "id": "volumeAdded", "text": "0.00" }, "increase": { "id": "dripUp", "label": "+", "variant": "soft" } },
+        { "type": "choices", "id": "quickAdd", "label": "Add titrant", "style": "chips", "value": "0.5", "options": [
+          { "value": "0.1", "label": "+0.1 mL" },
+          { "value": "0.5", "label": "+0.5 mL" },
+          { "value": "1.0", "label": "+1 mL" },
+          { "value": "5.0", "label": "+5 mL" },
+          { "value": "25.0", "label": "+25 mL" }
+        ] },
+        { "type": "text", "id": "phaseHint", "text": "" },
+        { "type": "actions", "buttons": [
+          { "id": "resetBtn", "label": "↻ New Sample", "variant": "outline" },
+          { "id": "revealBtn", "label": "? Reveal Answer", "variant": "soft" }
+        ] },
+        { "type": "actions", "buttons": [ { "id": "pHToggle", "label": "Show pH", "variant": "outline", "pressed": false } ] },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "phReadout",
+              "label": "pH",
+              "value": "1.00",
+              "tone": "highlight"
+            },
+            {
+              "id": "equivVol",
+              "label": "Equiv. Vol (mL)",
+              "value": "25.0",
+              "tone": "success"
+            },
+            {
+              "id": "equivPH",
+              "label": "pH at Equiv.",
+              "value": "7.00",
+              "tone": "default"
+            }
+          ],
+          "id": "phReadouts",
+          "hidden": true
+        }
+      ],
+      "cards": [
+        {
+          "title": "How Titration Works",
+          "formulas": [],
+          "paragraphs": [
+            "A solution of known concentration (the titrant ) is added to a solution of unknown concentration (the analyte ) until the reaction is complete. The equivalence point is reached when moles of acid = moles of base."
+          ]
+        },
+        {
+          "title": "Equivalence Point",
+          "formulas": [
+            "M _a V _a = M _b V _b"
+          ],
+          "paragraphs": [
+            "For a 1:1 reaction, moles of acid = moles of base at the equivalence point. The pH at this point depends on the acid/base strength."
+          ]
+        },
+        {
+          "title": "pH at Equivalence",
+          "formulas": [],
+          "paragraphs": [
+            "Strong-Strong: pH = 7 (neutral) Weak Acid + Strong Base: pH > 7 (basic) Strong Acid + Weak Base: pH < 7 (acidic) The indicator should change colour near the equivalence point pH."
+          ]
+        },
+        {
+          "title": "Choosing an Indicator",
+          "formulas": [],
+          "paragraphs": [
+            "An indicator is only useful if its transition range sits inside the steep jump at the equivalence point. Switch indicators and watch which one actually changes colour at the right moment."
+          ]
+        },
+        {
+          "title": "Reading the Flask",
+          "formulas": [],
+          "paragraphs": [
+            "There is deliberately no pH meter by default. In a real lab you cannot see the pH — the only evidence is the colour of the indicator in the flask , and your titre is whatever reading you had when the colour changed.",
+            "Show pH turns on the meter, the titration curve and the pH scale if you want to watch the chemistry instead. Bear in mind that it hands you the endpoint you would otherwise have to find."
+          ]
+        }
+      ],
+      "graphs": [],
+      "lessons": []
+    },
+    {
+      "id": "gas-laws",
+      "title": "Gas Laws",
+      "subject": "chemistry",
+      "summary": "Explore the ideal gas law by adjusting pressure, volume, temperature, and the number of gas particles. Drag the piston to change volume.",
+      "canvas": {
+        "id": "gasCanvas",
+        "label": "Gas Laws",
+        "width": 700,
+        "height": 450
+      },
+      "controls": [
+        {
+          "type": "slider",
+          "id": "molesSlider",
+          "label": "n",
+          "min": 0.5,
+          "max": 30.0,
+          "step": 0.1,
+          "value": 1.5,
+          "output": {
+            "id": "molesValue",
+            "text": "1.5 mol"
+          },
+          "info": "avogadro"
+        },
+        {
+          "type": "slider",
+          "id": "tempSlider",
+          "label": "T",
+          "min": 100.0,
+          "max": 500.0,
+          "step": 5.0,
+          "value": 300.0,
+          "output": {
+            "id": "tempValue",
+            "text": "300 K"
+          },
+          "info": "charles"
+        },
+        {
+          "type": "slider",
+          "id": "volumeSlider",
+          "label": "V",
+          "min": 0.5,
+          "max": 10.0,
+          "step": 0.1,
+          "value": 5.0,
+          "output": {
+            "id": "volumeValue",
+            "text": "5.0 L"
+          },
+          "info": "boyle"
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "pressureDisplay",
+              "label": "Pressure (atm)",
+              "value": "0.74",
+              "tone": "highlight"
+            },
+            {
+              "id": "pressureKpaDisplay",
+              "label": "Pressure (kPa)",
+              "value": "74.9",
+              "tone": "default"
+            },
+            {
+              "id": "particleCount",
+              "label": "Particles",
+              "value": "45",
+              "tone": "default"
+            },
+            {
+              "id": "nRTproduct",
+              "label": "nRT (L.atm)",
+              "value": "3.69",
+              "tone": "default"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "idealGasSub",
+          "text": "PV = nRT",
+          "label": "Live equation"
+        }
+      ],
+      "cards": [
+        {
+          "title": "Ideal Gas Law",
+          "formulas": [
+            "PV = nRT"
+          ],
+          "paragraphs": [
+            "Relates pressure (P), volume (V), number of moles (n), temperature (T), and the gas constant (R = 0.0821 L.atm.mol ^-1 .K ^-1 )."
+          ]
+        },
+        {
+          "title": "Boyle's Law",
+          "formulas": [
+            "P _1 V _1 = P _2 V _2"
+          ],
+          "paragraphs": [
+            "At constant temperature and moles, pressure and volume are inversely proportional. Squeeze the gas (decrease V) and pressure goes up (increase P)."
+          ]
+        },
+        {
+          "title": "Charles's Law",
+          "formulas": [
+            "V _1 / T _1 = V _2 / T _2"
+          ],
+          "paragraphs": [
+            "At constant pressure and moles, volume is proportional to temperature. Heat the gas (increase T) and it expands (increase V)."
+          ]
+        },
+        {
+          "title": "Gay-Lussac's Law",
+          "formulas": [
+            "P _1 / T _1 = P _2 / T _2"
+          ],
+          "paragraphs": [
+            "At constant volume and moles, pressure is proportional to temperature. Heat the gas (increase T) and pressure rises (increase P)."
+          ]
+        },
+        {
+          "title": "Avogadro's Law",
+          "formulas": [
+            "V _1 / n _1 = V _2 / n _2"
+          ],
+          "paragraphs": [
+            "At constant pressure and temperature, volume is proportional to the number of moles. More particles (increase n) take up more space (increase V)."
+          ]
+        }
+      ],
+      "graphs": [],
+      "lessons": [],
+      "info": {
+        "boyle": {
+          "title": "Boyle's Law",
+          "formula": "P₁V₁ = P₂V₂",
+          "explanation": "At constant temperature and moles, the pressure and volume of a gas are inversely proportional. When you squeeze a gas into a smaller space, its pressure increases proportionally.",
+          "detail": "Boyle's law describes how pressure and volume relate at constant n and T: P ∝ 1/V. If you double the volume, pressure halves; if you halve the volume, pressure doubles. This assumes the gas behaves ideally (no intermolecular forces and point-mass particles)."
+        },
+        "charles": {
+          "title": "Charles's Law",
+          "formula": "V₁ / T₁ = V₂ / T₂",
+          "explanation": "At constant pressure and moles, the volume of a gas is proportional to its absolute temperature. Heating a gas causes it to expand; cooling causes it to contract.",
+          "detail": "Charles's law states that volume is directly proportional to absolute temperature at constant n and P: V ∝ T. At absolute zero (0 K), the volume of an ideal gas would theoretically reach zero. This is why temperature must be measured in Kelvin."
+        },
+        "gaylussac": {
+          "title": "Gay-Lussac's Law",
+          "formula": "P₁ / T₁ = P₂ / T₂",
+          "explanation": "At constant volume and moles, the pressure of a gas is proportional to its absolute temperature. Heating a gas in a rigid container increases the pressure.",
+          "detail": "Gay-Lussac's law describes the direct proportionality between pressure and absolute temperature at constant n and V: P ∝ T. This explains why aerosol cans warn against heating - the pressure inside can rise until the container fails."
+        },
+        "avogadro": {
+          "title": "Avogadro's Law",
+          "formula": "V₁ / n₁ = V₂ / n₂",
+          "explanation": "At constant pressure and temperature, the volume of a gas is proportional to the number of moles. More gas particles require more space at the same pressure.",
+          "detail": "Avogadro's law states that equal volumes of gases at the same temperature and pressure contain equal numbers of molecules: V ∝ n. At STP (0 °C, 1 atm), one mole of any ideal gas occupies 22.4 L."
+        }
+      }
+    },
+    {
+      "id": "states-of-matter",
+      "title": "States of Matter",
+      "subject": "chemistry",
+      "summary": "Heat and cool atoms & molecules to observe solid, liquid, and gas phases.",
+      "canvas": {
+        "id": "matterCanvas",
+        "label": "States of Matter",
+        "width": 900,
+        "height": 600
+      },
+      "controls": [
+        {
+          "type": "choices",
+          "id": "substancePick",
+          "label": "Substance",
+          "style": "segments",
+          "options": [
+            {
+              "value": "neon",
+              "label": "Neon"
+            },
+            {
+              "value": "nitrogen",
+              "label": "Nitrogen"
+            },
+            {
+              "value": "argon",
+              "label": "Argon"
+            },
+            {
+              "value": "oxygen",
+              "label": "Oxygen"
+            },
+            {
+              "value": "water",
+              "label": "Water"
+            }
+          ],
+          "value": "water"
+        },
+        {
+          "type": "slider",
+          "id": "heatSlider",
+          "label": "Heat / Cool",
+          "min": -100.0,
+          "max": 100.0,
+          "step": 1.0,
+          "value": 0.0,
+          "icons": [
+            {
+              "id": "tcIcon",
+              "text": "🧊"
+            },
+            {
+              "id": "tcIconR",
+              "text": "🔥"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "heatLabel",
+          "text": "Heat / Cool"
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "btnReset",
+              "label": "↺ Reset",
+              "variant": "outline"
+            }
+          ]
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "phasePill",
+              "label": "Phase",
+              "value": "Solid",
+              "tone": "default"
+            },
+            {
+              "id": "tempValK",
+              "label": "Temperature (K)",
+              "value": "250",
+              "tone": "default"
+            },
+            {
+              "id": "tempValC",
+              "label": "Temperature (°C)",
+              "value": "-23",
+              "tone": "default"
+            },
+            {
+              "id": "mpVal",
+              "label": "Melting",
+              "value": "273 K",
+              "tone": "default"
+            },
+            {
+              "id": "bpVal",
+              "label": "Boiling",
+              "value": "373 K",
+              "tone": "default"
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "title": "How It Works",
+          "formulas": [],
+          "paragraphs": [
+            "Drag the slider to heat or cool. Particles interact through intermolecular forces: solid at low temperatures, liquid between the melting and boiling points, and gas above the boiling point."
+          ]
+        },
+        {
+          "title": "About Phase Changes",
+          "formulas": [],
+          "paragraphs": [
+            "During a phase change, temperature stays constant while energy is absorbed or released — this is latent heat , the energy needed to overcome or form intermolecular bonds."
+          ]
+        }
+      ],
+      "graphs": [],
+      "lessons": []
+    },
+    {
+      "id": "build-a-nucleus",
+      "title": "Build a Nucleus",
+      "subject": "physics",
+      "summary": "Add protons and neutrons to build atomic nuclei. Explore stability, isotopes, and the chart of nuclides.",
+      "canvas": {
+        "id": "nucleusCanvas",
+        "label": "Build a Nucleus",
+        "width": 600,
+        "height": 600
+      },
+      "controls": [
+        {
+          "type": "stepper",
+          "label": "Protons",
+          "output": {
+            "id": "protonCount",
+            "text": "6"
+          },
+          "decrease": {
+            "id": "btnProtonMinus",
+            "label": "−",
+            "variant": "soft"
+          },
+          "increase": {
+            "id": "btnProtonPlus",
+            "label": "+",
+            "variant": "soft"
+          }
+        },
+        {
+          "type": "stepper",
+          "label": "Neutrons",
+          "output": {
+            "id": "neutronCount",
+            "text": "6"
+          },
+          "decrease": {
+            "id": "btnNeutronMinus",
+            "label": "−",
+            "variant": "soft"
+          },
+          "increase": {
+            "id": "btnNeutronPlus",
+            "label": "+",
+            "variant": "soft"
+          }
+        },
+        {
+          "type": "text",
+          "id": "warnMsg",
+          "text": ""
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "elementName",
+              "label": "Element",
+              "value": "Carbon",
+              "tone": "default"
+            },
+            {
+              "id": "isotopeNotation",
+              "label": "Isotope",
+              "value": "¹²C",
+              "tone": "default"
+            },
+            {
+              "id": "stabilityBadge",
+              "label": "Stability",
+              "value": "Stable",
+              "tone": "default"
+            },
+            {
+              "id": "zVal",
+              "label": "Protons (Z)",
+              "value": "6",
+              "tone": "default"
+            },
+            {
+              "id": "nVal",
+              "label": "Neutrons (N)",
+              "value": "6",
+              "tone": "default"
+            },
+            {
+              "id": "aVal",
+              "label": "Mass (A)",
+              "value": "12",
+              "tone": "default"
+            },
+            {
+              "id": "ratioVal",
+              "label": "N/Z ratio",
+              "value": "1.00",
+              "tone": "default"
+            }
+          ]
+        },
+        {
+          "type": "meter",
+          "id": "hlBar",
+          "label": "Half-life",
+          "output": {
+            "id": "hlVal",
+            "text": "Stable"
+          },
+          "ticks": [
+            "1 s",
+            "1 h",
+            "1 yr",
+            "1 Myr",
+            "1 Gyr"
+          ]
+        },
+        {
+          "type": "text",
+          "id": "stabilityDesc",
+          "text": "Stable isotope."
+        }
+      ],
+      "cards": [],
+      "graphs": [
+        {
+          "id": "chartCanvas",
+          "label": "Chart of Nuclides",
+          "width": 900,
+          "height": 550,
+          "caption": "Colours show half-life. Click a cell to select an isotope."
+        }
+      ],
+      "lessons": []
+    }
+  ]
+}

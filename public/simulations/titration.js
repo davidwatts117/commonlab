@@ -1,230 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Titration Lab — CommonLab</title>
-    <meta name="description" content="Perform virtual acid-base titrations. Identify the endpoint from the indicator colour alone, exactly as you would in a real lab.">
-    <link rel="stylesheet" href="../main.css?v=3">
-    <style>
-        #titrCanvas { width: 100%; max-width: 700px; height: auto; aspect-ratio: 700 / 480; display: block; border-radius: 8px; background: #fafbfc; cursor: default; }
-
-        .titr-field {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.35rem 0;
-        }
-        .titr-field-label {
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #495057;
-            flex-shrink: 0;
-        }
-        .titr-select {
-            flex: 1;
-            min-width: 0;
-            padding: 0.35rem 0.5rem;
-            font: inherit;
-            font-size: 0.8rem;
-            color: #1a1a2e;
-            background: #fff;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-        }
-        .titr-select:focus-visible {
-            outline: 2px solid #4a6fa5;
-            outline-offset: 1px;
-        }
-
-        .titr-hint {
-            margin: 0.5rem 0 0;
-            font-size: 0.72rem;
-            line-height: 1.45;
-            color: #6c757d;
-            min-height: 1.2em;
-        }
-        .titr-hint strong { color: #495057; }
-
-        .titr-btn-row {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.75rem;
-        }
-        .titr-btn-row .sim-btn { flex: 1; }
-
-        #pHToggle { margin-top: 0.5rem; }
-
-        /* The pH readout row is hidden until "Show pH" is switched on. */
-        #phReadouts[hidden] { display: none; }
-    </style>
-</head>
-<body>
-
-<header class="site-header">
-    <div class="container nav-container">
-        <a href="../index.html" class="logo"><span class="logo-icon">&#9670;</span><span class="logo-text">CommonLab</span></a>
-        <nav class="primary-nav"><ul>
-            <li><a href="../index.html#simulations">Simulations</a></li>
-            <li><a href="../index.html#about">About</a></li>
-            <li><a href="../index.html#contact">Contact</a></li>
-        </ul></nav>
-    </div>
-</header>
-
-<main>
-    <div class="sim-page-header">
-        <div class="container">
-            <h1>Titration Lab</h1>
-            <p>Perform acid-base titrations. Track pH in real time and identify the equivalence point.</p>
-        </div>
-    </div>
-
-    <section class="sim-canvas-area">
-        <div class="container sim-layout">
-
-            <div class="sim-main">
-                <div class="canvas-wrapper">
-                    <canvas id="titrCanvas" width="700" height="480"></canvas>
-                </div>
-
-                <div class="controls-panel">
-                    <!-- Scenario picker -->
-                    <div class="sim-seg" id="scenarioPick">
-                        <button class="sim-seg__btn is-active" data-scen="strong-strong">Strong Acid + Strong Base</button>
-                        <button class="sim-seg__btn" data-scen="weak-strong">Weak Acid + Strong Base</button>
-                        <button class="sim-seg__btn" data-scen="strong-weak">Strong Acid + Weak Base</button>
-                        <button class="sim-seg__btn" data-scen="weak-weak">Weak Acid + Weak Base</button>
-                    </div>
-
-                    <!-- Indicator picker -->
-                    <div class="titr-field">
-                        <label class="titr-field-label" for="indicatorPick">Indicator</label>
-                        <select id="indicatorPick" class="titr-select">
-                            <option value="methylorange">Methyl Orange (3.1&ndash;4.4)</option>
-                            <option value="bromothymol">Bromothymol Blue (6.0&ndash;7.6)</option>
-                            <option value="phenolphthalein" selected>Phenolphthalein (8.2&ndash;10.0)</option>
-                        </select>
-                    </div>
-
-                    <!-- Drip control: titrant can only be ADDED, never withdrawn -->
-                    <div class="sim-stepper">
-                        <div class="sim-stepper__display">
-                            <div class="sim-stepper__value" id="volumeAdded">0.00</div>
-                            <div class="sim-stepper__unit">mL titrant added</div>
-                        </div>
-                        <button class="sim-iconbtn" id="dripUp">+</button>
-                    </div>
-
-                    <!-- Quick-add buttons (all additions) -->
-                    <div style="display:flex;gap:0.35rem;flex-wrap:wrap;">
-                        <button class="sim-chip" data-amt="0.1">+0.1 mL</button>
-                        <button class="sim-chip" data-amt="0.5">+0.5 mL</button>
-                        <button class="sim-chip" data-amt="1.0">+1 mL</button>
-                        <button class="sim-chip" data-amt="5.0">+5 mL</button>
-                        <button class="sim-chip" data-amt="25.0">+25 mL</button>
-                    </div>
-
-                    <p class="titr-hint" id="phaseHint"></p>
-
-                    <!-- pH instrumentation: off by default so the endpoint has
-                         to be judged from the indicator colour, as in a real lab. -->
-                    <div class="titr-btn-row">
-                        <button class="sim-btn sim-btn--outline" id="resetBtn">&#8635; New Sample</button>
-                        <button class="sim-btn sim-btn--soft" id="revealBtn">? Reveal Answer</button>
-                    </div>
-
-                    <button class="sim-btn sim-btn--outline sim-btn--block"
-                            id="pHToggle" aria-pressed="false"
-                            title="Show the pH meter, pH curve and pH scale">
-                        Show pH
-                    </button>
-
-                    <div class="sim-readouts sim-readouts--3" id="phReadouts" hidden>
-                        <div class="sim-readout sim-readout--highlight">
-                            <div class="sim-readout__value" id="phReadout">1.00</div>
-                            <div class="sim-readout__label">pH</div>
-                        </div>
-                        <div class="sim-readout sim-readout--success">
-                            <div class="sim-readout__value" id="equivVol">25.0</div>
-                            <div class="sim-readout__label">Equiv. Vol (mL)</div>
-                        </div>
-                        <div class="sim-readout">
-                            <div class="sim-readout__value" id="equivPH">7.00</div>
-                            <div class="sim-readout__label">pH at Equiv.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <aside class="sim-sidebar">
-                <div class="equation-card">
-                    <h3>How Titration Works</h3>
-                    <p class="eq-explanation">
-                        A solution of known concentration (the <strong>titrant</strong>) is added
-                        to a solution of unknown concentration (the <strong>analyte</strong>) until
-                        the reaction is complete. The equivalence point is reached when moles of
-                        acid = moles of base.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Equivalence Point</h3>
-                    <div class="equation-formula">M<sub>a</sub>V<sub>a</sub> = M<sub>b</sub>V<sub>b</sub></div>
-                    <p class="eq-explanation">
-                        For a 1:1 reaction, moles of acid = moles of base at the equivalence point.
-                        The pH at this point depends on the acid/base strength.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>pH at Equivalence</h3>
-                    <p class="eq-explanation">
-                        <strong>Strong-Strong:</strong> pH = 7 (neutral)<br>
-                        <strong>Weak Acid + Strong Base:</strong> pH &gt; 7 (basic)<br>
-                        <strong>Strong Acid + Weak Base:</strong> pH &lt; 7 (acidic)<br>
-                        The indicator should change colour near the equivalence point pH.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Choosing an Indicator</h3>
-                    <p class="eq-explanation">
-                        An indicator is only useful if its transition range sits inside the steep
-                        jump at the equivalence point. Switch indicators and watch which one
-                        actually changes colour at the right moment.
-                    </p>
-                </div>
-                <div class="equation-card">
-                    <h3>Reading the Flask</h3>
-                    <p class="eq-explanation">
-                        There is deliberately <strong>no pH meter</strong> by default. In a real lab
-                        you cannot see the pH &mdash; the only evidence is the
-                        <strong>colour of the indicator in the flask</strong>, and your titre is
-                        whatever reading you had when the colour changed.
-                    </p>
-                    <p class="eq-explanation" style="margin-top:0.5rem;">
-                        <strong>Show pH</strong> turns on the meter, the titration curve and the pH
-                        scale if you want to watch the chemistry instead. Bear in mind that it
-                        hands you the endpoint you would otherwise have to find.
-                    </p>
-                </div>
-            </aside>
-
-        </div>
-
-        <div class="container" style="margin-top: 1.5rem; text-align: center;">
-            <a href="../index.html#simulations" class="sim-back-link">← Back to Simulations</a>
-        </div>
-    </section>
-</main>
-
-<footer class="site-footer">
-    <div class="container footer-container">
-        <p>&copy; 2026 CommonLab. Free science simulations for everyone.</p>
-    </div>
-</footer>
-
-<script src="../index.js?v=3"></script>
-<script src="../library.js?v=4"></script>
-<script>
+// Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
+export function mount(ui) {
+    const document = ui;
 'use strict';
 
 // ═══ Constants ═══
@@ -811,7 +587,7 @@ function addVolume(amt) {
 document.getElementById('dripUp').addEventListener('click', () => addVolume(0.5));
 
 document.querySelectorAll('.sim-chip').forEach(btn => {
-    btn.addEventListener('click', () => addVolume(parseFloat(btn.dataset.amt)));
+    btn.addEventListener('click', () => addVolume(parseFloat(btn.dataset.value)));
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
@@ -850,7 +626,7 @@ document.querySelectorAll('.sim-seg__btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.sim-seg__btn').forEach(b => b.classList.remove('is-active'));
         btn.classList.add('is-active');
-        scenario = btn.dataset.scen;
+        scenario = btn.dataset.value;
         volumeAdded = 0;
         acidConc = 0.1; baseConc = 0.1;
 
@@ -940,6 +716,5 @@ const app = SimLib.attach({
     }
 });
 app.sim.start();
-</script>
-</body>
-</html>
+    return { app };
+}

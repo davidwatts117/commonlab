@@ -1,0 +1,128 @@
+# Data-driven simulations
+
+All seven simulations use **one page**, `public/simulation.html`, and **one stylesheet**, `public/simulation.css`. A simulation is an entry in `public/simulations/catalog.json` plus a trusted physics/rendering module, `public/simulations/<id>.js`. There are no per-simulation HTML pages or stylesheets.
+
+## Add a simulation
+
+**Through the UI:** open `/submit.html`, select an installed engine or supply new module code, edit the generated definition, and submit a private draft. A trusted maintainer reviews/publishes it at `/review.html`; SQLite-backed publications appear immediately, without a restart. Layout previews never execute submitted engines and use namespaced DOM IDs so draft slots cannot shadow author/reviewer controls. See [Submission setup and safety](submissions.md).
+
+**Through the repository:**
+
+1. Add a definition to the catalog's `simulations` array. Keep `schemaVersion: 1`.
+2. Add `<id>.js` exporting `mount(ui)` and returning `{ app }` (or `{ app, adapter }` for lessons).
+3. Run the Node catalog tests, Rust tests, and browser tests.
+4. Restart Axum so it registers the new catalog entry's URLs.
+
+No homepage markup, routing code, or shell code changes are needed. Axum serves the shared shell at `/simulations/<id>` and `/simulations/<id>.html`. Unregistered simulation URLs return 404. Homepage links use `/simulation.html?id=<id>` so the same frontend also works with ordinary static hosting. Browser assets must be served at the site root.
+
+The server checks the catalog version, IDs, uniqueness, and module/shell availability at startup. The browser validates the complete UI/learning definition before loading a module. `tests/simulation-catalog.test.mjs` validates the repository catalog and checks each module's DOM bindings against declared slots. Deploy the catalog, modules, and shell together; don't edit the deployed catalog without restarting the server.
+
+## Minimal definition
+
+```json
+{
+  "id": "spring",
+  "title": "Spring Lab",
+  "subject": "physics",
+  "summary": "Explore the relationship between force and extension.",
+  "canvas": { "id": "springCanvas", "label": "Spring scene", "width": 700, "height": 480 },
+  "controls": [
+    {
+      "type": "slider", "id": "massSlider", "label": "Mass (kg)",
+      "min": 0.1, "max": 5, "step": 0.1, "value": 1,
+      "output": { "id": "massValue", "text": "1.0 kg" }
+    },
+    {
+      "type": "readouts",
+      "items": [{ "id": "extensionValue", "label": "Extension (m)", "value": "0.00", "tone": "highlight" }]
+    }
+  ],
+  "cards": [{ "title": "Hooke's law", "formulas": ["F = kx"], "paragraphs": ["Force is proportional to extension within the elastic limit."] }],
+  "graphs": [],
+  "lessons": []
+}
+```
+
+Simulation IDs are lowercase slugs, up to 80 characters; the module filename is derived from the ID. There is deliberately no arbitrary module URL field. Every DOM slot ID must be unique within the definition. Canvas dimensions are positive integers up to 4096, with a combined area limit of 16,777,216 pixels. Shell-owned IDs such as `simulation-root` and `lesson-launcher` are reserved. Assessment bank IDs must also be unique across simulations. The supported subjects are `physics` and `chemistry`.
+
+## Fixed component vocabulary
+
+`controls` is an ordered list of these components. Each is rendered by the shared shell, not by the physics module:
+
+| Type | Fields |
+| --- | --- |
+| `slider` | `id`, `label`, numeric `min/max/step/value`; optional `output: {id,text}`, two `icons: [{id,text}]`, and `info` key |
+| `actions` | `buttons: [{id,label,variant,active?,pressed?}]`; variants: `primary`, `ghost`, `soft`, `outline`, `display` |
+| `choices` | `id`, `label`, `style` (`toolbar`, `segments`, `chips`), `options: [{value,label}]`, initial `value` |
+| `select` | `id`, `label`, `options: [{value,label}]`, initial `value` |
+| `readouts` | optional group `id` and `hidden`; `items: [{id,label,value,tone}]`, tones: `default`, `highlight`, `success` |
+| `text` | `text`, optional `id` and `label` for dynamic notes |
+| `stepper` | `label`, `output: {id,text}`, `increase` button, optional `decrease` button |
+| `meter` | `id` for the fill, `label`, `output: {id,text}`, `ticks: [text]` |
+
+`cards` contains `{title, formulas: [text], paragraphs: [text]}`. Content is plain text, including mathematical notation; HTML is never interpreted. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, and optional `legend: [{label,color}]` (six-digit hex colors).
+
+For information dialogs, define `info: {key: {title,formula,explanation,detail}}` and reference the key from a slider. The shell provides the accessible native dialog and focus restoration.
+
+Unknown fields/component types, duplicate IDs/options, invalid defaults/ranges, invalid question keys, and missing question references are rejected. There are **no raw HTML, CSS, arbitrary attributes, custom layout trees, or executable callbacks in definitions**. To add a genuine new UI primitive, extend the browser validator, renderer, stylesheet, server JSON Schema (`schema/simulation.schema.json`), Rust cross-field/binding checks, and tests once for everyone. Submitted definitions are validated on the server both when stored and when published; browser-only validation is not an authorization boundary.
+
+## Physics module contract
+
+```js
+export function mount(ui) {
+  const canvas = ui.getElementById('springCanvas');
+  const massSlider = ui.getElementById('massSlider');
+  const output = ui.getElementById('massValue');
+  class SpringSim extends SimLib.Simulation {
+    onInit() {
+      this.mass = Number(massSlider.value);
+      massSlider.addEventListener('input', () => {
+        this.mass = Number(massSlider.value);
+        output.textContent = `${this.mass.toFixed(1)} kg`;
+      });
+    }
+    onTick(dt) { /* Integrate physics. */ }
+    onDraw(ctx) { /* Draw only inside the declared canvases. */ }
+  }
+  const app = SimLib.attach({
+    canvas,
+    logicalWidth: ui.definition.canvas.width,
+    logicalHeight: ui.definition.canvas.height,
+    SimulationClass: SpringSim,
+  });
+  app.sim.start();
+  return { app };
+}
+```
+
+`ui` provides `definition`, `getElementById(id)` (throws for undeclared slots), and scoped `querySelector/querySelectorAll`. Choice buttons have `data-value`; selectors/classes are supplied by the shared renderer. Choice groups expose their current `.value`. `ui.addEventListener('keydown', handler)` only forwards events originating on a declared, focused canvas, preventing shortcuts from hijacking controls or answers. Read defaults from the generated controls. Readout updates use `textContent`; modules must not construct page UI or inject markup.
+
+Modules are trusted application code, **not a security sandbox**. They own simulation state, input bindings, physics, and canvas drawing. The shell owns page chrome, controls, explanations, graphs' containers, error states, fullscreen, learning UI, and page lifecycle. Avoid module-level side effects; initialize only inside `mount(ui)`.
+
+## Lessons and checks
+
+Add `assessment: {id,version,questions}` to the definition using the [CFU schema](guided-experiments-authoring.md#9-shared-check-understanding-cfu-questions). Pendulum's bank ID remains `pendulum-period`, version 1, preserving saved attempts. Projectile's four former page-specific questions now use the same shared CFU flow.
+
+Add lesson objects to `lessons`, using the guided engine's declarative fields. Set `sim` to the simulation ID. Checkpoint `question` is a **question ID string**, not a question object:
+
+```json
+{ "id": "check-length", "type": "checkpoint", "title": "Check the length relationship", "question": "length" }
+```
+
+The referenced question must have `use: "lesson"` or `"both"`. Return an `adapter` alongside `app` from the module to expose semantic control/state/action/target names. See [the guided API reference](guided-experiments-authoring.md) for these names and condition behavior. JSON conditions use the built-in comparisons/combinators; custom `when.fn` callbacks are intentionally unsupported. Setup/condition names must match the adapter.
+
+The shell resolves question references, mounts the launcher/check panel, and owns mutual exclusion. Do not call `Guided.mount` or `CFU.mount` in individual modules. Practice answers and standalone scores remain separate; standalone progress uses versioned localStorage. Bump the bank version for content/key/order changes.
+
+## Verification
+
+```sh
+cargo test
+node --test tests/*.test.mjs
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+Use `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome npm run test:browser` to test with an existing Chromium binary. Browser tests start Axum on an ephemeral port and check all seven simulations at desktop/mobile sizes, key interactions, dialogs, persisted checks, guided mounting, legacy links, and error states. The nuclear-data request is blocked to exercise its offline fallback deterministically.
+
+Still manually verify scientific accuracy, touch input, screen-reader announcements, fullscreen/resize, the full lesson path, performance, and any external data sources. Browser tests are not a complete accessibility audit.
