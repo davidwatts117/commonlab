@@ -1,24 +1,39 @@
 import { loadCatalog, validateDefinition } from './simulation-schema.mjs';
 import { renderSimulation } from './simulation-ui.mjs';
+import { contentEditor } from './content-editor.mjs';
+import { createBundle, parseBundle, submissionRequest, MAX_BUNDLE_BYTES } from './submission-bundle.mjs';
 
 const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, enabled = false;
+let catalog, preview, enabled = false, installedIds = [];
+const editors = contentEditor($('content-editor'), editDraft, error => message(error, true));
 function message(text, error = false) { status.textContent = text; status.setAttribute('role', error ? 'alert' : 'status'); }
-function readDefinition() {
+function readDraft() {
   if (byteLength($('definition-json').value) > MAX_DEFINITION) throw new Error('Definition exceeds 64 KiB.');
   let definition;
   try { definition = JSON.parse($('definition-json').value); }
   catch (error) { throw new Error(`Definition JSON could not be parsed: ${error.message}`, { cause: error }); }
-  return validateDefinition(definition);
+  if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new Error('Definition must be an object.');
+  return definition;
 }
+function readDefinition() { return validateDefinition(readDraft()); }
 function writeDefinition(def) {
   $('definition-json').value = JSON.stringify(def, null, 2);
   for (const key of ['id', 'title', 'subject', 'summary']) $(`definition-${key}`).value = def[key] ?? '';
   $('canvas-width').value = def.canvas?.width ?? '';
   $('canvas-height').value = def.canvas?.height ?? '';
+  editors.render(def);
+}
+function editDraft(edit, refresh = false) {
+  try {
+    const def = readDraft(); edit(def);
+    $('definition-json').value = JSON.stringify(def, null, 2);
+    if (refresh) editors.render(def);
+    message('Draft updated. Validate before downloading or submitting; unfinished fields may still need attention.');
+    return true;
+  } catch (error) { message(error.message, true); return false; }
 }
 function metadataChanged() {
   try {
@@ -29,6 +44,7 @@ function metadataChanged() {
     for (const lesson of def.lessons || []) lesson.sim = def.id;
     def.canvas.width = Number($('canvas-width').value); def.canvas.height = Number($('canvas-height').value);
     $('definition-json').value = JSON.stringify(def, null, 2);
+    editors.render(def);
   } catch { message('Fix the definition JSON before editing metadata.', true); }
 }
 for (const id of ['definition-id', 'definition-title', 'definition-subject', 'definition-summary', 'canvas-width', 'canvas-height']) $(id).addEventListener('input', metadataChanged);
@@ -78,10 +94,7 @@ function loadTemplate() {
 }
 $('engine').addEventListener('change', loadTemplate);
 
-function editDefinition(edit) {
-  try { const def = readDefinition(); edit(def); writeDefinition(def); message('Definition updated. Edit its values in the JSON editor, then validate the layout.'); }
-  catch (error) { message(error.message, true); }
-}
+function editDefinition(edit) { editDraft(edit, true); }
 function newSlot(def, prefix) {
   const used = new Set();
   const walk = value => { if (!value || typeof value !== 'object') return; if (value.id) used.add(value.id); Object.values(value).forEach(walk); };
@@ -131,29 +144,50 @@ $('validate-preview').addEventListener('click', () => {
     message('Definition validated. The layout is shown below; physics, lessons, and checks are not running.');
   } catch (error) { message(error.message, true); }
 });
+function downloadJSON(value, filename) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2) + '\n'], { type: 'application/json' }));
+  const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function currentBundle() {
+  const source = $('engine').value === 'new' ? { kind: 'javascript', moduleCode: $('module-code').value } : { kind: 'installed', engineId: $('engine').value };
+  return createBundle(readDefinition(), source, $('submitted-by').value, installedIds);
+}
 $('export-definition').addEventListener('click', () => {
+  try { const def = readDefinition(); downloadJSON(def, `${def.id}.json`); }
+  catch (error) { message(error.message, true); }
+});
+$('export-bundle').addEventListener('click', () => {
+  try { const bundle = currentBundle(); downloadJSON(bundle, `${bundle.definition.id}.submission.json`); message('Submission bundle downloaded, including engine source. Store it privately; no draft was saved in browser storage.'); }
+  catch (error) { message(error.message, true); }
+});
+$('bundle-file').addEventListener('change', async event => {
   try {
-    const def = readDefinition();
-    const url = URL.createObjectURL(new Blob([JSON.stringify(def, null, 2) + '\n'], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = `${def.id}.json`; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const file = event.target.files[0]; if (!file) return;
+    if (file.size > MAX_BUNDLE_BYTES) throw new Error('Submission bundle exceeds 1 MiB.');
+    const bundle = parseBundle(await file.text(), installedIds);
+    $('engine').value = bundle.source.kind === 'installed' ? bundle.source.engineId : 'new';
+    $('module-code').value = bundle.source.moduleCode || '';
+    $('module-section').hidden = bundle.source.kind !== 'javascript';
+    $('submitted-by').value = bundle.submittedBy;
+    writeDefinition(bundle.definition);
+    preview?.destroy(); $('preview-section').hidden = true;
+    message('Complete submission restored. Engine source is text only; no code has run.');
   } catch (error) { message(error.message, true); }
+  finally { event.target.value = ''; }
 });
 $('submission-form').addEventListener('submit', async event => {
   event.preventDefault(); if (!enabled) return;
   const button = $('submit-draft'); button.disabled = true;
   try {
-    const definition = readDefinition();
-    const engine = $('engine').value;
-    const moduleCode = $('module-code').value;
-    if (engine === 'new' && (!moduleCode.trim() || byteLength(moduleCode) > MAX_MODULE)) throw new Error('Provide a nonempty JavaScript module of at most 128 KiB.');
+    const payload = submissionRequest(currentBundle(), installedIds);
     const response = await fetch('/api/submissions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
-      body: JSON.stringify({ definition, submittedBy: $('submitted-by').value, ...(engine === 'new' ? { moduleCode } : { engineId: engine }) }),
+      body: JSON.stringify(payload),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || `Submission failed (HTTP ${response.status}).`);
-    message(`Submission #${result.id} received and awaiting review. It is not public yet. Save your definition locally; anonymous submissions cannot be edited or retrieved later.`);
+    message(`Submission #${result.id} received and awaiting review. It is not public yet. Download your complete bundle locally; anonymous submissions cannot be edited or retrieved later.`);
   } catch (error) { message(error.message, true); }
   finally { button.disabled = !enabled; }
 });
@@ -166,8 +200,8 @@ try {
   catalog = await loadCatalog();
   const installed = await fetch('/api/submissions/engines');
   // A static deployment still supports drafting/exporting; only server-listed engines are submitted.
-  const engineIds = installed.ok ? (await installed.json()).ids : catalog.simulations.map(def => def.id);
-  $('engine').replaceChildren(...catalog.simulations.filter(def => engineIds.includes(def.id)).map(def => {
+  installedIds = installed.ok ? (await installed.json()).ids : catalog.simulations.map(def => def.id);
+  $('engine').replaceChildren(...catalog.simulations.filter(def => installedIds.includes(def.id)).map(def => {
     const option = document.createElement('option'); option.value = def.id; option.textContent = def.title; return option;
   }));
   const option = document.createElement('option'); option.value = 'new'; option.textContent = 'New JavaScript engine'; $('engine').append(option);
