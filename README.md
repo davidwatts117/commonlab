@@ -48,6 +48,8 @@ Built-in simulations and local definition drafting can still be hosted staticall
 
 New simulations are **data plus a physics module**, not arbitrary web pages. Anyone can use **`/submit.html`** to build a definition, reuse an installed engine or upload new JavaScript, preview the layout without executing code, and submit a private draft. Maintainers review at **`/review.html`**; approved simulations join the catalog immediately without a restart. New engine code requires explicit trusted review before publication.
 
+The authoring page includes **visual explanation-card and question-bank editors** (single/multiple answers, explanations, lesson/check usage, ordering). Advanced control/lesson configuration remains available as JSON. Download a **complete submission bundle** to save the definition, engine choice/code, and submitter name, then restore it later without running its code. Drafts are not automatically stored on shared browsers.
+
 To enable the submission workflow locally:
 
 ```sh

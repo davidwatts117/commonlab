@@ -16,6 +16,8 @@
     <form id="submission-form">
       <fieldset id="submission-fields" disabled>
         <legend>Simulation definition</legend>
+        <label>Restore complete submission bundle<input id="bundle-file" type="file" accept=".json,application/json"></label>
+        <p class="authoring-hint">Restoring a bundle replaces this draft, including its engine choice and source. Source stays inert; no engine code is run. Save a bundle before changing templates.</p>
         <div class="authoring-fields">
           <label>Physics engine / template<select id="engine"><option value="">Loading…</option></select></label>
           <label>Your name (optional, visible to reviewers)<input id="submitted-by" maxlength="100" autocomplete="name"></label>
@@ -34,7 +36,11 @@
           <button id="add-graph" type="button" class="sim-btn sim-btn--soft">Add graph</button>
         </div>
         <details open>
-          <summary>Definition editor: controls, explanations, graphs, lessons, and checks</summary>
+          <summary>Visual editors: explanations and Check Understanding</summary>
+          <div id="content-editor"></div>
+        </details>
+        <details open>
+          <summary>Advanced definition JSON: controls, graphs, lessons, and all content</summary>
           <p class="authoring-hint">Edit the approved components as JSON. Use a template for examples. Text is displayed literally, never as HTML. Existing engines need their original controls and slot IDs; new controls require engine bindings. Lessons need an engine adapter.</p>
           <label>Import definition JSON<input id="definition-file" type="file" accept=".json,application/json"></label>
           <label>Definition JSON<textarea id="definition-json" class="code-editor" rows="18" spellcheck="false" required></textarea></label>
@@ -47,7 +53,8 @@
         </section>
         <div class="authoring-actions">
           <button id="validate-preview" type="button" class="sim-btn sim-btn--soft">Validate &amp; preview layout</button>
-          <button id="export-definition" type="button" class="sim-btn sim-btn--soft">Download definition</button>
+          <button id="export-definition" type="button" class="sim-btn sim-btn--soft">Download definition only</button>
+          <button id="export-bundle" type="button" class="sim-btn sim-btn--soft">Download complete bundle</button>
           <button id="submit-draft" type="submit" class="sim-btn sim-btn--primary">Submit for review</button>
         </div>
       </fieldset>

@@ -11,14 +11,18 @@ let catalog, preview, enabled = false, installedIds = [];
 const editors = contentEditor($('content-editor'), editDraft, error => message(error, true));
 function message(text, error = false) { status.textContent = text; status.setAttribute('role', error ? 'alert' : 'status'); }
 function readDraft() {
-  if (byteLength($('definition-json').value) > MAX_DEFINITION) throw new Error('Definition exceeds 64 KiB.');
+  if (byteLength($('definition-json').value) > MAX_BUNDLE_BYTES) throw new Error('Definition editor text exceeds 1 MiB.');
   let definition;
   try { definition = JSON.parse($('definition-json').value); }
   catch (error) { throw new Error(`Definition JSON could not be parsed: ${error.message}`, { cause: error }); }
   if (!definition || typeof definition !== 'object' || Array.isArray(definition)) throw new Error('Definition must be an object.');
   return definition;
 }
-function readDefinition() { return validateDefinition(readDraft()); }
+function readDefinition() {
+  const def = readDraft();
+  if (byteLength(JSON.stringify(def)) > MAX_DEFINITION) throw new Error('Definition exceeds 64 KiB.');
+  return validateDefinition(def);
+}
 function writeDefinition(def) {
   $('definition-json').value = JSON.stringify(def, null, 2);
   for (const key of ['id', 'title', 'subject', 'summary']) $(`definition-${key}`).value = def[key] ?? '';
@@ -128,7 +132,7 @@ async function importText(input, target, max) {
   $(target).value = await file.text();
 }
 $('definition-file').addEventListener('change', async event => {
-  try { await importText(event.target, 'definition-json', MAX_DEFINITION); writeDefinition(readDefinition()); message('Definition imported. Select the matching installed engine or provide new code.'); }
+  try { await importText(event.target, 'definition-json', MAX_BUNDLE_BYTES); writeDefinition(readDefinition()); message('Definition imported. Select the matching installed engine or provide new code.'); }
   catch (error) { message(error.message, true); }
 });
 $('module-file').addEventListener('change', async event => {

@@ -4,8 +4,8 @@
 .authoring-page fieldset { border: 1px solid var(--border, #d1d5db); border-radius: 12px; padding: 1.25rem; min-width: 0; }
 .authoring-page legend { font-weight: 700; padding: 0 0.5rem; }
 .authoring-page label { display: block; font-weight: 600; margin: 0.75rem 0; }
-.authoring-page input:not([type="checkbox"]), .authoring-page select, .authoring-page textarea { display: block; width: 100%; min-height: 44px; padding: 0.65rem; border: 1px solid #9ca3af; border-radius: 6px; font: inherit; color: #172033; background: #fff; margin-top: 0.35rem; }
-.authoring-page input[type="checkbox"] { width: 20px; height: 20px; vertical-align: middle; margin-right: 0.5rem; }
+.authoring-page input:not([type="checkbox"]):not([type="radio"]), .authoring-page select, .authoring-page textarea { display: block; width: 100%; min-height: 44px; padding: 0.65rem; border: 1px solid #9ca3af; border-radius: 6px; font: inherit; color: #172033; background: #fff; margin-top: 0.35rem; }
+.authoring-page input[type="checkbox"], .authoring-page input[type="radio"] { width: 20px; height: 20px; vertical-align: middle; margin-right: 0.5rem; }
 .authoring-page textarea { resize: vertical; }
 .authoring-page .code-editor { font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
 .authoring-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 1.25rem; }
@@ -23,6 +23,10 @@
 .review-list li { padding: 1rem 0; border-bottom: 1px solid #d1d5db; overflow-wrap: anywhere; }
 #definition-preview, #review-preview { width: 100%; padding: 0; margin-top: 1rem; }
 #review-detail { margin-top: 2rem; }
+.content-group { margin: 1rem 0; background: #f8fafc; }
+.content-group .content-group { background: #fff; }
+.content-group button { margin: 0.4rem 0.5rem 0.4rem 0; }
+#content-editor section { margin-bottom: 1.5rem; }
 @media (max-width: 600px) {
   .authoring-page fieldset { padding: 0.75rem; }
   .authoring-fields { grid-template-columns: minmax(0, 1fr); }

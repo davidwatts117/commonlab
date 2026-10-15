@@ -31,12 +31,22 @@ Deploy both the executable and `public/`, with a persistent writable volume for 
 1. Open `/submit.html` from the homepage.
 2. Select a built-in physics engine/template, or **New JavaScript engine**. Changing this selection replaces the definition with its template.
 3. Set a unique lowercase simulation ID, title, subject, summary, and canvas dimensions.
-4. Add approved components, explanation cards, and graphs with the builder buttons. Edit their values in the JSON editor; use a built-in template for lesson/question-bank examples. JSON files can also be imported.
+4. Add approved components, explanation cards, and graphs with the builder buttons. Use the **visual editors** to edit card titles/formulas/paragraphs and question prompts, answer IDs/labels, correct answers, explanations, question use/type, and bank IDs/versions. Cards/questions can be reordered or removed. Control/graph details and lessons still use advanced JSON. Both editors update the same definition, and JSON can be imported.
 5. For an installed engine, retain its required UI slot roles and choice values. The server checks these bindings against the built-in definition; extra controls are not automatically given physics behavior. For a new engine, paste/upload JavaScript exporting `mount(ui)` and returning `{ app }` (plus `adapter` for lessons).
 6. Validate and preview the **layout only**. Canvases are blank and physics, lessons, and assessments do not run. Definitions never interpret HTML. JavaScript imports are never evaluated in this UI.
-7. Download your definition for safekeeping, then submit for review. The server returns a receipt number and `pending` status.
+7. Validate, then choose **Download complete bundle** for safekeeping before submitting. This saves the definition **and** engine code/choice and submitter name. Definition-only export intentionally omits engine code. The server returns a receipt number and `pending` status.
 
 Anonymous contributors cannot edit or retrieve private drafts, view review notes, receive automatic notifications, or verify another contributor's identity. Submitted simulation and assessment IDs are reserved across all statuses, including rejection/withdrawal. Use a new ID for a revised submission. Each assessment bank must have a unique ID so unrelated simulations do not share localStorage results. Template copies receive a new bank ID automatically.
+
+### Visual editing and portable drafts
+
+Question-ID changes update lesson checkpoint references automatically. Answer-ID changes preserve their answer keys, including incremental typing. Referenced questions/banks cannot be deleted through the visual editor until their lesson references are removed in JSON. At least two choices are kept per question; after deleting a correct choice, select the replacement answer explicitly. Switching from multiple to single answer retains only the first selected answer. Validation catches incomplete prompts, invalid IDs, missing correct answers, and invalid lesson/check usage before export/submission.
+
+The UI tolerates temporarily unfinished fields so authors can fix them without switching back to JSON. Corrupted structural JSON instead produces a repair message. Changing a question's answer type preserves keyboard focus. Text remains literal in both editors and layout previews.
+
+**Restore complete submission bundle** loads a downloaded `*.submission.json`, replacing the current draft after validation. Format version `bundleVersion: 1` contains `definition`, `submittedBy`, and `source`, where `source` is either `{ kind: "installed", engineId }` or `{ kind: "javascript", moduleCode }`. Unknown fields, mixed sources, unavailable installed engines, invalid definitions, and oversized code are rejected **before changing the current draft**. Imports never execute module text. A bundle downloaded on another deployment can reuse an installed engine only if that engine is available locally.
+
+Bundle files and definition-editor/import text are bounded to 1 MiB; compact serialized definitions still have the server's 64 KiB limit, and code remains limited to 128 KiB. Whitespace does not consume the serialized-definition budget. No draft or code is automatically saved to localStorage/sessionStorage; keep downloaded bundles private and never include credentials. Unsaved changes can be lost on navigation, reload, or template changes: export a valid bundle first.
 
 ## Review workflow
 

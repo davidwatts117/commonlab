@@ -5,11 +5,15 @@ export function questionReferenced(def, id) {
   return def.lessons.some(lesson => lesson.steps.some(step => step.question === id));
 }
 export function renameQuestion(def, index, id) {
-  const question = def.assessment.questions[index], old = question.id; question.id = id;
+  const question = def.assessment.questions[index], old = question.id;
+  if (def.assessment.questions.some((q, i) => i !== index && q.id === id)) throw new Error('Question ID already exists.');
+  question.id = id;
   for (const lesson of def.lessons) for (const step of lesson.steps) if (step.question === old) step.question = id;
 }
 export function renameChoice(question, index, id) {
-  const old = question.choices[index].id; question.choices[index].id = id;
+  const old = question.choices[index].id;
+  if (question.choices.some((choice, i) => i !== index && choice.id === id)) throw new Error('Answer ID already exists.');
+  question.choices[index].id = id;
   question.correct = question.correct.map(value => value === old ? id : value);
 }
 export function removeQuestion(def, index) {
@@ -27,7 +31,7 @@ export function newQuestion(questions) {
 }
 function editableShape(def) {
   const textList = value => Array.isArray(value) && value.every(item => typeof item === 'string');
-  if (!Array.isArray(def.cards) || !Array.isArray(def.lessons) || !def.cards.every(card => card && typeof card.title === 'string' && textList(card.formulas) && textList(card.paragraphs))) throw new Error('Repair the cards/lessons structure in JSON to restore visual editing.');
+  if (!Array.isArray(def.cards) || !Array.isArray(def.lessons) || !def.lessons.every(lesson => lesson && Array.isArray(lesson.steps) && lesson.steps.every(step => step && typeof step === 'object')) || !def.cards.every(card => card && typeof card.title === 'string' && textList(card.formulas) && textList(card.paragraphs))) throw new Error('Repair the cards/lessons structure in JSON to restore visual editing.');
   if (def.assessment && (typeof def.assessment.id !== 'string' || !Array.isArray(def.assessment.questions) || !def.assessment.questions.every(q => q && ['id', 'type', 'use', 'prompt', 'explanation'].every(key => typeof q[key] === 'string') && textList(q.correct) && Array.isArray(q.choices) && q.choices.every(choice => choice && typeof choice.id === 'string' && typeof choice.label === 'string')))) throw new Error('Repair the question-bank structure in JSON to restore visual editing.');
 }
 
@@ -40,14 +44,23 @@ export function contentEditor(root, apply, reportError) {
   function button(parent, label, action, disabled = false) {
     const node = el('button', label, 'sim-btn sim-btn--soft'); node.type = 'button'; node.disabled = disabled; node.addEventListener('click', action); parent.append(node); return node;
   }
-  function field(parent, label, value, change, { multiline = false, type = 'text', options, min } = {}) {
+  function field(parent, label, value, change, { multiline = false, type = 'text', options, min, focusKey } = {}) {
     const wrap = el('label', label);
-    const input = el(options ? 'select' : multiline ? 'textarea' : 'input');
+    let tag = 'input';
+    if (options) tag = 'select';
+    else if (multiline) tag = 'textarea';
+    const input = el(tag);
+    input.setAttribute('aria-label', label);
+    if (focusKey) input.dataset.editorFocus = focusKey;
     if (options) for (const [value, label] of options) { const option = el('option', label); option.value = value; input.append(option); }
     else if (multiline) input.rows = 3;
     else input.type = type;
     if (min !== undefined) input.min = min;
-    input.value = value ?? ''; input.addEventListener(options || type === 'number' ? 'change' : 'input', () => change(type === 'number' ? Number(input.value) : input.value));
+    let accepted = value ?? ''; input.value = accepted;
+    input.addEventListener(options || type === 'number' ? 'change' : 'input', () => {
+      if (change(type === 'number' ? Number(input.value) : input.value) === false) input.value = accepted;
+      else accepted = input.value;
+    });
     wrap.append(input); parent.append(wrap); return input;
   }
   function group(parent, label, kind) {
@@ -55,6 +68,7 @@ export function contentEditor(root, apply, reportError) {
   }
   return {
     render(def) {
+      const focused = root.contains(doc.activeElement) ? doc.activeElement?.dataset?.editorFocus : null;
       root.replaceChildren();
       try { editableShape(def); }
       catch (error) { root.append(el('p', error.message)); reportError(error.message); return; }
@@ -81,7 +95,7 @@ export function contentEditor(root, apply, reportError) {
         const box = group(bank, `Question ${index + 1}`, 'question');
         field(box, 'Question ID', q.id, value => apply(d => renameQuestion(d, index, value)));
         field(box, 'Question prompt', q.prompt, value => apply(d => { d.assessment.questions[index].prompt = value; }), { multiline: true });
-        field(box, 'Answer type', q.type, value => apply(d => { const q = d.assessment.questions[index]; q.type = value; if (value === 'single') q.correct = q.correct.slice(0, 1); }, true), { options: [['single', 'Single answer'], ['multi', 'Multiple answers']] });
+        field(box, 'Answer type', q.type, value => apply(d => { const q = d.assessment.questions[index]; q.type = value; if (value === 'single') q.correct = q.correct.slice(0, 1); }, true), { focusKey: `question-${index}-type`, options: [['single', 'Single answer'], ['multi', 'Multiple answers']] });
         field(box, 'Question use', q.use, value => apply(d => { d.assessment.questions[index].use = value; }), { options: [['assessment', 'Standalone check'], ['lesson', 'Lesson only'], ['both', 'Lesson and standalone']] });
         q.choices.forEach((choice, ci) => {
           const row = group(box, `Answer ${ci + 1}`, 'choice');
@@ -91,7 +105,9 @@ export function contentEditor(root, apply, reportError) {
           const label = el('label', 'Correct answer '); label.append(correct); row.append(label);
           correct.addEventListener('change', () => apply(d => {
             const current = d.assessment.questions[index], id = current.choices[ci].id;
-            current.correct = current.type === 'single' ? [id] : correct.checked ? [...new Set([...current.correct, id])] : current.correct.filter(value => value !== id);
+            if (current.type === 'single') current.correct = [id];
+            else if (correct.checked) current.correct = [...new Set([...current.correct, id])];
+            else current.correct = current.correct.filter(value => value !== id);
           }));
           button(row, 'Remove answer', () => apply(d => {
             const current = d.assessment.questions[index], id = current.choices[ci].id;
@@ -110,6 +126,7 @@ export function contentEditor(root, apply, reportError) {
         if (hasQuestionReferences(d)) throw new Error('Update lesson checkpoints before removing the bank.'); delete d.assessment;
       }, true), hasQuestionReferences(def));
       root.append(bank);
+      if (focused) root.querySelector(`[data-editor-focus="${focused}"]`)?.focus();
     },
   };
 }
