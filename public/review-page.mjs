@@ -48,7 +48,7 @@ async function loadDetail(id) {
   const item = await api(`/api/admin/submissions/${id}`);
   selected = item;
   $('review-title').textContent = `#${item.id} ${item.definition.title}`;
-  $('review-meta').textContent = `${item.status} · ${item.submittedBy || 'Anonymous'}`;
+  $('review-meta').textContent = `${item.status} · revision ${item.revision} · ${item.submittedBy || 'Anonymous'}${item.hasPublication ? ` · live revision ${item.publishedRevision}` : ''}`;
   $('review-definition').value = JSON.stringify(item.definition, null, 2);
   $('review-module').value = item.moduleCode || '';
   $('review-module-section').hidden = !item.moduleCode;
@@ -59,8 +59,9 @@ async function loadDetail(id) {
   $('publish-submission').hidden = item.status !== 'pending';
   $('reject-submission').hidden = item.status !== 'pending';
   $('reject-submission').formNoValidate = true;
-  $('withdraw-submission').hidden = item.status !== 'published';
-  $('review-form').hidden = !['pending', 'published'].includes(item.status);
+  $('withdraw-submission').hidden = !item.hasPublication;
+  $('withdraw-submission').formNoValidate = true;
+  $('review-form').hidden = item.status !== 'pending' && !item.hasPublication;
   $('review-detail').hidden = false;
 }
 $('review-login').addEventListener('submit', async event => {
@@ -88,7 +89,7 @@ $('review-form').addEventListener('submit', async event => {
   const buttons = [...$('review-form').querySelectorAll('button')]; buttons.forEach(button => { button.disabled = true; });
   try {
     const result = await api(`/api/admin/submissions/${id}/review`, {
-      method: 'POST', body: JSON.stringify({ decision, codeReviewed: $('code-reviewed').checked, note: $('review-note').value }),
+      method: 'POST', body: JSON.stringify({ decision, revision: selected.revision, codeReviewed: $('code-reviewed').checked, note: $('review-note').value }),
     });
     await loadQueue(); message(`Submission #${id} is now ${result.status}.`);
   } catch (error) { message(error.message, true); }

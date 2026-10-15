@@ -10,7 +10,7 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(std::io::Error::other)?;
-    if version > 2 {
+    if version > 3 {
         return Err(std::io::Error::other(
             "Unsupported submission database version",
         ));
@@ -42,6 +42,23 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
             ALTER TABLE submissions ADD COLUMN contributor_id INTEGER REFERENCES contributors(id);
             CREATE INDEX submissions_owner ON submissions(contributor_id,id);
             PRAGMA user_version=2;").map_err(std::io::Error::other)?;
+    }
+    if version < 3 {
+        transaction.execute_batch("ALTER TABLE submissions ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+            ALTER TABLE submissions ADD COLUMN updated_at TEXT;
+            ALTER TABLE submissions ADD COLUMN published_definition TEXT;
+            ALTER TABLE submissions ADD COLUMN published_engine_id TEXT;
+            ALTER TABLE submissions ADD COLUMN published_module_code TEXT;
+            ALTER TABLE submissions ADD COLUMN published_revision INTEGER;
+            UPDATE submissions SET updated_at=created_at;
+            UPDATE submissions SET published_definition=definition,published_engine_id=engine_id,published_module_code=module_code,published_revision=revision WHERE status='published';
+            CREATE TABLE submission_banks(bank_id TEXT PRIMARY KEY,submission_id INTEGER NOT NULL REFERENCES submissions(id),bank_json TEXT NOT NULL);
+            INSERT INTO submission_banks SELECT json_extract(definition,'$.assessment.id'),id,json_extract(definition,'$.assessment') FROM submissions WHERE json_extract(definition,'$.assessment.id') IS NOT NULL;
+            CREATE TABLE submission_events(id INTEGER PRIMARY KEY,submission_id INTEGER NOT NULL REFERENCES submissions(id),revision INTEGER NOT NULL,action TEXT NOT NULL,status TEXT NOT NULL,actor TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+            CREATE INDEX events_submission ON submission_events(submission_id,id);
+            CREATE INDEX events_time ON submission_events(created_at);
+            INSERT INTO submission_events(submission_id,revision,action,status,actor,note,created_at) SELECT id,revision,'migrated',status,'system',review_note,COALESCE(reviewed_at,created_at) FROM submissions;
+            PRAGMA user_version=3;").map_err(std::io::Error::other)?;
     }
     transaction.commit().map_err(std::io::Error::other)
 }

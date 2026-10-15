@@ -169,6 +169,24 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal(await reviewer.locator('#review-definition').inputValue(), '');
     });
 
+    await t.test('owners reload inert saved source and save revisions without creating duplicate submissions', async () => {
+      await author.goto(`${base}/submit.html?edit=${receipt.id}`);
+      await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      assert.equal(await author.locator('#definition-id').getAttribute('readonly'), '');
+      assert.ok((await author.locator('#module-code').inputValue()).includes('draftExecuted'));
+      assert.equal(await author.evaluate(() => window.draftExecuted), undefined);
+      await author.locator('#definition-title').fill('Owner revised lab');
+      const saved = author.waitForResponse(response => response.request().method() === 'PUT');
+      await author.locator('#submit-draft').click();
+      assert.equal((await saved).status(), 200);
+      await author.waitForFunction(() => document.getElementById('authoring-status').textContent.includes('resubmitted for review'));
+      await author.reload();
+      await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      assert.equal(await author.locator('#definition-title').inputValue(), 'Owner revised lab');
+      assert.equal(await author.evaluate(() => window.draftExecuted), undefined);
+      assert.equal((await reviewer.request.get(`${base}/api/contributor/submissions/${receipt.id}`)).status(), 401);
+    });
+
     await t.test('malformed definitions produce visible errors and offline drafting remains available', async () => {
       await author.goto(`${base}/submit.html`);
       await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
@@ -262,7 +280,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       const submitted = await author.request.post(`${base}/api/submissions`, { headers: { 'X-CommonLab-Request': '1' }, data: { definition: def, moduleCode: code, submittedBy: 'Offline author' } });
       assert.equal(submitted.status(), 201);
       const receipt = await submitted.json();
-      const approved = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { decision: 'publish', codeReviewed: true } });
+      const approved = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { decision: 'publish', revision: receipt.revision, codeReviewed: true } });
       assert.equal(approved.status(), 200);
       const learner = await browser.newPage(); learner.on('pageerror', error => pageErrors.push(error.message));
       await learner.goto(`${base}/simulations/structured-lab`);

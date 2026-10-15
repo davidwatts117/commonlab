@@ -1,4 +1,5 @@
 mod auth;
+mod contributions;
 mod migrations;
 mod submissions;
 mod validation;

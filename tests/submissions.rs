@@ -67,7 +67,18 @@ async fn body(response: Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 async fn review(router: &Router, id: i64, decision: &str, code_reviewed: bool) -> Response {
-    request(router, Method::POST, &format!("/api/admin/submissions/{id}/review"), Some(json!({"decision":decision,"codeReviewed":code_reviewed,"note":"Reviewed by a trusted maintainer"})), Some(TOKEN)).await
+    let item = body(
+        request(
+            router,
+            Method::GET,
+            &format!("/api/admin/submissions/{id}"),
+            None,
+            Some(TOKEN),
+        )
+        .await,
+    )
+    .await;
+    request(router, Method::POST, &format!("/api/admin/submissions/{id}/review"), Some(json!({"decision":decision,"revision":item["revision"],"codeReviewed":code_reviewed,"note":"Reviewed by a trusted maintainer"})), Some(TOKEN)).await
 }
 
 #[tokio::test]

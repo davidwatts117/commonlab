@@ -8,7 +8,7 @@ const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, enabled = false, installedIds = [], signedIn = false;
+let catalog, preview, enabled = false, installedIds = [], signedIn = false, editing = null;
 async function refreshContributor() {
   const account = await currentContributor(); signedIn = !!account;
   $('contributor-status').textContent = account ? `Signed in as ${account.username}. New submissions belong to your account.` : 'Sign in or create a contributor account to submit. You can still draft and download without an account.';
@@ -97,6 +97,11 @@ function loadTemplate() {
     if (def.assessment) def.assessment.id = def.id;
     for (const lesson of def.lessons) lesson.sim = def.id;
   }
+  if (editing) {
+    def.id = editing.simulationId;
+    if (def.assessment) def.assessment.id = def.id;
+    for (const lesson of def.lessons) lesson.sim = def.id;
+  }
   writeDefinition(def);
   $('module-section').hidden = engine !== 'new';
   if (!$('module-code').value) $('module-code').value = starter;
@@ -161,7 +166,28 @@ function downloadJSON(value, filename) {
 }
 function currentBundle() {
   const source = $('engine').value === 'new' ? { kind: 'javascript', moduleCode: $('module-code').value } : { kind: 'installed', engineId: $('engine').value };
-  return createBundle(readDefinition(), source, $('submitted-by').value, installedIds);
+  const def = readDefinition();
+  if (editing && def.id !== editing.simulationId) throw new Error('Keep the original simulation ID when editing this submission.');
+  const oldBank = editing?.original.assessment;
+  if (oldBank && def.assessment && oldBank.id === def.assessment.id && JSON.stringify(oldBank) !== JSON.stringify(def.assessment) && def.assessment.version <= oldBank.version) {
+    def.assessment.version = oldBank.version + 1; writeDefinition(def);
+  }
+  return createBundle(def, source, $('submitted-by').value, installedIds);
+}
+function setEditing(item) {
+  editing = { id: item.id, revision: item.revision, simulationId: item.definition.id, original: structuredClone(item.definition) };
+  $('definition-id').readOnly = true;
+  $('submit-draft').textContent = 'Save revision for review';
+  document.querySelector('h1').textContent = `Edit submission #${item.id}`;
+  $('editing-status').textContent = `Revision ${item.revision} · ${item.status}${item.hasPublication ? ` · live revision ${item.publishedRevision} stays unchanged until approval` : ''}. ${item.reviewNote || ''}`;
+}
+async function loadEditing(id) {
+  const item = await contributorRequest(`/api/contributor/submissions/${id}`);
+  setEditing(item);
+  $('engine').value = item.engineId && installedIds.includes(item.engineId) ? item.engineId : 'new';
+  $('module-code').value = item.moduleCode || '';
+  $('module-section').hidden = $('engine').value !== 'new';
+  $('submitted-by').value = item.submittedBy; writeDefinition(item.definition);
 }
 $('export-definition').addEventListener('click', () => {
   try { const def = readDefinition(); downloadJSON(def, `${def.id}.json`); }
@@ -191,8 +217,11 @@ $('submission-form').addEventListener('submit', async event => {
   const button = $('submit-draft'); button.disabled = true;
   try {
     const payload = submissionRequest(currentBundle(), installedIds);
-    const result = await contributorRequest('/api/submissions', { method: 'POST', body: payload });
-    message(`Submission #${result.id} received and awaiting review. It is not public yet. Your account owns this submission. Download your complete bundle as a local backup.`);
+    const wasEditing = !!editing;
+    const result = await contributorRequest(editing ? `/api/contributor/submissions/${editing.id}` : '/api/submissions', { method: editing ? 'PUT' : 'POST', body: { ...payload, ...(editing ? { revision: editing.revision } : {}) } });
+    setEditing({ ...result, definition: payload.definition });
+    history.replaceState(null, '', `/submit.html?edit=${result.id}`);
+    message(wasEditing ? `Revision ${result.revision} saved and resubmitted for review. Any published revision remains unchanged until approval.` : `Submission #${result.id} received and awaiting review. Your account owns this submission. Download your complete bundle as a local backup.`);
   } catch (error) { message(error.message, true); }
   finally { button.disabled = !enabled || !signedIn; }
 });
@@ -210,8 +239,18 @@ try {
     const option = document.createElement('option'); option.value = def.id; option.textContent = def.title; return option;
   }));
   const option = document.createElement('option'); option.value = 'new'; option.textContent = 'New JavaScript engine'; $('engine').append(option);
-  loadTemplate(); $('submission-fields').disabled = false; await refreshContributor();
-  message(enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
+  loadTemplate(); await refreshContributor();
+  const requested = new URLSearchParams(location.search).get('edit');
+  if (requested !== null) {
+    if (!/^[1-9][0-9]*$/.test(requested) || !Number.isSafeInteger(Number(requested))) throw new Error('Invalid submission ID.');
+    await loadEditing(requested);
+  }
+  $('submission-fields').disabled = false;
+  message(requested ? 'Saved source loaded as text. Make changes and save a new revision for review.' : enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
 } catch (error) { message(`Unable to load the authoring interface: ${error.message}`, true); }
-window.addEventListener('pagehide', () => preview?.destroy());
+window.addEventListener('pagehide', () => {
+  preview?.destroy();
+  if (editing) { $('submission-form').reset(); $('content-editor').replaceChildren(); $('submission-fields').disabled = true; }
+});
+window.addEventListener('pageshow', event => { if (event.persisted && editing) location.reload(); });
 window.addEventListener('focus', () => { refreshContributor().catch(error => message(error.message, true)); });

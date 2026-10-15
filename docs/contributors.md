@@ -6,7 +6,7 @@ Usernames are case-insensitive, canonical lowercase ASCII handles of 3–32 char
 
 ## Persistence and security
 
-- Database version 2 atomically migrates existing submissions without deleting their data. Legacy anonymous submissions retain a NULL owner and cannot be claimed by matching an author name.
+- Database version 3 atomically migrates existing submissions without deleting their data. Legacy anonymous submissions retain a NULL owner and cannot be claimed by matching an author name.
 - `contributors` holds salted Argon2id password hashes, never plaintext passwords. `contributor_sessions` stores only SHA-256 digests of cryptographically random 256-bit tokens.
 - Sessions expire after seven days, survive server restarts, rotate on login, and are revoked by logout. Each account is limited to eight active sessions.
 - Cookies are HttpOnly, SameSite=Strict, and scoped to `/`. `COOKIE_SECURE=true` adds Secure and uses a `__Host-` cookie name. Defaults: false for loopback binds, true for non-loopback binds. Public deployments **must use HTTPS and secure cookies**. Explicitly configure this when TLS terminates at a proxy; forwarded headers are not trusted to change cookie security.
@@ -23,4 +23,13 @@ Keep the database, journals and backups outside `public/` and protect filesystem
 - `GET /api/auth/me`: authenticated `{ id, username }`, or 401.
 - `POST /api/auth/logout`: revokes the current session and clears its cookie.
 
-All responses are non-cacheable. Registration returns 201, duplicate usernames 409, invalid credentials 401, malformed credentials 422, missing request header 403, and throttling 429. Account-specific editing and status views are the next stages of the contributor workflow.
+All responses are non-cacheable. Registration returns 201, duplicate usernames 409, invalid credentials 401, malformed credentials 422, missing request header 403, and throttling 429.
+## Editing and resubmission
+
+Open `/submit.html?edit=<receipt-id>` while signed in to load your saved definition and engine source as inert text. Only the owner can read/edit it; a different contributor receives the same 404 as a nonexistent ID. Bookmark this URL. The simulation ID cannot change, and existing anonymous records cannot be claimed.
+
+`GET /api/contributor/submissions/<id>` returns the current private draft, revision, status, feedback, and published revision. `PUT` to that URL accepts the normal submission body plus its current `revision`; include the contributor cookie and request header. A successful save increments the revision and returns it to `pending`. Stale saves and stale maintainer approvals fail with 409 instead of overwriting newer work. Export your local bundle before reloading after a conflict.
+
+Pending, rejected, withdrawn, and published submissions can be revised. Approved definitions/code live in separate SQLite snapshot columns: saving or rejecting a new revision **does not change the live simulation**. Approval atomically replaces the live snapshot. Maintainers can withdraw an older live snapshot even while a new revision is pending/rejected; a pending revision remains pending. Review requests must include the inspected `revision`, and uploaded code always needs explicit review confirmation.
+
+Bank IDs remain reserved to their submission even after removal/renaming. Changed question banks require a greater version than the last submitted content for that ID, including removed/reintroduced banks. The editor bumps the current bank's version automatically when appropriate; imported older bank IDs may require a manual version increase. Limits: 50 content revisions per submission, 100 combined creations/edits per hour globally, 500 pending, 2,000 retained submissions. Metadata events record transitions/feedback; this is not a complete archive of every historical source revision. The owner dashboard and history view are the next workflow stage.

@@ -63,13 +63,13 @@ impl Store {
 
 #[derive(Clone)]
 pub struct SubmissionState {
-    store: Store,
-    catalog: Arc<Value>,
-    builtin_ids: Arc<HashSet<String>>,
-    builtin_banks: Arc<HashSet<String>>,
+    pub(crate) store: Store,
+    pub(crate) catalog: Arc<Value>,
+    pub(crate) builtin_ids: Arc<HashSet<String>>,
+    pub(crate) builtin_banks: Arc<HashSet<String>>,
     shell: Arc<String>,
     admin_token: Option<Arc<str>>,
-    secure_cookies: bool,
+    pub(crate) secure_cookies: bool,
 }
 impl SubmissionState {
     pub fn new(
@@ -95,7 +95,7 @@ impl SubmissionState {
                 .0
                 .lock()
                 .map_err(|_| std::io::Error::other("Database lock poisoned"))?;
-            let mut statement = connection.prepare("SELECT engine_id,definition FROM submissions WHERE status='published' AND engine_id IS NOT NULL").map_err(std::io::Error::other)?;
+            let mut statement = connection.prepare("SELECT published_engine_id,published_definition FROM submissions WHERE published_definition IS NOT NULL AND published_engine_id IS NOT NULL").map_err(std::io::Error::other)?;
             let rows = statement
                 .query_map([], |row| {
                     Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -118,7 +118,7 @@ impl SubmissionState {
                 .map_err(std::io::Error::other)?;
             }
             for def in definitions {
-                let collision: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM submissions WHERE status IN ('pending','published') AND (simulation_id=?1 OR json_extract(definition,'$.assessment.id')=?2))", params![def["id"].as_str(), def["assessment"]["id"].as_str()], |row| row.get(0)).map_err(std::io::Error::other)?;
+                let collision: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM submissions WHERE (status IN ('pending','published') OR published_definition IS NOT NULL) AND simulation_id=?1) OR EXISTS(SELECT 1 FROM submission_banks WHERE bank_id=?2)", params![def["id"].as_str(), def["assessment"]["id"].as_str()], |row| row.get(0)).map_err(std::io::Error::other)?;
                 if collision {
                     return Err(std::io::Error::other(
                         "Built-in catalog conflicts with a pending/published submission; resolve it before deployment",
@@ -167,6 +167,7 @@ impl SubmissionState {
 pub fn router(mut state: SubmissionState, secure_cookies: bool) -> Router {
     state.secure_cookies = secure_cookies;
     let accounts = crate::auth::router(state.store.clone(), secure_cookies);
+    let contributions = crate::contributions::router(state.clone());
     Router::new()
         .route("/api/submissions/config", get(config))
         .route("/api/submissions/engines", get(engines))
@@ -180,6 +181,7 @@ pub fn router(mut state: SubmissionState, secure_cookies: bool) -> Router {
         .layer(axum::middleware::map_response(no_cache))
         .with_state(state)
         .merge(accounts)
+        .merge(contributions)
 }
 pub(crate) async fn no_cache(mut response: Response) -> Response {
     response
@@ -202,14 +204,14 @@ async fn engines(State(state): State<SubmissionState>) -> Json<Value> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Submission {
-    definition: Value,
+pub(crate) struct Submission {
+    pub(crate) definition: Value,
     #[serde(default)]
-    engine_id: Option<String>,
+    pub(crate) engine_id: Option<String>,
     #[serde(default)]
-    module_code: Option<String>,
+    pub(crate) module_code: Option<String>,
     #[serde(default)]
-    submitted_by: String,
+    pub(crate) submitted_by: String,
 }
 async fn submit(
     State(state): State<SubmissionState>,
@@ -224,65 +226,26 @@ async fn submit(
     }
     crate::auth::csrf(&headers)?;
     let contributor = crate::auth::account(&state.store, &headers, state.secure_cookies).await?;
+    crate::contributions::validate_input(&state, &input)?;
     let definition = input.definition.to_string();
-    if definition.len() > MAX_DEFINITION {
-        return Err(error(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Definition exceeds 64 KiB",
-        ));
-    }
-    crate::validation::validate(&input.definition)
-        .map_err(|message| error(StatusCode::UNPROCESSABLE_ENTITY, message))?;
     let id = input.definition["id"].as_str().unwrap().to_owned();
-    if state.builtin_ids.contains(&id)
-        || input.definition["assessment"]["id"]
-            .as_str()
-            .is_some_and(|bank| state.builtin_banks.contains(bank))
-    {
-        return Err(error(
-            StatusCode::CONFLICT,
-            "Simulation or assessment ID belongs to a built-in simulation",
-        ));
-    }
-    match (&input.engine_id, &input.module_code) {
-        (Some(engine), None) if state.builtin_ids.contains(engine) => {
-            let builtin = state.catalog["simulations"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|def| def["id"] == *engine)
-                .unwrap();
-            crate::validation::engine_contract(&input.definition, builtin)
-                .map_err(|message| error(StatusCode::UNPROCESSABLE_ENTITY, message))?;
-        }
-        (None, Some(code)) if !code.trim().is_empty() && code.len() <= MAX_MODULE => {}
-        _ => {
-            return Err(error(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "Choose one installed engine or provide a nonempty JavaScript module of at most 128 KiB",
-            ));
-        }
-    }
-    if input.submitted_by.chars().count() > 100 {
-        return Err(error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            "Submitter name must be at most 100 characters",
-        ));
-    }
     let receipt = state.store.run(move |connection| {
         // IMMEDIATE serializes quotas + insertion across multiple server processes too.
         let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        let (total, recent, pending): (i64, i64, i64) = transaction.query_row("SELECT COUNT(*), COALESCE(SUM(created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')),0), COALESCE(SUM(status='pending'),0) FROM submissions", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).map_err(internal)?;
+        let (total, recent, pending): (i64, i64, i64) = transaction.query_row("SELECT COUNT(*), COALESCE(SUM(created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')),0)+(SELECT COUNT(*) FROM submission_events WHERE action='edited' AND created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')), COALESCE(SUM(status='pending'),0) FROM submissions", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).map_err(internal)?;
         if total >= 2000 || recent >= 100 || pending >= 500 { return Err(error(StatusCode::TOO_MANY_REQUESTS, "Submission queue is full; please try again later")); }
-        transaction.execute("INSERT INTO submissions (simulation_id,definition,engine_id,module_code,submitted_by,contributor_id) VALUES (?1,?2,?3,?4,?5,?6)", params![id, definition, input.engine_id, input.module_code, input.submitted_by.trim(), contributor.id]).map_err(|err| {
+        transaction.execute("INSERT INTO submissions (simulation_id,definition,engine_id,module_code,submitted_by,contributor_id,updated_at) VALUES (?1,?2,?3,?4,?5,?6,strftime('%Y-%m-%dT%H:%M:%fZ','now'))", params![id, definition, input.engine_id, input.module_code, input.submitted_by.trim(), contributor.id]).map_err(|err| {
             if matches!(err, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) { error(StatusCode::CONFLICT, "Simulation or assessment ID has already been submitted; choose a new ID") } else { internal(err) }
         })?;
-        let receipt = transaction.last_insert_rowid(); transaction.commit().map_err(internal)?;
+        let receipt = transaction.last_insert_rowid();
+        crate::contributions::reserve_bank(&transaction, receipt, &input.definition)?;
+        crate::contributions::event(&transaction, receipt, 1, "submitted", "pending", "contributor", "")?;
+        transaction.commit().map_err(internal)?;
         Ok(receipt)
     }).await?;
     Ok((
         StatusCode::CREATED,
-        Json(json!({"id":receipt,"status":"pending"})),
+        Json(json!({"id":receipt,"revision":1,"status":"pending"})),
     ))
 }
 
@@ -320,10 +283,10 @@ async fn detail(
 ) -> Result<Json<Value>, ApiError> {
     state.authorize(&headers)?;
     let item = state.store.run(move |connection| {
-        connection.query_row("SELECT definition, engine_id, module_code, submitted_by, status, review_note FROM submissions WHERE id=?1", [id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,Option<String>>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?))).optional().map_err(internal)?.ok_or_else(not_found)
+        connection.query_row("SELECT definition, engine_id, module_code, submitted_by, status, review_note, revision, published_revision FROM submissions WHERE id=?1", [id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,Option<String>>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,i64>(6)?,row.get::<_,Option<i64>>(7)?))).optional().map_err(internal)?.ok_or_else(not_found)
     }).await?;
     Ok(Json(
-        json!({"id":id,"definition":serde_json::from_str::<Value>(&item.0).map_err(internal)?,"engineId":item.1,"moduleCode":item.2,"submittedBy":item.3,"status":item.4,"reviewNote":item.5}),
+        json!({"id":id,"definition":serde_json::from_str::<Value>(&item.0).map_err(internal)?,"engineId":item.1,"moduleCode":item.2,"submittedBy":item.3,"status":item.4,"reviewNote":item.5,"revision":item.6,"publishedRevision":item.7,"hasPublication":item.7.is_some()}),
     ))
 }
 
@@ -331,6 +294,8 @@ async fn detail(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Review {
     decision: String,
+    #[serde(default)]
+    revision: Option<i64>,
     #[serde(default)]
     code_reviewed: bool,
     #[serde(default)]
@@ -343,6 +308,15 @@ async fn review(
     Json(input): Json<Review>,
 ) -> Result<Json<Value>, ApiError> {
     state.authorize(&headers)?;
+    let expected_revision = input
+        .revision
+        .filter(|revision| *revision > 0)
+        .ok_or_else(|| {
+            error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Refresh the submission and provide its current revision",
+            )
+        })?;
     if !["publish", "reject", "withdraw"].contains(&input.decision.as_str())
         || input.note.chars().count() > 1000
     {
@@ -360,9 +334,9 @@ async fn review(
     let builtin_catalog = state.catalog.clone();
     let status = state.store.run(move |connection| {
         let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        let (current, definition, has_code, engine): (String,String,bool,Option<String>) = transaction.query_row("SELECT status,definition,module_code IS NOT NULL,engine_id FROM submissions WHERE id=?1", [id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional().map_err(internal)?.ok_or_else(not_found)?;
-        let required = if input.decision == "withdraw" { "published" } else { "pending" };
-        if current != required { return Err(error(StatusCode::CONFLICT, "Submission is no longer in the required review state; refresh the queue")); }
+        let (current, definition, has_code, engine, revision, had_live): (String,String,bool,Option<String>,i64,bool) = transaction.query_row("SELECT status,definition,module_code IS NOT NULL,engine_id,revision,published_definition IS NOT NULL FROM submissions WHERE id=?1", [id], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?))).optional().map_err(internal)?.ok_or_else(not_found)?;
+        if revision != expected_revision { return Err(error(StatusCode::CONFLICT, "Submission changed since inspection; reload and review the new source")); }
+        if (input.decision == "withdraw" && !had_live) || (input.decision != "withdraw" && current != "pending") { return Err(error(StatusCode::CONFLICT, "Submission is no longer in the required review state; refresh the queue")); }
         if input.decision == "publish" {
             if has_code && !input.code_reviewed { return Err(error(StatusCode::UNPROCESSABLE_ENTITY, "Publishing new engine code requires explicit confirmation of a trusted code review")); }
             let definition = serde_json::from_str::<Value>(&definition).map_err(internal)?;
@@ -372,12 +346,20 @@ async fn review(
                 crate::validation::engine_contract(&definition, builtin).map_err(|message| error(StatusCode::UNPROCESSABLE_ENTITY, message))?;
             }
         }
-        let status = match input.decision.as_str() { "publish" => "published", "reject" => "rejected", _ => "withdrawn" };
-        transaction.execute("UPDATE submissions SET status=?1,review_note=?2,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?3", params![status,input.note.trim(),id]).map_err(internal)?;
+        let status = match input.decision.as_str() { "publish" => "published", "reject" => "rejected", _ if current == "published" => "withdrawn", _ => current.as_str() }.to_owned();
+        if input.decision == "publish" {
+            transaction.execute("UPDATE submissions SET published_definition=definition,published_engine_id=engine_id,published_module_code=module_code,published_revision=revision WHERE id=?1", [id]).map_err(internal)?;
+        } else if input.decision == "withdraw" {
+            transaction.execute("UPDATE submissions SET published_definition=NULL,published_engine_id=NULL,published_module_code=NULL,published_revision=NULL WHERE id=?1", [id]).map_err(internal)?;
+        }
+        transaction.execute("UPDATE submissions SET status=?1,review_note=?2,reviewed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?3", params![status,input.note.trim(),id]).map_err(internal)?;
+        crate::contributions::event(&transaction, id, revision, &input.decision, &status, "maintainer", input.note.trim())?;
         transaction.commit().map_err(internal)?;
-        Ok(status)
+        Ok((status, input.decision == "publish" || (input.decision != "withdraw" && had_live)))
     }).await?;
-    Ok(Json(json!({"id":id,"status":status})))
+    Ok(Json(
+        json!({"id":id,"status":status.0,"hasPublication":status.1}),
+    ))
 }
 
 async fn catalog(State(state): State<SubmissionState>) -> Result<Json<Value>, ApiError> {
@@ -385,7 +367,7 @@ async fn catalog(State(state): State<SubmissionState>) -> Result<Json<Value>, Ap
         .store
         .run(|connection| {
             let mut statement = connection
-                .prepare("SELECT definition FROM submissions WHERE status='published' ORDER BY id")
+                .prepare("SELECT published_definition FROM submissions WHERE published_definition IS NOT NULL ORDER BY id")
                 .map_err(internal)?;
             let rows = statement
                 .query_map([], |row| row.get::<_, String>(0))
@@ -414,7 +396,7 @@ async fn published(
         )
     };
     let item = state.store.run(move |connection| {
-        connection.query_row("SELECT engine_id,module_code FROM submissions WHERE simulation_id=?1 AND status='published'", [id], |row| Ok((row.get::<_,Option<String>>(0)?,row.get::<_,Option<String>>(1)?))).optional().map_err(internal)?.ok_or_else(not_found)
+        connection.query_row("SELECT published_engine_id,published_module_code FROM submissions WHERE simulation_id=?1 AND published_definition IS NOT NULL", [id], |row| Ok((row.get::<_,Option<String>>(0)?,row.get::<_,Option<String>>(1)?))).optional().map_err(internal)?.ok_or_else(not_found)
     }).await?;
     if module {
         let code = match item {
