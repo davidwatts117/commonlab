@@ -48,7 +48,7 @@ async function loadDetail(id) {
   const item = await api(`/api/admin/submissions/${id}`);
   selected = item;
   $('review-title').textContent = `#${item.id} ${item.definition.title}`;
-  $('review-meta').textContent = `${item.status} · revision ${item.revision} · ${item.submittedBy || 'Anonymous'}${item.hasPublication ? ` · live revision ${item.publishedRevision}` : ''}`;
+  $('review-meta').textContent = `${item.status} · revision ${item.revision} · ${item.contributorUsername ? `Contributor @${item.contributorUsername}` : 'Legacy anonymous submission'} · display name: ${item.submittedBy || 'not supplied'}${item.hasPublication ? ` · live revision ${item.publishedRevision}` : ''}`;
   $('review-definition').value = JSON.stringify(item.definition, null, 2);
   $('review-module').value = item.moduleCode || '';
   $('review-module-section').hidden = !item.moduleCode;

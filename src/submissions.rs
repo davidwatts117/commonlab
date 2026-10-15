@@ -283,10 +283,10 @@ async fn detail(
 ) -> Result<Json<Value>, ApiError> {
     state.authorize(&headers)?;
     let item = state.store.run(move |connection| {
-        connection.query_row("SELECT definition, engine_id, module_code, submitted_by, status, review_note, revision, published_revision FROM submissions WHERE id=?1", [id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,Option<String>>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,i64>(6)?,row.get::<_,Option<i64>>(7)?))).optional().map_err(internal)?.ok_or_else(not_found)
+        connection.query_row("SELECT definition, engine_id, module_code, submitted_by, status, review_note, revision, published_revision, (SELECT username FROM contributors WHERE contributors.id=submissions.contributor_id) FROM submissions WHERE id=?1", [id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,Option<String>>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,String>(5)?,row.get::<_,i64>(6)?,row.get::<_,Option<i64>>(7)?,row.get::<_,Option<String>>(8)?))).optional().map_err(internal)?.ok_or_else(not_found)
     }).await?;
     Ok(Json(
-        json!({"id":id,"definition":serde_json::from_str::<Value>(&item.0).map_err(internal)?,"engineId":item.1,"moduleCode":item.2,"submittedBy":item.3,"status":item.4,"reviewNote":item.5,"revision":item.6,"publishedRevision":item.7,"hasPublication":item.7.is_some()}),
+        json!({"id":id,"definition":serde_json::from_str::<Value>(&item.0).map_err(internal)?,"engineId":item.1,"moduleCode":item.2,"submittedBy":item.3,"status":item.4,"reviewNote":item.5,"revision":item.6,"publishedRevision":item.7,"hasPublication":item.7.is_some(),"contributorUsername":item.8}),
     ))
 }
 

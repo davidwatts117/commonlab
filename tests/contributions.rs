@@ -105,6 +105,91 @@ async fn module(app: &Router) -> String {
     .unwrap()
 }
 #[tokio::test]
+async fn contributor_dashboard_paginates_only_owned_records() {
+    let app = app_with_submissions("public", Store::memory().unwrap(), Some(TOKEN.into())).unwrap();
+    let alice = register(&app, "alice").await;
+    let bob = register(&app, "bob").await;
+    let mut def = definition();
+    def.as_object_mut().unwrap().remove("assessment");
+    for i in 0..21 {
+        def["id"] = json!(format!("paged-lab-{i}"));
+        assert_eq!(
+            req(
+                &app,
+                "POST",
+                "/api/submissions",
+                Some(json!({"definition":def,"moduleCode":"private source must not be listed"})),
+                Some(&alice),
+                false,
+                true
+            )
+            .await
+            .status(),
+            StatusCode::CREATED
+        );
+    }
+    let first = value(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions?status=pending",
+            None,
+            Some(&alice),
+            false,
+            false,
+        )
+        .await,
+    )
+    .await;
+    let items = first["items"].as_array().unwrap();
+    assert_eq!(items.len(), 20);
+    assert_eq!(first["hasMore"], true);
+    let cursor = items.last().unwrap()["id"].as_i64().unwrap();
+    let next = value(
+        req(
+            &app,
+            "GET",
+            &format!("/api/contributor/submissions?before={cursor}"),
+            None,
+            Some(&alice),
+            false,
+            false,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(next["items"].as_array().unwrap().len(), 1);
+    assert_eq!(next["hasMore"], false);
+    let other = value(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions",
+            None,
+            Some(&bob),
+            false,
+            false,
+        )
+        .await,
+    )
+    .await;
+    assert!(other["items"].as_array().unwrap().is_empty());
+    assert_eq!(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions?before=0",
+            None,
+            Some(&alice),
+            false,
+            false
+        )
+        .await
+        .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+#[tokio::test]
 async fn owner_revisions_are_private_stale_safe_and_do_not_modify_approved_snapshots() {
     let dir = std::env::temp_dir().join(format!(
         "commonlab-revisions-{}-{}",
@@ -385,6 +470,71 @@ async fn owner_revisions_are_private_stale_safe_and_do_not_modify_approved_snaps
         StatusCode::OK
     );
     assert_eq!(module(&app).await, "source seven");
+    let listed = req(
+        &app,
+        "GET",
+        "/api/contributor/submissions?status=published",
+        None,
+        Some(&alice),
+        false,
+        false,
+    )
+    .await;
+    assert_eq!(listed.headers()["cache-control"], "no-store");
+    let listed = value(listed).await;
+    assert_eq!(listed["items"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["items"][0]["publishedRevision"], 7);
+    assert!(!listed.to_string().contains("source seven"));
+    assert!(listed["items"][0].get("moduleCode").is_none());
+    let history_path = format!("{path}/history");
+    assert_eq!(
+        req(&app, "GET", &history_path, None, Some(&bob), false, false)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        req(&app, "GET", &history_path, None, None, false, false)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let history =
+        value(req(&app, "GET", &history_path, None, Some(&alice), false, false).await).await;
+    let events = history["events"].as_array().unwrap();
+    assert_eq!(events.first().unwrap()["action"], "submitted");
+    assert_eq!(events.last().unwrap()["action"], "publish");
+    assert!(events.iter().any(|event| event["action"] == "reject"
+        && event["note"].as_str().unwrap().contains("<literal>")));
+    assert!(!history.to_string().contains("source seven"));
+    let bob_list = value(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions",
+            None,
+            Some(&bob),
+            false,
+            false,
+        )
+        .await,
+    )
+    .await;
+    assert!(bob_list["items"].as_array().unwrap().is_empty());
+    assert_eq!(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions?status=unknown",
+            None,
+            Some(&alice),
+            false,
+            false
+        )
+        .await
+        .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
     def["id"] = json!("renamed-lab");
     assert_eq!(
         req(

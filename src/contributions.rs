@@ -2,7 +2,7 @@
 use crate::submissions::{ApiError, Submission, SubmissionState, error, internal, no_cache};
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::get,
 };
@@ -11,10 +11,56 @@ use serde_json::{Value, json};
 
 pub fn router(state: SubmissionState) -> Router {
     Router::new()
+        .route("/api/contributor/submissions", get(list))
         .route("/api/contributor/submissions/{id}", get(detail).put(edit))
+        .route("/api/contributor/submissions/{id}/history", get(history))
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(axum::middleware::map_response(no_cache))
         .with_state(state)
+}
+#[derive(serde::Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct ListQuery {
+    status: Option<String>,
+    before: Option<i64>,
+}
+async fn list(
+    State(state): State<SubmissionState>,
+    headers: HeaderMap,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let user = crate::auth::account(&state.store, &headers, state.secure_cookies).await?;
+    let status = query.status.unwrap_or_else(|| "all".into());
+    if !["all", "pending", "published", "rejected", "withdrawn"].contains(&status.as_str())
+        || query.before.is_some_and(|id| id <= 0)
+    {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Invalid status filter or pagination cursor",
+        ));
+    }
+    let items=state.store.run(move|connection| {
+        let mut statement=connection.prepare("SELECT id,simulation_id,json_extract(definition,'$.title'),status,revision,published_revision,review_note,created_at,updated_at,reviewed_at FROM submissions WHERE contributor_id=?1 AND (?2='all' OR status=?2) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT 21").map_err(internal)?;
+        statement.query_map(params![user.id,status,query.before],|row|Ok(json!({"id":row.get::<_,i64>(0)?,"simulationId":row.get::<_,String>(1)?,"title":row.get::<_,String>(2)?,"status":row.get::<_,String>(3)?,"revision":row.get::<_,i64>(4)?,"publishedRevision":row.get::<_,Option<i64>>(5)?,"reviewNote":row.get::<_,String>(6)?,"createdAt":row.get::<_,String>(7)?,"updatedAt":row.get::<_,Option<String>>(8)?,"reviewedAt":row.get::<_,Option<String>>(9)?}))).map_err(internal)?.collect::<Result<Vec<_>,_>>().map_err(internal)
+    }).await?;
+    let has_more = items.len() > 20;
+    Ok(Json(
+        json!({"items":items.into_iter().take(20).collect::<Vec<_>>(),"hasMore":has_more}),
+    ))
+}
+async fn history(
+    State(state): State<SubmissionState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, ApiError> {
+    let user = crate::auth::account(&state.store, &headers, state.secure_cookies).await?;
+    let items=state.store.run(move|connection| {
+        let owned:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM submissions WHERE id=?1 AND contributor_id=?2)",params![id,user.id],|row|row.get(0)).map_err(internal)?;
+        if !owned {return Err(error(StatusCode::NOT_FOUND,"Submission not found"));}
+        let mut statement=connection.prepare("SELECT revision,action,status,actor,note,created_at FROM submission_events WHERE submission_id=?1 ORDER BY id LIMIT 200").map_err(internal)?;
+        statement.query_map([id],|row|Ok(json!({"revision":row.get::<_,i64>(0)?,"action":row.get::<_,String>(1)?,"status":row.get::<_,String>(2)?,"actor":row.get::<_,String>(3)?,"note":row.get::<_,String>(4)?,"createdAt":row.get::<_,String>(5)?}))).map_err(internal)?.collect::<Result<Vec<_>,_>>().map_err(internal)
+    }).await?;
+    Ok(Json(json!({"id":id,"events":items})))
 }
 pub(crate) fn validate_input(state: &SubmissionState, input: &Submission) -> Result<(), ApiError> {
     if input.definition.to_string().len() > crate::submissions::MAX_DEFINITION {

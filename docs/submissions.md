@@ -36,7 +36,7 @@ Deploy both the executable and `public/`, with a persistent writable volume for 
 6. Validate and preview the **layout only**. Canvases are blank and physics, lessons, and assessments do not run. Definitions never interpret HTML. JavaScript imports are never evaluated in this UI.
 7. Validate, then choose **Download complete bundle** for safekeeping before submitting. This saves the definition **and** engine code/choice and submitter name. Definition-only export intentionally omits engine code. The server returns a receipt number and `pending` status.
 
-Legacy anonymous submissions remain reviewable, but cannot be claimed by a contributor account. New submissions are linked to the signed-in contributor; account-specific editing and status views are implemented in subsequent workflow stages. Automatic notifications and verified real-world identities are not provided. Submitted simulation and assessment IDs are reserved across all statuses, including rejection/withdrawal. Use a new ID for a revised submission. Each assessment bank must have a unique ID so unrelated simulations do not share localStorage results. Template copies receive a new bank ID automatically.
+Legacy anonymous submissions remain reviewable, but cannot be claimed by a contributor account. New submissions are linked to the signed-in contributor; open `/contributions.html` to filter your submissions, read feedback/history, and edit/resubmit them. Automatic notifications and verified real-world identities are not provided. Submitted simulation and assessment IDs are reserved across all statuses, including rejection/withdrawal. Use **Edit and resubmit** to keep the same simulation ID; the editor also reopens at `/submit.html?edit=<receipt-id>`. A new submission is for a different simulation. Each assessment bank must have a unique ID so unrelated simulations do not share localStorage results. Template copies receive a new bank ID automatically.
 
 ### Visual editing and portable drafts
 
@@ -59,7 +59,7 @@ Bundle files and definition-editor/import text are bounded to 1 MiB; compact ser
 7. To remove a publication, select it in the published queue and withdraw it with a note. Subsequent catalog/module/page requests no longer expose it. Already loaded/downloaded code, existing browser state, and code side effects cannot be revoked.
 8. Lock the queue when finished. The UI clears its token, private source, and definition. Leaving the page also locks it. The token is kept in tab memory only, not localStorage/sessionStorage or cookies.
 
-Transitions are deliberately one-way: `pending → published` or `pending → rejected`, and `published → withdrawn`. Review actions are transactional; duplicate/stale decisions return `409`. Review notes/timestamps are retained privately. This is a shared-token maintainer workflow, not individual administrator accounts or a tamper-proof review audit trail.
+Each revision transitions `pending → published/rejected`. Owner edits create a new pending revision. A separate approved snapshot remains public while newer revisions are pending/rejected; approval replaces it atomically. Withdrawal removes that snapshot, including while another revision is pending/rejected. Review requests include the inspected revision; stale decisions return `409`. Review notes/timestamps and transition history are visible to the owner, so never put administrative secrets in notes. This is a shared-token maintainer workflow, not individual administrator accounts or a tamper-proof review audit trail.
 
 **Publishing JavaScript grants trusted same-origin application privileges.** Approval is a maintainer's explicit trust decision, not proof that code is safe. Do not approve unknown code just to try it. The declarative UI schema constrains data, not the authority of a published engine.
 
@@ -70,14 +70,14 @@ Transitions are deliberately one-way: `pending → published` or `pending → re
 - Submitter name: at most 100 characters; review note: at most 1,000.
 - Closed server-side JSON Schema (`schema/simulation.schema.json`) plus Rust cross-field checks reject unknown/raw HTML/CSS/module fields, duplicate slots/options/IDs, reserved shell IDs, invalid defaults, bad answer keys, and invalid lesson references/conditions. The browser also validates definitions.
 - Individual canvas dimensions: 1–4096 pixels; combined area at most 16,777,216 pixels. Schema bounds also limit arrays and text lengths.
-- Global persisted quotas: **100 submissions/hour**, **500 pending**, **2,000 retained records**. Capacity/rate failures return `429`. These are not per-user quotas; an attacker can still exhaust the public queue. Archive records operationally when retention capacity is reached.
-- Review endpoints require a bearer token on every request. Contributors authenticate with HttpOnly cookies and a same-origin request header; maintainers still use bearer tokens. No permissive CORS is enabled. API/catalog/submitted-module responses use `Cache-Control: no-store`; submitted JavaScript is served with its proper MIME type and `nosniff` only after publication. Pending, rejected, and withdrawn source is never available at public module routes.
+- Global persisted quotas: **100 combined submissions/edits per hour**, **500 pending**, **2,000 retained records**, **50 content revisions per submission**. Capacity/rate failures return `429`. These are not per-user quotas; an attacker can still exhaust the public queue. Archive records operationally when retention capacity is reached.
+- Review endpoints require a bearer token on every request. Contributors authenticate with HttpOnly cookies and a same-origin request header; maintainers still use bearer tokens. No permissive CORS is enabled. API/catalog/submitted-module responses use `Cache-Control: no-store`; submitted JavaScript is served with its proper MIME type and `nosniff` only after publication. Unapproved source is never available at public module routes. A submission with a pending/rejected revision can still serve its earlier approved snapshot.
 
 For an internet-facing deployment, terminate **HTTPS**, add reverse-proxy IP rate limits/request timeouts/connection limits, monitor queue capacity, and consider a CAPTCHA if abuse warrants it. Never expose the repository-wide development file server. Do not embed credentials in physics engines, even approved ones.
 
 ## Storage and deployment changes
 
-SQLite uses WAL and versioned initialization (`user_version = 2`, including contributors, session digests, ownership, and authentication throttling). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
+SQLite uses WAL and versioned initialization (`user_version = 3`, including contributors, session digests, ownership, authentication throttling, draft revisions, approved snapshots, bank reservations and metadata history). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
 
 Back up with SQLite's backup facilities, for example:
 
@@ -95,7 +95,10 @@ When changing built-in definitions/engines, preserve the slot and choice-value c
 - `POST /api/submissions` (contributor cookie and `X-CommonLab-Request: 1` required): `{ definition, submittedBy?, engineId? | moduleCode? }`; returns `{ id, status: "pending" }`.
 - `GET /api/admin/submissions?status=pending&before=<id>`: authenticated summary pages (20 records, `hasMore`).
 - `GET /api/admin/submissions/<id>`: authenticated definition/source detail.
-- `POST /api/admin/submissions/<id>/review`: authenticated `{ decision: "publish" | "reject" | "withdraw", codeReviewed?, note? }`.
+- `POST /api/admin/submissions/<id>/review`: authenticated `{ decision: "publish" | "reject" | "withdraw", revision, codeReviewed?, note? }`.
+- `GET /api/contributor/submissions?status=all&before=<id>`: owner-only summary pages of 20, with `hasMore`.
+- `GET /api/contributor/submissions/<id>` and `/history`: owner-only private draft and metadata history.
+- `PUT /api/contributor/submissions/<id>`: normal submission payload plus current `revision`; saves/resubmits atomically.
 - `GET /simulations/catalog.json`: built-ins plus published definitions, never private queue metadata/source.
 
 Run `cargo test`, `node --test tests/*.test.mjs`, and `npm run test:browser`. Server tests cover privacy/auth, explicit code approval, validation/size limits, persistence, quotas/pagination, engine reuse, rejection/withdrawal, and database path isolation. Browser tests exercise the complete author → review → publish → withdraw flow, prove uploaded code is not fetched/executed in author/review previews, verify literal-text rendering, and mount a published built-in-engine variant with learning UI. These tests are not a scientific/security/accessibility audit of future submitted engines.

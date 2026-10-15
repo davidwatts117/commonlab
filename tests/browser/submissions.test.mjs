@@ -187,6 +187,28 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal((await reviewer.request.get(`${base}/api/contributor/submissions/${receipt.id}`)).status(), 401);
     });
 
+    await t.test('dashboard tracks private status, literal feedback, history and signed-out privacy', async () => {
+      const rejected = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { revision: 2, decision: 'reject', note: '<img src=x onerror="window.noteExecuted=true"> Please revise the explanation.' } });
+      assert.equal(rejected.status(), 200);
+      await author.goto(`${base}/contributions.html`);
+      await author.locator('#contributions-workspace').waitFor();
+      await author.locator('#contributions-filter').selectOption('rejected');
+      await author.locator('#contributions-list button').filter({ hasText: 'Owner revised lab' }).click();
+      await author.waitForFunction(() => document.getElementById('contribution-history').textContent.includes('reject'));
+      assert.ok((await author.locator('#contribution-feedback').innerText()).includes('<img'));
+      assert.ok((await author.locator('#contribution-history').innerText()).includes('edited'));
+      assert.equal(await author.locator('#contribution-detail img').count(), 0);
+      assert.equal(await author.evaluate(() => window.noteExecuted), undefined);
+      assert.equal(await author.locator('#contribution-edit').getAttribute('href'), `/submit.html?edit=${receipt.id}`);
+      assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+      await author.request.post(`${base}/api/auth/logout`, { headers: { 'X-CommonLab-Request': '1' } });
+      await author.reload(); await author.locator('#contributions-login').waitFor();
+      assert.equal(await author.locator('#contributions-list button').count(), 0);
+      assert.equal(await author.locator('#contribution-feedback').innerText(), '');
+      const login = await author.request.post(`${base}/api/auth/login`, { headers: { 'X-CommonLab-Request': '1' }, data: { username: 'browser-author', password: 'test-only-browser-password' } });
+      assert.equal(login.status(), 200);
+    });
+
     await t.test('malformed definitions produce visible errors and offline drafting remains available', async () => {
       await author.goto(`${base}/submit.html`);
       await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
