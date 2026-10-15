@@ -70,6 +70,7 @@ pub struct SubmissionState {
     shell: Arc<String>,
     admin_token: Option<Arc<str>>,
     pub(crate) secure_cookies: bool,
+    pub(crate) generation: Option<Arc<crate::generation::GenerationConfig>>,
 }
 impl SubmissionState {
     pub fn new(
@@ -142,9 +143,10 @@ impl SubmissionState {
             shell: Arc::new(shell),
             admin_token: admin_token.map(Arc::from),
             secure_cookies: false,
+            generation: None,
         })
     }
-    fn authorize(&self, headers: &HeaderMap) -> Result<(), ApiError> {
+    pub(crate) fn authorize(&self, headers: &HeaderMap) -> Result<(), ApiError> {
         let expected = self
             .admin_token
             .as_ref()
@@ -168,6 +170,7 @@ pub fn router(mut state: SubmissionState, secure_cookies: bool) -> Router {
     state.secure_cookies = secure_cookies;
     let accounts = crate::auth::router(state.store.clone(), secure_cookies);
     let contributions = crate::contributions::router(state.clone());
+    let generation = crate::generation::router(state.clone());
     Router::new()
         .route("/api/submissions/config", get(config))
         .route("/api/submissions/engines", get(engines))
@@ -182,6 +185,7 @@ pub fn router(mut state: SubmissionState, secure_cookies: bool) -> Router {
         .with_state(state)
         .merge(accounts)
         .merge(contributions)
+        .merge(generation)
 }
 pub(crate) async fn no_cache(mut response: Response) -> Response {
     response

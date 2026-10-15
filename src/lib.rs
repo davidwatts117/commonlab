@@ -1,5 +1,7 @@
 mod auth;
 mod contributions;
+mod generation;
+pub use generation::GenerationConfig;
 mod migrations;
 mod submissions;
 mod validation;
@@ -38,6 +40,22 @@ pub fn app_with_cookie_security(
     admin_token: Option<String>,
     secure_cookies: bool,
 ) -> io::Result<Router> {
+    app_with_generation(public_dir, store, admin_token, secure_cookies, None)
+}
+
+pub fn app_with_generation(
+    public_dir: impl AsRef<Path>,
+    store: Store,
+    admin_token: Option<String>,
+    secure_cookies: bool,
+    generation: Option<GenerationConfig>,
+) -> io::Result<Router> {
+    if generation
+        .as_ref()
+        .is_some_and(|config| !config.differs_from(admin_token.as_deref()))
+    {
+        return Err(invalid("Worker and administrator tokens must be different"));
+    }
     let public_dir = public_dir.as_ref();
     let catalog_path = public_dir.join("simulations/catalog.json");
     let catalog: serde_json::Value = serde_json::from_slice(&std::fs::read(&catalog_path)?)
@@ -53,12 +71,13 @@ pub fn app_with_cookie_security(
     if !shell_path.is_file() {
         return Err(invalid("Missing shared simulation.html shell"));
     }
-    let submission_state = submissions::SubmissionState::new(
+    let mut submission_state = submissions::SubmissionState::new(
         store,
         catalog.clone(),
         std::fs::read_to_string(&shell_path)?,
         admin_token,
     )?;
+    submission_state.generation = generation.map(std::sync::Arc::new);
     let mut router = Router::new().route("/healthz", get(|| async { "ok\n" }));
     let mut ids = HashSet::new();
     for simulation in simulations {

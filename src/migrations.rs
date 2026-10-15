@@ -10,7 +10,7 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(std::io::Error::other)?;
-    if version > 3 {
+    if version > 4 {
         return Err(std::io::Error::other(
             "Unsupported submission database version",
         ));
@@ -59,6 +59,15 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
             CREATE INDEX events_time ON submission_events(created_at);
             INSERT INTO submission_events(submission_id,revision,action,status,actor,note,created_at) SELECT id,revision,'migrated',status,'system',review_note,COALESCE(reviewed_at,created_at) FROM submissions;
             PRAGMA user_version=3;").map_err(std::io::Error::other)?;
+    }
+    if version < 4 {
+        transaction.execute_batch("ALTER TABLE contributors ADD COLUMN generation_allowed INTEGER NOT NULL DEFAULT 0 CHECK(generation_allowed IN (0,1));
+            CREATE TABLE generation_jobs(id INTEGER PRIMARY KEY,contributor_id INTEGER NOT NULL REFERENCES contributors(id),prompt TEXT NOT NULL,simulation_id TEXT NOT NULL UNIQUE,status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','failed','cancelled')),created_at INTEGER NOT NULL DEFAULT (unixepoch()),started_at INTEGER,finished_at INTEGER,lease_hash TEXT,lease_expires INTEGER,artifact TEXT,error TEXT NOT NULL DEFAULT '',model TEXT NOT NULL DEFAULT '');
+            CREATE INDEX generation_owner ON generation_jobs(contributor_id,id);
+            CREATE INDEX generation_status ON generation_jobs(status,id);
+            CREATE INDEX generation_created ON generation_jobs(created_at);
+            CREATE TABLE generation_access_events(id INTEGER PRIMARY KEY,contributor_id INTEGER NOT NULL REFERENCES contributors(id),allowed INTEGER NOT NULL,created_at INTEGER NOT NULL DEFAULT (unixepoch()));
+            PRAGMA user_version=4;").map_err(std::io::Error::other)?;
     }
     transaction.commit().map_err(std::io::Error::other)
 }

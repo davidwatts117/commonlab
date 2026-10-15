@@ -360,7 +360,7 @@ fn migrates_version_one_without_claiming_or_losing_legacy_submissions() {
         connection
             .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
             .unwrap(),
-        3
+        4
     );
     drop(_store);
     Store::open(fixture.db()).unwrap();

@@ -9,11 +9,12 @@ import { chromium } from 'playwright';
 
 const root = new URL('../../', import.meta.url);
 const token = 'browser-test-only-administrator-token-00000000';
+const workerToken = 'browser-test-only-worker-token-00000000000';
 
 test('public authoring and private moderation in a real browser', { timeout: 120_000 }, async t => {
   const storage = mkdtempSync(join(tmpdir(), 'commonlab-submission-browser-'));
   const server = spawn(new URL('target/debug/commonlab', root).pathname, [], {
-    cwd: root, env: { ...process.env, BIND_ADDR: '127.0.0.1:0', DATABASE_PATH: join(storage, 'submissions.sqlite3'), ADMIN_TOKEN: token, RUST_LOG: 'commonlab=info', NO_COLOR: '1' },
+    cwd: root, env: { ...process.env, BIND_ADDR: '127.0.0.1:0', DATABASE_PATH: join(storage, 'submissions.sqlite3'), ADMIN_TOKEN: token, GENERATION_WORKER_TOKEN: workerToken, RUST_LOG: 'commonlab=info', NO_COLOR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const exited = once(server, 'exit'); let browser;
@@ -207,6 +208,43 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal(await author.locator('#contribution-feedback').innerText(), '');
       const login = await author.request.post(`${base}/api/auth/login`, { headers: { 'X-CommonLab-Request': '1' }, data: { username: 'browser-author', password: 'test-only-browser-password' } });
       assert.equal(login.status(), 200);
+    });
+
+    await t.test('approved accounts generate private inert drafts and explicitly submit them for human review', async () => {
+      await author.goto(`${base}/generate.html`);
+      await author.waitForFunction(() => document.getElementById('generation-status').textContent.includes('grant your account'));
+      assert.equal(await author.locator('#generation-fields').evaluate(element => element.disabled), true);
+      await reviewer.goto(`${base}/review.html`);
+      await reviewer.locator('#admin-token').fill(token); await reviewer.locator('#review-login button').click();
+      await reviewer.locator('#review-workspace').waitFor();
+      await reviewer.getByText('Manage AI generation access', { exact: true }).click();
+      await reviewer.locator('#generation-username').fill('browser-author');
+      await reviewer.locator('#generation-access-form button').click();
+      await reviewer.waitForFunction(() => document.getElementById('review-status').textContent.includes('granted to'));
+      await author.locator('#generation-refresh').click();
+      await author.waitForFunction(() => !document.getElementById('generation-fields').disabled);
+      await author.locator('#generation-prompt').fill('A spring lab with mass and stiffness controls.');
+      await author.locator('#generation-consent').check();
+      await author.locator('#generation-form button').click();
+      await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
+      const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } });
+      assert.equal(claimed.status(), 200); const job = await claimed.json();
+      const definition = { id: job.simulationId, title: 'AI spring draft', subject: 'physics', summary: 'A private generated draft.', canvas: { id: 'scene', label: 'Spring scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
+      const moduleCode = 'export function mount(ui) { globalThis.generatedExecuted = true; return { app: {} }; }';
+      const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', artifact: { definition, moduleCode } } });
+      assert.equal(completed.status(), 200);
+      await author.locator('#generation-refresh').click();
+      await author.getByRole('link', { name: 'Open private draft in editor' }).click();
+      await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      assert.equal(await author.locator('#definition-title').inputValue(), 'AI spring draft');
+      assert.equal(await author.locator('#module-code').inputValue(), moduleCode);
+      assert.equal(await author.evaluate(() => window.generatedExecuted), undefined);
+      await author.locator('#validate-preview').click();
+      assert.equal(await author.evaluate(() => window.generatedExecuted), undefined);
+      assert.equal((await author.request.get(`${base}/simulations/${job.simulationId}.js`)).status(), 404);
+      const submitted = author.waitForResponse(response => response.url().endsWith('/api/submissions') && response.request().method() === 'POST');
+      await author.locator('#submit-draft').click(); assert.equal((await submitted).status(), 201);
+      assert.equal((await author.request.get(`${base}/simulations/${job.simulationId}.js`)).status(), 404);
     });
 
     await t.test('malformed definitions produce visible errors and offline drafting remains available', async () => {

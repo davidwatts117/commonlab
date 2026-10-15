@@ -18,6 +18,8 @@
     </form>
     <p class="authoring-hint">The token stays in this tab's memory, not browser storage or URLs. Use HTTPS outside localhost. Close the tab or lock the queue when finished.</p>
     <section id="review-workspace" hidden>
+      <details><summary>Manage AI generation access</summary><p>Grant only trusted contributors access. Revoking cancels their queued/running requests; previously generated drafts remain theirs. Grants do not give maintainer privileges.</p>
+      <form id="generation-access-form"><label>Contributor username<input id="generation-username" required maxlength="32" autocomplete="off"></label><label>Permission<select id="generation-access"><option value="grant">Grant generation access</option><option value="revoke">Revoke generation access</option></select></label><button type="submit" class="sim-btn sim-btn--soft">Update access</button></form></details>
       <div class="authoring-actions">
         <label>Queue status<select id="queue-status"><option value="pending">Pending</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option></select></label>
         <button id="refresh-queue" type="button" class="sim-btn sim-btn--soft">Refresh queue</button>

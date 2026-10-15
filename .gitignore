@@ -1,5 +1,7 @@
 /target/
 /node_modules/
+/worker/node_modules/
+/worker/.env
 /data/
 *.sqlite3
 *.sqlite3-wal

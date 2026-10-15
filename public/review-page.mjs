@@ -11,7 +11,7 @@ function clearDetail() {
 }
 function lock() {
   session?.abort(); token = ''; before = null; clearDetail();
-  $('admin-token').value = ''; $('review-queue').replaceChildren();
+  $('admin-token').value = ''; $('review-queue').replaceChildren(); $('generation-access-form').reset();
   $('review-workspace').hidden = true; $('review-login').hidden = false;
   message('Review queue locked. Enter your token to reopen it.');
 }
@@ -94,5 +94,13 @@ $('review-form').addEventListener('submit', async event => {
     await loadQueue(); message(`Submission #${id} is now ${result.status}.`);
   } catch (error) { message(error.message, true); }
   finally { buttons.forEach(button => { button.disabled = false; }); }
+});
+$('generation-access-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true;
+  try {
+    const result = await api('/api/admin/generation/access', { method: 'POST', body: JSON.stringify({ username: $('generation-username').value, allowed: $('generation-access').value === 'grant' }) });
+    message(`AI generation access ${result.allowed ? 'granted to' : 'revoked from'} @${result.username}.`);
+  } catch (error) { message(error.message, true); }
+  finally { button.disabled = false; }
 });
 window.addEventListener('pagehide', lock);

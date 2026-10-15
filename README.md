@@ -51,6 +51,8 @@ New simulations are **data plus a physics module**, not arbitrary web pages. Any
 
 The authoring page includes **visual explanation-card and question-bank editors** (single/multiple answers, explanations, lesson/check usage, ordering). Advanced control/lesson configuration remains available as JSON. Download a **complete submission bundle** to save the definition, engine choice/code, and submitter name, then restore it later without running its code. Unsubmitted local drafts are not automatically stored on shared browsers. Submitted drafts and saved revisions persist privately in SQLite under their owner's account.
 
+**AI-assisted authoring:** maintainers can explicitly approve contributor accounts for `/generate.html`. A separate, isolated worker uses a pinned pi SDK, operator-selected model, fixed prompt, dedicated reference/validation/finalization tools, and bounded jobs. Results open as private inert drafts for editing and explicit submission—not automatic publication. Generation is disabled by default; see [AI generation setup, limits and safety](docs/ai-generation.md).
+
 To enable the submission workflow locally:
 
 ```sh

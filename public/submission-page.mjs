@@ -8,7 +8,7 @@ const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, enabled = false, installedIds = [], signedIn = false, editing = null;
+let catalog, preview, enabled = false, installedIds = [], signedIn = false, editing = null, generated = false;
 async function refreshContributor() {
   const account = await currentContributor(); signedIn = !!account;
   $('contributor-status').textContent = account ? `Signed in as ${account.username}. New submissions belong to your account.` : 'Sign in or create a contributor account to submit. You can still draft and download without an account.';
@@ -245,12 +245,21 @@ try {
     if (!/^[1-9][0-9]*$/.test(requested) || !Number.isSafeInteger(Number(requested))) throw new Error('Invalid submission ID.');
     await loadEditing(requested);
   }
+  const generationId = new URLSearchParams(location.search).get('generation');
+  if (generationId !== null) {
+    if (requested !== null || !/^[1-9][0-9]*$/.test(generationId) || !Number.isSafeInteger(Number(generationId))) throw new Error('Invalid generation ID or conflicting edit mode.');
+    const job = await contributorRequest(`/api/generation/jobs/${generationId}`);
+    if (job.status !== 'succeeded' || !job.artifact) throw new Error('This generation has not produced a draft.');
+    const bundle = parseBundle(JSON.stringify(job.artifact), installedIds);
+    generated = true; $('engine').value = 'new'; $('module-code').value = bundle.source.moduleCode;
+    $('module-section').hidden = false; writeDefinition(bundle.definition);
+  }
   $('submission-fields').disabled = false;
-  message(requested ? 'Saved source loaded as text. Make changes and save a new revision for review.' : enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
+  message(generated ? 'AI-generated draft loaded as inert text. Check the science and source, edit, and explicitly submit for human review. Nothing is published.' : requested ? 'Saved source loaded as text. Make changes and save a new revision for review.' : enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
 } catch (error) { message(`Unable to load the authoring interface: ${error.message}`, true); }
 window.addEventListener('pagehide', () => {
   preview?.destroy();
-  if (editing) { $('submission-form').reset(); $('content-editor').replaceChildren(); $('submission-fields').disabled = true; }
+  if (editing || generated) { $('submission-form').reset(); $('content-editor').replaceChildren(); $('submission-fields').disabled = true; }
 });
-window.addEventListener('pageshow', event => { if (event.persisted && editing) location.reload(); });
+window.addEventListener('pageshow', event => { if (event.persisted && (editing || generated)) location.reload(); });
 window.addEventListener('focus', () => { refreshContributor().catch(error => message(error.message, true)); });

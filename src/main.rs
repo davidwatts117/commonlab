@@ -45,11 +45,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map(|value| value.parse::<bool>())
         .transpose()?
         .unwrap_or(!addr.ip().is_loopback());
-    let app = commonlab::app_with_cookie_security(
+    let generation = env::var("GENERATION_WORKER_TOKEN")
+        .ok()
+        .map(commonlab::GenerationConfig::new)
+        .transpose()?;
+    let app = commonlab::app_with_generation(
         &public_dir,
         store,
         env::var("ADMIN_TOKEN").ok(),
         secure_cookies,
+        generation,
     )?;
     let listener = TcpListener::bind(addr).await?;
     tracing::info!(address = %listener.local_addr()?, assets = %public_dir.display(), "CommonLab listening");

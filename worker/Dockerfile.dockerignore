@@ -1,0 +1,11 @@
+**
+!worker/
+!worker/package.json
+!worker/package-lock.json
+!worker/*.mjs
+!public/
+!public/simulation-schema.mjs
+!schema/
+!schema/simulation.schema.json
+!docs/
+!docs/simulation-authoring.md

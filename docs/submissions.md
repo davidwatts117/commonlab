@@ -1,6 +1,6 @@
 # Public submissions and maintainer review
 
-CommonLab serves an authoring UI at **`/submit.html`** and a private review queue at **`/review.html`**. Anyone can draft a definition and either choose an installed engine or provide a new JavaScript module. Submitting to the server requires a contributor account at `/account.html`. The optional display name is not proof of identity; ownership comes from the authenticated account. See [Contributor accounts](contributors.md).
+CommonLab serves an authoring UI at **`/submit.html`** and a private review queue at **`/review.html`**. Anyone can draft a definition and either choose an installed engine or provide a new JavaScript module. Submitting to the server requires a contributor account at `/account.html`. The optional display name is not proof of identity; ownership comes from the authenticated account. See [Contributor accounts](contributors.md). Approved contributors can also request [AI-authored private drafts](ai-generation.md); generation never bypasses this review workflow.
 
 ## Enable submissions
 
@@ -77,7 +77,7 @@ For an internet-facing deployment, terminate **HTTPS**, add reverse-proxy IP rat
 
 ## Storage and deployment changes
 
-SQLite uses WAL and versioned initialization (`user_version = 3`, including contributors, session digests, ownership, authentication throttling, draft revisions, approved snapshots, bank reservations and metadata history). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
+SQLite uses WAL and versioned initialization (`user_version = 4`, including contributors, session digests, ownership, authentication throttling, draft revisions, approved snapshots, bank reservations, metadata history and private AI generation jobs/permissions). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
 
 Back up with SQLite's backup facilities, for example:
 

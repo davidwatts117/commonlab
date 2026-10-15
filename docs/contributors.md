@@ -1,12 +1,12 @@
 # Contributor accounts
 
-`/account.html` provides username/password registration, sign-in, and sign-out. New server submissions require a signed-in contributor and are linked to their account in the existing private SQLite database (`DATABASE_PATH`, default `data/commonlab.sqlite3`). Browsing simulations, local authoring, previews, and bundle export remain available without an account. Maintainer access still requires the separate `ADMIN_TOKEN`.
+`/account.html` provides username/password registration, sign-in, and sign-out. New server submissions require a signed-in contributor and are linked to their account in the existing private SQLite database (`DATABASE_PATH`, default `data/commonlab.sqlite3`). Browsing simulations, local authoring, previews, and bundle export remain available without an account. Maintainer access still requires the separate `ADMIN_TOKEN`. AI generation is a separate explicit maintainer-granted permission, off for new accounts; see [Controlled AI generation](ai-generation.md).
 
 Usernames are case-insensitive, canonical lowercase ASCII handles of 3–32 characters: letters, digits, `_`, `-`, starting with a letter. Passwords require at least 12 characters and at most 256 UTF-8 bytes. Use a password manager; this initial account implementation has no email verification or self-service password recovery.
 
 ## Persistence and security
 
-- Database version 3 atomically migrates existing submissions without deleting their data. Legacy anonymous submissions retain a NULL owner and cannot be claimed by matching an author name.
+- Database version 4 atomically migrates existing submissions without deleting their data. Legacy anonymous submissions retain a NULL owner and cannot be claimed by matching an author name.
 - `contributors` holds salted Argon2id password hashes, never plaintext passwords. `contributor_sessions` stores only SHA-256 digests of cryptographically random 256-bit tokens.
 - Sessions expire after seven days, survive server restarts, rotate on login, and are revoked by logout. Each account is limited to eight active sessions.
 - Cookies are HttpOnly, SameSite=Strict, and scoped to `/`. `COOKIE_SECURE=true` adds Secure and uses a `__Host-` cookie name. Defaults: false for loopback binds, true for non-loopback binds. Public deployments **must use HTTPS and secure cookies**. Explicitly configure this when TLS terminates at a proxy; forwarded headers are not trusted to change cookie security.
@@ -24,6 +24,7 @@ Keep the database, journals and backups outside `public/` and protect filesystem
 - `POST /api/auth/logout`: revokes the current session and clears its cookie.
 
 All responses are non-cacheable. Registration returns 201, duplicate usernames 409, invalid credentials 401, malformed credentials 422, missing request header 403, and throttling 429.
+
 ## Editing and resubmission
 
 Open `/submit.html?edit=<receipt-id>` while signed in to load your saved definition and engine source as inert text. Only the owner can read/edit it; a different contributor receives the same 404 as a nonexistent ID. Bookmark this URL. The simulation ID cannot change, and existing anonymous records cannot be claimed.
