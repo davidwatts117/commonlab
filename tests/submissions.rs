@@ -1,3 +1,4 @@
+mod support;
 use axum::{
     Router,
     body::{Body, to_bytes},
@@ -16,8 +17,11 @@ const TOKEN: &str = "test-only-administrator-token-00000000";
 fn public() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("public")
 }
-fn router() -> Router {
-    app_with_submissions(public(), Store::memory().unwrap(), Some(TOKEN.into())).unwrap()
+async fn router() -> Router {
+    support::authenticated(
+        app_with_submissions(public(), Store::memory().unwrap(), Some(TOKEN.into())).unwrap(),
+    )
+    .await
 }
 fn definition(id: &str) -> Value {
     json!({"id":id,"title":"A new lab","subject":"physics","summary":"Explore a scientific relationship.","canvas":{"id":"labCanvas","label":"Lab scene","width":700,"height":480},"controls":[],"cards":[],"graphs":[],"lessons":[]})
@@ -68,7 +72,7 @@ async fn review(router: &Router, id: i64, decision: &str, code_reviewed: bool) -
 
 #[tokio::test]
 async fn private_drafts_require_auth_and_explicit_code_review_then_publish_and_withdraw() {
-    let router = router();
+    let router = router().await;
     let submitted = submission("new-lab");
     let response = request(
         &router,
@@ -248,7 +252,7 @@ async fn private_drafts_require_auth_and_explicit_code_review_then_publish_and_w
 
 #[tokio::test]
 async fn rejects_bad_definitions_sources_collisions_and_oversized_bodies() {
-    let router = router();
+    let router = router().await;
     for invalid in [
         json!({"definition":definition("../bad"),"moduleCode":"export function mount(){}"}),
         json!({"definition":definition("safe-lab"),"engineId":"not-installed"}),
@@ -401,13 +405,16 @@ impl Fixture {
     fn db(&self) -> PathBuf {
         self.0.join("submissions.sqlite3")
     }
-    fn router(&self) -> Router {
-        app_with_submissions(
-            public(),
-            Store::open(self.db()).unwrap(),
-            Some(TOKEN.into()),
+    async fn router(&self) -> Router {
+        support::authenticated(
+            app_with_submissions(
+                public(),
+                Store::open(self.db()).unwrap(),
+                Some(TOKEN.into()),
+            )
+            .unwrap(),
         )
-        .unwrap()
+        .await
     }
 }
 impl Drop for Fixture {
@@ -420,7 +427,7 @@ impl Drop for Fixture {
 async fn sqlite_persists_published_reused_engine_and_rejected_private_draft() {
     let fixture = Fixture::new();
     {
-        let router = fixture.router();
+        let router = fixture.router().await;
         let response = request(
             &router,
             Method::POST,
@@ -451,7 +458,7 @@ async fn sqlite_persists_published_reused_engine_and_rejected_private_draft() {
             StatusCode::OK
         );
     }
-    let router = fixture.router();
+    let router = fixture.router().await;
     let response = request(
         &router,
         Method::GET,
@@ -508,7 +515,7 @@ async fn sqlite_persists_published_reused_engine_and_rejected_private_draft() {
 async fn persistent_hourly_quota_and_private_queue_pagination() {
     let fixture = Fixture::new();
     {
-        let router = fixture.router();
+        let router = fixture.router().await;
         for n in 0..100 {
             let response = request(
                 &router,
@@ -547,7 +554,7 @@ async fn persistent_hourly_quota_and_private_queue_pagination() {
         .await;
         assert_eq!(next["items"][0]["id"], id - 1);
     }
-    let router = fixture.router();
+    let router = fixture.router().await;
     assert_eq!(
         request(
             &router,

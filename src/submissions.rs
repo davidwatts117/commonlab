@@ -37,39 +37,14 @@ impl Store {
     pub fn memory() -> std::io::Result<Self> {
         Self::init(Connection::open_in_memory().map_err(std::io::Error::other)?)
     }
-    fn init(connection: Connection) -> std::io::Result<Self> {
+    fn init(mut connection: Connection) -> std::io::Result<Self> {
         connection
             .busy_timeout(Duration::from_secs(5))
             .map_err(std::io::Error::other)?;
-        let version: u32 = connection
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .map_err(std::io::Error::other)?;
-        if version > 1 {
-            return Err(std::io::Error::other(
-                "Unsupported submission database version",
-            ));
-        }
-        connection.execute_batch("PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS submissions (
-                id INTEGER PRIMARY KEY,
-                simulation_id TEXT NOT NULL UNIQUE,
-                definition TEXT NOT NULL,
-                engine_id TEXT,
-                module_code TEXT,
-                submitted_by TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','published','rejected','withdrawn')),
-                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-                reviewed_at TEXT,
-                review_note TEXT NOT NULL DEFAULT '',
-                CHECK ((engine_id IS NULL) != (module_code IS NULL))
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS submission_bank ON submissions(json_extract(definition, '$.assessment.id'));
-            CREATE INDEX IF NOT EXISTS submission_status ON submissions(status, id);
-            CREATE INDEX IF NOT EXISTS submission_created ON submissions(created_at);
-            PRAGMA user_version=1;").map_err(std::io::Error::other)?;
+        crate::migrations::migrate(&mut connection)?;
         Ok(Self(Arc::new(Mutex::new(connection))))
     }
-    async fn run<T: Send + 'static>(
+    pub(crate) async fn run<T: Send + 'static>(
         &self,
         work: impl FnOnce(&mut Connection) -> Result<T, ApiError> + Send + 'static,
     ) -> Result<T, ApiError> {
@@ -94,6 +69,7 @@ pub struct SubmissionState {
     builtin_banks: Arc<HashSet<String>>,
     shell: Arc<String>,
     admin_token: Option<Arc<str>>,
+    secure_cookies: bool,
 }
 impl SubmissionState {
     pub fn new(
@@ -165,6 +141,7 @@ impl SubmissionState {
             builtin_banks: Arc::new(builtin_banks),
             shell: Arc::new(shell),
             admin_token: admin_token.map(Arc::from),
+            secure_cookies: false,
         })
     }
     fn authorize(&self, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -187,7 +164,9 @@ impl SubmissionState {
     }
 }
 
-pub fn router(state: SubmissionState) -> Router {
+pub fn router(mut state: SubmissionState, secure_cookies: bool) -> Router {
+    state.secure_cookies = secure_cookies;
+    let accounts = crate::auth::router(state.store.clone(), secure_cookies);
     Router::new()
         .route("/api/submissions/config", get(config))
         .route("/api/submissions/engines", get(engines))
@@ -200,8 +179,9 @@ pub fn router(state: SubmissionState) -> Router {
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(axum::middleware::map_response(no_cache))
         .with_state(state)
+        .merge(accounts)
 }
-async fn no_cache(mut response: Response) -> Response {
+pub(crate) async fn no_cache(mut response: Response) -> Response {
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
@@ -233,6 +213,7 @@ struct Submission {
 }
 async fn submit(
     State(state): State<SubmissionState>,
+    headers: HeaderMap,
     Json(input): Json<Submission>,
 ) -> Result<impl IntoResponse, ApiError> {
     if state.admin_token.is_none() {
@@ -241,6 +222,8 @@ async fn submit(
             "Submissions are disabled until a reviewer is configured",
         ));
     }
+    crate::auth::csrf(&headers)?;
+    let contributor = crate::auth::account(&state.store, &headers, state.secure_cookies).await?;
     let definition = input.definition.to_string();
     if definition.len() > MAX_DEFINITION {
         return Err(error(
@@ -291,7 +274,7 @@ async fn submit(
         let transaction = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
         let (total, recent, pending): (i64, i64, i64) = transaction.query_row("SELECT COUNT(*), COALESCE(SUM(created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')),0), COALESCE(SUM(status='pending'),0) FROM submissions", [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).map_err(internal)?;
         if total >= 2000 || recent >= 100 || pending >= 500 { return Err(error(StatusCode::TOO_MANY_REQUESTS, "Submission queue is full; please try again later")); }
-        transaction.execute("INSERT INTO submissions (simulation_id,definition,engine_id,module_code,submitted_by) VALUES (?1,?2,?3,?4,?5)", params![id, definition, input.engine_id, input.module_code, input.submitted_by.trim()]).map_err(|err| {
+        transaction.execute("INSERT INTO submissions (simulation_id,definition,engine_id,module_code,submitted_by,contributor_id) VALUES (?1,?2,?3,?4,?5,?6)", params![id, definition, input.engine_id, input.module_code, input.submitted_by.trim(), contributor.id]).map_err(|err| {
             if matches!(err, rusqlite::Error::SqliteFailure(ref code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation) { error(StatusCode::CONFLICT, "Simulation or assessment ID has already been submitted; choose a new ID") } else { internal(err) }
         })?;
         let receipt = transaction.last_insert_rowid(); transaction.commit().map_err(internal)?;
@@ -451,14 +434,15 @@ async fn published(
     }
 }
 
-struct ApiError(StatusCode, String);
-fn error(status: StatusCode, message: impl Into<String>) -> ApiError {
+#[derive(Debug)]
+pub(crate) struct ApiError(StatusCode, String);
+pub(crate) fn error(status: StatusCode, message: impl Into<String>) -> ApiError {
     ApiError(status, message.into())
 }
 fn not_found() -> ApiError {
     error(StatusCode::NOT_FOUND, "Not found")
 }
-fn internal(error: impl std::fmt::Display) -> ApiError {
+pub(crate) fn internal(error: impl std::fmt::Display) -> ApiError {
     tracing::error!(%error, "Submission storage operation failed");
     error_response()
 }

@@ -40,7 +40,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ),
     )?;
     let store = commonlab::Store::open(&database)?;
-    let app = commonlab::app_with_submissions(&public_dir, store, env::var("ADMIN_TOKEN").ok())?;
+    let secure_cookies = env::var("COOKIE_SECURE")
+        .ok()
+        .map(|value| value.parse::<bool>())
+        .transpose()?
+        .unwrap_or(!addr.ip().is_loopback());
+    let app = commonlab::app_with_cookie_security(
+        &public_dir,
+        store,
+        env::var("ADMIN_TOKEN").ok(),
+        secure_cookies,
+    )?;
     let listener = TcpListener::bind(addr).await?;
     tracing::info!(address = %listener.local_addr()?, assets = %public_dir.display(), "CommonLab listening");
     axum::serve(listener, app)

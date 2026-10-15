@@ -39,6 +39,23 @@ test('public authoring and private moderation in a real browser', { timeout: 120
     for (const page of [author, reviewer]) page.on('request', request => { if (request.url().includes('/simulations/browser-new-lab.js')) moduleRequests.push(request.url()); });
     let receipt;
 
+    await t.test('contributor registration, logout and login use private cookie sessions', async () => {
+      await author.goto(`${base}/account.html`);
+      await author.locator('#account-action').selectOption('register');
+      await author.locator('#account-username').fill('browser-author');
+      await author.locator('#account-password').fill('test-only-browser-password');
+      await author.locator('#account-confirm').fill('test-only-browser-password');
+      await author.locator('#account-submit').click();
+      await author.locator('#account-signed-in').waitFor();
+      assert.ok((await author.locator('#account-name').innerText()).includes('browser-author'));
+      assert.equal(await author.evaluate(() => document.cookie.includes('cl_session')), false);
+      assert.equal((await author.context().cookies()).some(cookie => cookie.name === 'cl_session' && cookie.httpOnly && cookie.sameSite === 'Strict'), true);
+      await author.locator('#account-logout').click(); await author.locator('#account-form').waitFor();
+      await author.locator('#account-action').selectOption('login');
+      await author.locator('#account-password').fill('test-only-browser-password');
+      await author.locator('#account-submit').click(); await author.locator('#account-signed-in').waitFor();
+    });
+
     await t.test('author composes and previews data without running uploaded code', async () => {
       await author.goto(`${base}/submit.html`);
       await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
@@ -242,7 +259,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.waitForFunction(() => document.getElementById('authoring-status').textContent.includes('Definition imported'));
       assert.equal(JSON.parse(await author.locator('#definition-json').inputValue()).id, 'structured-lab');
       // The visually authored bank must also work in the actual published learning UI.
-      const submitted = await author.request.post(`${base}/api/submissions`, { data: { definition: def, moduleCode: code, submittedBy: 'Offline author' } });
+      const submitted = await author.request.post(`${base}/api/submissions`, { headers: { 'X-CommonLab-Request': '1' }, data: { definition: def, moduleCode: code, submittedBy: 'Offline author' } });
       assert.equal(submitted.status(), 201);
       const receipt = await submitted.json();
       const approved = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { decision: 'publish', codeReviewed: true } });

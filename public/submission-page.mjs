@@ -1,5 +1,6 @@
 import { loadCatalog, validateDefinition } from './simulation-schema.mjs';
 import { renderSimulation } from './simulation-ui.mjs';
+import { contributorRequest, currentContributor } from './contributor-api.mjs';
 import { contentEditor } from './content-editor.mjs';
 import { createBundle, parseBundle, submissionRequest, MAX_BUNDLE_BYTES } from './submission-bundle.mjs';
 
@@ -7,7 +8,12 @@ const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, enabled = false, installedIds = [];
+let catalog, preview, enabled = false, installedIds = [], signedIn = false;
+async function refreshContributor() {
+  const account = await currentContributor(); signedIn = !!account;
+  $('contributor-status').textContent = account ? `Signed in as ${account.username}. New submissions belong to your account.` : 'Sign in or create a contributor account to submit. You can still draft and download without an account.';
+  $('submit-draft').disabled = !enabled || !signedIn;
+}
 const editors = contentEditor($('content-editor'), editDraft, error => message(error, true));
 function message(text, error = false) { status.textContent = text; status.setAttribute('role', error ? 'alert' : 'status'); }
 function readDraft() {
@@ -181,19 +187,14 @@ $('bundle-file').addEventListener('change', async event => {
   finally { event.target.value = ''; }
 });
 $('submission-form').addEventListener('submit', async event => {
-  event.preventDefault(); if (!enabled) return;
+  event.preventDefault(); if (!enabled || !signedIn) return;
   const button = $('submit-draft'); button.disabled = true;
   try {
     const payload = submissionRequest(currentBundle(), installedIds);
-    const response = await fetch('/api/submissions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit',
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `Submission failed (HTTP ${response.status}).`);
-    message(`Submission #${result.id} received and awaiting review. It is not public yet. Download your complete bundle locally; anonymous submissions cannot be edited or retrieved later.`);
+    const result = await contributorRequest('/api/submissions', { method: 'POST', body: payload });
+    message(`Submission #${result.id} received and awaiting review. It is not public yet. Your account owns this submission. Download your complete bundle as a local backup.`);
   } catch (error) { message(error.message, true); }
-  finally { button.disabled = !enabled; }
+  finally { button.disabled = !enabled || !signedIn; }
 });
 
 try {
@@ -209,7 +210,8 @@ try {
     const option = document.createElement('option'); option.value = def.id; option.textContent = def.title; return option;
   }));
   const option = document.createElement('option'); option.value = 'new'; option.textContent = 'New JavaScript engine'; $('engine').append(option);
-  loadTemplate(); $('submission-fields').disabled = false; $('submit-draft').disabled = !enabled;
+  loadTemplate(); $('submission-fields').disabled = false; await refreshContributor();
   message(enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
 } catch (error) { message(`Unable to load the authoring interface: ${error.message}`, true); }
 window.addEventListener('pagehide', () => preview?.destroy());
+window.addEventListener('focus', () => { refreshContributor().catch(error => message(error.message, true)); });

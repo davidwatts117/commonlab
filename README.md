@@ -18,6 +18,7 @@ Visit `http://localhost:8000`. Simulation routes such as `/simulations/pendulum`
 - `PUBLIC_DIR`: asset directory, default `public`, relative to the process working directory. It must contain `index.html`; startup fails otherwise.
 - `RUST_LOG`: tracing filter. Use `commonlab=info,tower_http=debug` for request logs.
 - `DATABASE_PATH`: SQLite submission database, default `data/commonlab.sqlite3`. Must be outside `PUBLIC_DIR`; use a persistent writable volume in deployment.
+- `COOKIE_SECURE`: enables Secure, host-only contributor session cookies. Defaults to true on non-loopback binds and false on loopback; use HTTPS and `COOKIE_SECURE=true` publicly.
 - `ADMIN_TOKEN`: securely generated maintainer bearer token (32–256 letters/digits/`-_.`). Without it, new submissions and review actions are disabled.
 
 ```sh
@@ -40,13 +41,13 @@ Deploy the executable **and** the `public/` directory. Assets are read from disk
 - `tests/`: Rust integration tests, JavaScript unit tests, Playwright browser tests, and a development-only browser smoke page.
 - `docs/`: authoring guide and historical implementation plan.
 
-Unknown paths return 404, not the homepage. Source, tests, docs, and Git metadata are not served. CFU answers remain in browser localStorage; there is no account system or results API. SQLite stores simulation submissions, review notes, and publications—not student answers.
+Unknown paths return 404, not the homepage. Source, tests, docs, and Git metadata are not served. CFU answers remain in browser localStorage; there is no student-results API. Contributor accounts are separate from student assessment progress. SQLite stores simulation submissions, review notes, and publications—not student answers.
 
 Built-in simulations and local definition drafting can still be hosted statically by serving `public/` as the web root. Submission storage/review and community publications require Axum. Deploying to GitHub Pages now requires publishing the contents of `public/`, rather than the repository root.
 
 ## Adding simulations
 
-New simulations are **data plus a physics module**, not arbitrary web pages. Anyone can use **`/submit.html`** to build a definition, reuse an installed engine or upload new JavaScript, preview the layout without executing code, and submit a private draft. Maintainers review at **`/review.html`**; approved simulations join the catalog immediately without a restart. New engine code requires explicit trusted review before publication.
+New simulations are **data plus a physics module**, not arbitrary web pages. Anyone can use **`/submit.html`** to build a definition, reuse an installed engine or upload new JavaScript, and preview the layout without executing code. Sign in or register at **`/account.html`** to submit a private draft owned by your contributor account. See [Contributor accounts](docs/contributors.md) for database/session security and deployment settings. Maintainers review at **`/review.html`**; approved simulations join the catalog immediately without a restart. New engine code requires explicit trusted review before publication.
 
 The authoring page includes **visual explanation-card and question-bank editors** (single/multiple answers, explanations, lesson/check usage, ordering). Advanced control/lesson configuration remains available as JSON. Download a **complete submission bundle** to save the definition, engine choice/code, and submitter name, then restore it later without running its code. Drafts are not automatically stored on shared browsers.
 

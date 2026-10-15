@@ -1,3 +1,5 @@
+mod auth;
+mod migrations;
 mod submissions;
 mod validation;
 pub use submissions::Store;
@@ -25,6 +27,15 @@ pub fn app_with_submissions(
     public_dir: impl AsRef<Path>,
     store: Store,
     admin_token: Option<String>,
+) -> io::Result<Router> {
+    app_with_cookie_security(public_dir, store, admin_token, false)
+}
+
+pub fn app_with_cookie_security(
+    public_dir: impl AsRef<Path>,
+    store: Store,
+    admin_token: Option<String>,
+    secure_cookies: bool,
 ) -> io::Result<Router> {
     let public_dir = public_dir.as_ref();
     let catalog_path = public_dir.join("simulations/catalog.json");
@@ -81,7 +92,7 @@ pub fn app_with_submissions(
     }
     // The submission router owns the fallback and serves only published entries.
     Ok(router
-        .merge(submissions::router(submission_state))
+        .merge(submissions::router(submission_state, secure_cookies))
         .fallback_service(ServeDir::new(public_dir).append_index_html_on_directories(true))
         .layer(TraceLayer::new_for_http()))
 }

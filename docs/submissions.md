@@ -1,6 +1,6 @@
 # Public submissions and maintainer review
 
-CommonLab serves an authoring UI at **`/submit.html`** and a private review queue at **`/review.html`**. Anyone can submit a definition and either choose an installed engine or upload a new JavaScript module. No contributor account is required. Names are optional and unverified.
+CommonLab serves an authoring UI at **`/submit.html`** and a private review queue at **`/review.html`**. Anyone can draft a definition and either choose an installed engine or provide a new JavaScript module. Submitting to the server requires a contributor account at `/account.html`. The optional display name is not proof of identity; ownership comes from the authenticated account. See [Contributor accounts](contributors.md).
 
 ## Enable submissions
 
@@ -36,7 +36,7 @@ Deploy both the executable and `public/`, with a persistent writable volume for 
 6. Validate and preview the **layout only**. Canvases are blank and physics, lessons, and assessments do not run. Definitions never interpret HTML. JavaScript imports are never evaluated in this UI.
 7. Validate, then choose **Download complete bundle** for safekeeping before submitting. This saves the definition **and** engine code/choice and submitter name. Definition-only export intentionally omits engine code. The server returns a receipt number and `pending` status.
 
-Anonymous contributors cannot edit or retrieve private drafts, view review notes, receive automatic notifications, or verify another contributor's identity. Submitted simulation and assessment IDs are reserved across all statuses, including rejection/withdrawal. Use a new ID for a revised submission. Each assessment bank must have a unique ID so unrelated simulations do not share localStorage results. Template copies receive a new bank ID automatically.
+Legacy anonymous submissions remain reviewable, but cannot be claimed by a contributor account. New submissions are linked to the signed-in contributor; account-specific editing and status views are implemented in subsequent workflow stages. Automatic notifications and verified real-world identities are not provided. Submitted simulation and assessment IDs are reserved across all statuses, including rejection/withdrawal. Use a new ID for a revised submission. Each assessment bank must have a unique ID so unrelated simulations do not share localStorage results. Template copies receive a new bank ID automatically.
 
 ### Visual editing and portable drafts
 
@@ -71,13 +71,13 @@ Transitions are deliberately one-way: `pending → published` or `pending → re
 - Closed server-side JSON Schema (`schema/simulation.schema.json`) plus Rust cross-field checks reject unknown/raw HTML/CSS/module fields, duplicate slots/options/IDs, reserved shell IDs, invalid defaults, bad answer keys, and invalid lesson references/conditions. The browser also validates definitions.
 - Individual canvas dimensions: 1–4096 pixels; combined area at most 16,777,216 pixels. Schema bounds also limit arrays and text lengths.
 - Global persisted quotas: **100 submissions/hour**, **500 pending**, **2,000 retained records**. Capacity/rate failures return `429`. These are not per-user quotas; an attacker can still exhaust the public queue. Archive records operationally when retention capacity is reached.
-- Review endpoints require a bearer token on every request. No cookie authentication or permissive CORS is enabled. API/catalog/submitted-module responses use `Cache-Control: no-store`; submitted JavaScript is served with its proper MIME type and `nosniff` only after publication. Pending, rejected, and withdrawn source is never available at public module routes.
+- Review endpoints require a bearer token on every request. Contributors authenticate with HttpOnly cookies and a same-origin request header; maintainers still use bearer tokens. No permissive CORS is enabled. API/catalog/submitted-module responses use `Cache-Control: no-store`; submitted JavaScript is served with its proper MIME type and `nosniff` only after publication. Pending, rejected, and withdrawn source is never available at public module routes.
 
-For an internet-facing deployment, terminate **HTTPS**, add reverse-proxy IP rate limits/request timeouts/connection limits, monitor queue capacity, and consider a CAPTCHA or contributor authentication if abuse warrants it. Never expose the repository-wide development file server. Do not embed credentials in physics engines, even approved ones.
+For an internet-facing deployment, terminate **HTTPS**, add reverse-proxy IP rate limits/request timeouts/connection limits, monitor queue capacity, and consider a CAPTCHA if abuse warrants it. Never expose the repository-wide development file server. Do not embed credentials in physics engines, even approved ones.
 
 ## Storage and deployment changes
 
-SQLite uses WAL and versioned initialization (`user_version = 1`). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
+SQLite uses WAL and versioned initialization (`user_version = 2`, including contributors, session digests, ownership, and authentication throttling). Database work runs on blocking workers, outside Axum's async executor. Insertion quotas and review transitions use immediate transactions, including when multiple processes share the same SQLite database.
 
 Back up with SQLite's backup facilities, for example:
 
@@ -92,7 +92,7 @@ When changing built-in definitions/engines, preserve the slot and choice-value c
 ## APIs and verification
 
 - `GET /api/submissions/config`, `GET /api/submissions/engines`: availability, limits, installed engine IDs.
-- `POST /api/submissions`: `{ definition, submittedBy?, engineId? | moduleCode? }`; returns `{ id, status: "pending" }`.
+- `POST /api/submissions` (contributor cookie and `X-CommonLab-Request: 1` required): `{ definition, submittedBy?, engineId? | moduleCode? }`; returns `{ id, status: "pending" }`.
 - `GET /api/admin/submissions?status=pending&before=<id>`: authenticated summary pages (20 records, `hasMore`).
 - `GET /api/admin/submissions/<id>`: authenticated definition/source detail.
 - `POST /api/admin/submissions/<id>/review`: authenticated `{ decision: "publish" | "reject" | "withdraw", codeReviewed?, note? }`.

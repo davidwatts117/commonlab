@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Contributor account — CommonLab</title><link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/simulation.css"><link rel="stylesheet" href="/authoring.css"></head>
+<body><header class="site-header"><div class="container nav-container"><a class="logo" href="/">◆ CommonLab</a><nav aria-label="Contributor navigation"><a href="/submit.html">Author a simulation</a></nav></div></header>
+<main class="container authoring-page"><h1>Contributor account</h1><p id="account-status" role="status">Checking your session…</p>
+<form id="account-form"><fieldset><legend>Sign in or create an account</legend>
+<label>Action<select id="account-action"><option value="login">Sign in</option><option value="register">Create account</option></select></label>
+<label>Username<input id="account-username" autocomplete="username" minlength="3" maxlength="32" required aria-describedby="username-help"></label>
+<p id="username-help">3–32 letters, digits, underscores or hyphens, starting with a letter. Usernames are case-insensitive.</p>
+<label>Password<input id="account-password" type="password" autocomplete="current-password" minlength="12" maxlength="256" required></label>
+<label id="confirm-label" hidden>Confirm password<input id="account-confirm" type="password" autocomplete="new-password" maxlength="256"></label>
+<p>Use at least 12 characters. There is no email verification or self-service password recovery yet; keep your password in a password manager.</p>
+<button id="account-submit" type="submit" class="sim-btn sim-btn--primary">Sign in</button></fieldset></form>
+<section id="account-signed-in" hidden><h2 id="account-name"></h2><p>Your new submissions are linked to this account. Accounts do not grant maintainer review privileges.</p><p><a href="/submit.html">Author a simulation →</a></p><button id="account-logout" type="button" class="sim-btn sim-btn--soft">Sign out</button></section>
+<p class="authoring-hint">Sessions use expiring HttpOnly cookies, not browser localStorage. Use HTTPS for a public deployment. Existing anonymous submissions cannot be claimed.</p>
+<noscript>Enable JavaScript to manage your contributor account.</noscript></main><script type="module" src="/account-page.mjs"></script></body></html>
