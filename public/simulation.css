@@ -1,5 +1,5 @@
 /* The only simulation-page stylesheet. Definitions cannot supply CSS or markup. */
-#simulation-root[hidden], .simulation-readouts[hidden] { display: none; }
+#simulation-root[hidden], #simulation-root [hidden], #simulation-status[hidden] { display: none !important; }
 .simulation-canvas { display: block; width: 100%; height: auto; border-radius: 8px; background: var(--sim-bg, #fafbfc); touch-action: none; }
 .simulation-canvas:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 3px; }
 .simulation-no-sidebar { grid-template-columns: minmax(0, 1fr); max-width: 1000px; }
@@ -26,6 +26,53 @@
 .simulation-dialog { max-width: min(560px, 90vw); border: 1px solid var(--sim-border); border-radius: 12px; padding: 1.5rem; line-height: 1.6; }
 .simulation-dialog::backdrop { background: rgba(0, 0, 0, .5); }
 .simulation-back { margin-top: 1.5rem; text-align: center; }
+/* Form fields: number inputs, checkbox groups and hints. */
+.simulation-field { display: flex; flex-direction: column; gap: .3rem; margin: .7rem 0; min-width: 0; }
+.simulation-inline { display: flex; align-items: center; gap: .4rem; }
+.simulation-inline input[type="number"] { width: 6rem; padding: .4rem .5rem; font: inherit; font-size: .85rem; font-weight: 600; border: 1px solid var(--sim-border-strong); border-radius: 6px; background: var(--sim-surface, #fff); }
+.simulation-unit { font-size: .8rem; font-weight: 700; color: var(--sim-faint); }
+.simulation-hint { font-size: .7rem; font-weight: 600; line-height: 1.3; color: var(--sim-faint); }
+.simulation-toggles { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: .7rem 0; }
+.simulation-toggle { display: flex; align-items: center; gap: .5rem; font-size: .83rem; font-weight: 600; color: var(--sim-text); cursor: pointer; }
+.simulation-toggle input { width: 16px; height: 16px; accent-color: var(--sim-accent); }
+/* Status text and dynamic tones set by modules through data-tone. */
+.simulation-note--message p, .simulation-note--alert p { padding: .6rem .75rem; border-radius: 8px; background: var(--sim-bg, #f8fafc); }
+.simulation-note--alert p { background: var(--sim-danger-soft); color: var(--sim-danger); font-weight: 600; }
+.simulation-note [data-tone="warn"], .simulation-hint[data-tone="warn"] { color: #b45309; }
+.simulation-note--message [data-tone="warn"] { background: #fffbeb; }
+.simulation-note--message [data-tone="ok"] { background: #f0fdfa; color: #0f766e; }
+.sim-readout[data-tone="warn"] { background: var(--sim-danger-soft); }
+.sim-readout[data-tone="warn"] .sim-readout__value { color: var(--sim-danger); }
+/* Module-filled regions and log tables. */
+.simulation-panel { margin: .7rem 0; padding: .6rem .75rem; min-height: 2.5rem; line-height: 1.6; font-size: .82rem; border: 1px solid var(--sim-border); border-radius: 8px; background: var(--sim-surface, #fff); }
+.simulation-panel-host { margin: .7rem 0; }
+.simulation-table-wrap { max-height: 230px; overflow-y: auto; margin-top: .5rem; border: 1px solid var(--sim-border); border-radius: 8px; }
+.simulation-table-wrap[hidden] { display: none; }
+.simulation-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.simulation-table th, .simulation-table td { padding: .3rem .4rem; text-align: center; border-bottom: 1px solid var(--sim-border); font-variant-numeric: tabular-nums; }
+.simulation-table th { position: sticky; top: 0; background: var(--sim-bg, #f8fafc); color: var(--sim-muted); font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; }
+.simulation-key { display: inline-block; border-left: 9px solid; padding-left: .4rem; margin-right: .75rem; font-size: .75rem; }
+.simulation-swatch { display: inline-block; width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--sim-border-strong); vertical-align: middle; }
+/* A sticky bar that keeps a primary action within reach of the canvas. */
+.simulation-dock { position: sticky; bottom: .75rem; z-index: 40; display: flex; justify-content: center; margin-top: .75rem; pointer-events: none; }
+.simulation-dock-inner { pointer-events: auto; display: flex; align-items: stretch; gap: .5rem; width: min(600px, 100%); padding: .4rem; border-radius: 14px; background: rgba(255, 255, 255, .94); box-shadow: 0 10px 30px rgba(15, 23, 42, .2); backdrop-filter: blur(10px); }
+.simulation-dock-inner .sim-btn--primary { flex: 1 1 auto; padding: .9rem; font-size: .95rem; user-select: none; -webkit-user-select: none; touch-action: none; }
+.simulation-dock-readout { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 78px; padding: .15rem .6rem; border-radius: 10px; background: var(--sim-accent-soft); }
+.simulation-dock-value { font-size: 1.15rem; font-weight: 800; color: var(--sim-accent); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.simulation-dock-label { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--sim-muted); }
+.simulation-dock-swatch { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--sim-border-strong); }
+.simulation-note--alert p:empty, .simulation-note--message p:empty, .simulation-dock-swatch[hidden], .simulation-dock-value[hidden] { display: none; }
+.sim-layout:fullscreen .simulation-dock { position: fixed; left: 0; right: 0; bottom: 1rem; z-index: 100; }
+/* Graph-level controls and fullscreen view tabs. */
+.simulation-graph-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: .5rem; }
+.simulation-graph-controls > * { margin: 0; }
+.simulation-views { display: none; grid-column: 1 / -1; gap: .5rem; align-items: center; justify-content: center; flex-wrap: wrap; }
+.fs-active .simulation-views { display: flex; }
+.fs-active .simulation-view-hidden { display: none !important; }
+.simulation-views > button { flex: 0 0 auto; }
+.simulation-views [role="tab"].is-active { background: var(--sim-accent); border-color: var(--sim-accent); color: #fff; }
+/* Leave room for the tab bar, graph heading and controls above the canvas. */
+.fs-active .simulation-graph:not(.simulation-view-hidden) canvas { max-height: calc(100vh - 15rem); width: auto; max-width: 96vw; margin: 0 auto; }
 @media (max-width: 600px) {
   .control-row { flex-wrap: wrap; }
   .simulation-info { width: 100%; text-align: left; }

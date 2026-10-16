@@ -100,25 +100,66 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.deepEqual(errors, []); await page.close();
     });
 
-    await t.test('Titration keeps instrumentation hidden until requested and resets added volume', async () => {
+    await t.test('Pendulum damping and force vectors are declared controls', async () => {
+      const { page, errors } = await pageFor('pendulum');
+      await page.locator('#dampingSlider').fill('0.25'); await page.locator('#dampingSlider').dispatchEvent('input');
+      assert.equal(await page.locator('#dampingValue').innerText(), '0.25 s⁻¹');
+      await page.locator('#forcesBtn').click(); assert.equal(await page.locator('#forcesBtn').innerText(), 'Hide Forces');
+      assert.equal(await page.locator('#angleGraphCanvas').isVisible(), true);
+      assert.deepEqual(errors, []); await page.close();
+    });
+
+    await t.test('Titration bench: held tap, auto-recorded log, real-lab mode and reset', async () => {
       const { page, errors } = await pageFor('titration');
-      assert.equal(await page.locator('#phReadouts').isVisible(), false);
-      await page.locator('#quickAdd [data-value="5.0"]').click(); assert.equal(await page.locator('#volumeAdded').innerText(), '5.00');
-      await page.locator('#pHToggle').click(); assert.equal(await page.locator('#phReadouts').isVisible(), true);
-      await page.locator('#scenarioPick [data-value="strong-weak"]').click();
-      assert.equal(await page.locator('#indicatorPick').inputValue(), 'methylorange');
-      await page.locator('#dripUp').click(); await page.locator('#resetBtn').click();
-      assert.equal(await page.locator('#volumeAdded').innerText(), '0.00');
+      await page.waitForFunction(() => document.getElementById('buretteReadout').textContent !== '--');
+      const start = Number(await page.locator('#buretteReadout').innerText());
+      assert.ok(start <= 0.6);
+      assert.equal(await page.locator('#dataBody tr').count(), 0);
+      assert.equal(await page.locator('#dataHint').isVisible(), true);
+      await page.locator('#showDataPts').check();
+      const tap = page.locator('#titrateBtn'); const box = await tap.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down();
+      await page.waitForTimeout(700);
+      assert.equal(await tap.innerText(), 'Release to stop');
+      await page.mouse.up();
+      assert.ok(Number(await page.locator('#buretteReadout').innerText()) > start);
+      assert.equal(await page.locator('#dataBody tr').count(), 1);
+      assert.equal(await page.locator('#dataHint').isVisible(), false);
+      assert.equal(await page.locator('#logThirdHead').innerText(), 'PH');
+      await page.locator('#realLab').check();
+      assert.equal(await page.locator('#phReadout').isVisible(), false);
+      assert.equal(await page.locator('#showEqPt').isVisible(), false);
+      assert.equal(await page.locator('#dockSwatch').isVisible(), true);
+      assert.equal(await page.locator('#dockPHLabel').innerText(), 'COLOUR');
+      assert.equal(await page.locator('#dataBody .simulation-swatch').count(), 1);
+      await page.locator('#realLab').uncheck(); assert.equal(await page.locator('#phReadout').isVisible(), true);
+      // Reset refills the burette to a fresh random zero reading (0.00–0.60 mL); with auto-record
+      // on, the new log starts with that starting reading as its only row.
+      await page.locator('#resetBtn').click();
+      await page.waitForFunction(() => Number(document.getElementById('buretteReadout').textContent) <= 0.6);
+      assert.equal(await page.locator('#dataBody tr').count(), 1);
+      assert.equal(await page.locator('#dataBody tr td').nth(1).innerText(), await page.locator('#buretteReadout').innerText());
+      await page.locator('#acidSelect').selectOption('Acetic acid'); await page.locator('#baseSelect').selectOption('Ammonia');
+      assert.equal(await tap.isDisabled(), true);
+      assert.equal(await page.locator('#titrMessage').getAttribute('data-tone'), 'warn');
+      await page.locator('#titrantPick [data-value="acid"]').click();
+      assert.equal(await page.locator('#titrantPick [data-value="acid"]').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(errors, []); await page.close();
     });
 
     await t.test('Circuit tools and presets, matter substances, and nucleus fallback remain interactive', async () => {
       let result = await pageFor('circuits');
       await result.page.locator('#presetParallel').click();
-      assert.ok(Number(await result.page.locator('#current').innerText()) > 0);
+      await result.page.waitForFunction(() => Number(document.getElementById('current').textContent) > 0);
+      assert.equal(await result.page.locator('#selRange').isVisible(), false);
+      assert.match(await result.page.locator('#selectedPanel').innerText(), /Select a part/);
       await result.page.locator('#tools [data-value="wire"]').click();
       assert.equal(await result.page.locator('#tools [data-value="wire"]').getAttribute('aria-pressed'), 'true');
-      await result.page.locator('#clearBtn').click(); assert.equal(Number(await result.page.locator('#current').innerText()), 0);
+      await result.page.locator('#showValues').check();
+      await result.page.locator('#clearBtn').click();
+      await result.page.waitForFunction(() => Number(document.getElementById('current').textContent) === 0);
+      assert.equal(await result.page.locator('#tools [data-value="select"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await result.page.locator('#warning').isVisible(), false);
       assert.deepEqual(result.errors, []); await result.page.close();
       result = await pageFor('states-of-matter');
       await result.page.locator('#substancePick [data-value="neon"]').click();
@@ -130,6 +171,10 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       result = await pageFor('build-a-nucleus');
       await result.page.waitForFunction(() => !document.getElementById('btnNeutronPlus').disabled);
       await result.page.locator('#btnNeutronPlus').click(); assert.equal(await result.page.locator('#neutronCount').innerText(), '7');
+      assert.equal(await result.page.locator('#buildTabs').isVisible(), false);
+      assert.match(await result.page.locator('#chartLegend').innerText(), /Stable/);
+      await result.page.locator('#chartModePick [data-value="decay"]').click();
+      assert.match(await result.page.locator('#chartLegend').innerText(), /decay/);
       assert.deepEqual(result.errors, []); await result.page.close();
     });
 

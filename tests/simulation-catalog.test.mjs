@@ -103,6 +103,40 @@ test('approved component slots render labels and untrusted strings as plain text
   ui.destroy(); assert.equal(root.children.length, 0);
 });
 
+test('extended components validate cross-field rules and slot ids wherever they are nested', () => {
+  const byId = id => clone(catalog.simulations.find(def => def.id === id));
+  const bad = [
+    ['titration', d => { d.controls.find(c => c.type === 'number').value = 99; }, /range/],
+    ['titration', d => { d.controls.find(c => c.type === 'toggles').items[0].id = d.canvas.id; }, /duplicate slot/],
+    ['titration', d => { d.controls.find(c => c.type === 'dock').swatch.id = 'phReadout'; }, /duplicate slot/],
+    ['titration', d => { d.cards[0].components[0].columns[2].id = 'phReadout'; }, /duplicate slot/],
+    ['titration', d => { d.cards[0].components.push({ type: 'raw-html', html: '<b>x</b>' }); }, /unknown component/],
+    ['titration', d => { d.controls.find(c => c.type === 'text').style = 'banner'; }, /text style/],
+    ['build-a-nucleus', d => { d.views.value = 'missing'; }, /initial selection/],
+    ['build-a-nucleus', d => { d.graphs[0].view = 'missing'; }, /declared views/],
+    ['build-a-nucleus', d => { delete d.views; }, /declared views/],
+    ['build-a-nucleus', d => { d.graphs[0].controls[1].id = 'simulation-root'; }, /reserved/],
+  ];
+  for (const [id, mutate, message] of bad) {
+    const definition = byId(id); mutate(definition);
+    assert.throws(() => validateDefinition(definition), message, `${id}: ${message}`);
+  }
+});
+
+test('module-filled panels and tables receive text parts, never markup', () => {
+  const document = documentWithDialogs(); const root = rootFor(document);
+  const ui = renderSimulation(root, catalog.simulations.find(def => def.id === 'titration'));
+  ui.setContent('titrMessage', ['<img src=x>', { strong: true, text: '<b>5 mL</b>' }]);
+  assert.ok(ui.getElementById('titrMessage').textContent.includes('<img src=x>'));
+  assert.equal(root.querySelectorAll('img').length, 0);
+  ui.setRows('dataBody', [['1', '0.50', { swatch: 'rgb(1, 2, 3)', text: 'colour' }]]);
+  assert.equal(ui.getElementById('dataBody').children.length, 1);
+  assert.equal(ui.getElementById('dataBody').children[0].children.length, 3);
+  assert.equal(ui.getElementById('dockSwatch').hidden, true);
+  assert.throws(() => ui.setContent('undeclared', 'x'), /Missing declared UI slot/);
+  ui.destroy();
+});
+
 test('preview slot IDs are namespaced while UI bindings and labels remain consistent', () => {
   const document = documentWithDialogs(); const root = rootFor(document);
   const ui = renderSimulation(root, catalog.simulations[0], { idPrefix: 'review-preview-' });

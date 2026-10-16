@@ -15,7 +15,7 @@ function number(value, context) { if (!Number.isFinite(value)) fail(`${context} 
 function strings(value, context) { list(value, context); value.forEach(x => text(x, context)); }
 
 export function validateDefinition(def) {
-  object(def, ['id', 'title', 'subject', 'summary', 'canvas', 'controls', 'cards', 'graphs', 'lessons', 'assessment', 'info'], 'simulation');
+  object(def, ['id', 'title', 'subject', 'summary', 'canvas', 'controls', 'cards', 'graphs', 'lessons', 'assessment', 'info', 'views'], 'simulation');
   if (!slug(def.id)) fail('id must be a lowercase slug');
   text(def.title, 'title'); text(def.summary, 'summary');
   if (!['physics', 'chemistry'].includes(def.subject)) fail('subject must be physics or chemistry');
@@ -35,9 +35,9 @@ export function validateDefinition(def) {
     if (!['primary', 'ghost', 'soft', 'outline', 'display'].includes(value.variant)) fail('unknown button variant');
     boolean(value.active, 'active'); boolean(value.pressed, 'pressed');
   }
-  function options(value, selection) {
+  function options(value, selection, max = 30) {
     list(value, 'options');
-    if (value.length < 2) fail('at least two options required');
+    if (value.length < 2 || value.length > max) fail(`between two and ${max} options required`);
     const seen = new Set();
     for (const option of value) {
       object(option, ['value', 'label'], 'option'); text(option.value, 'option value'); text(option.label, 'option label');
@@ -45,9 +45,19 @@ export function validateDefinition(def) {
       seen.add(option.value);
     }
     if (!seen.has(selection)) fail('initial selection is not an option');
+    return seen;
+  }
+  function range(value, context) {
+    for (const key of ['min', 'max', 'step', 'value']) number(value[key], key);
+    if (value.min >= value.max || value.step <= 0 || value.value < value.min || value.value > value.max) fail(`invalid ${context} range/default`);
+  }
+  function components(value, context) {
+    list(value, context);
+    if (value.length > 10) fail(`${context} allows at most 10 components`);
+    value.forEach(component);
   }
   function canvas(value, primary = false) {
-    object(value, primary ? ['id', 'label', 'width', 'height'] : ['id', 'label', 'width', 'height', 'legend', 'caption'], 'canvas');
+    object(value, primary ? ['id', 'label', 'width', 'height'] : ['id', 'label', 'width', 'height', 'legend', 'caption', 'controls', 'view'], 'canvas');
     id(value.id); text(value.label, 'canvas label');
     for (const dimension of ['width', 'height']) {
       if (!Number.isInteger(value[dimension]) || value[dimension] < 1 || value[dimension] > 4096) fail('canvas dimensions must be integers from 1 to 4096');
@@ -62,19 +72,23 @@ export function validateDefinition(def) {
         if (typeof item.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(item.color)) fail('legend color must be a six-digit hex color');
       }
     }
+    if (value.controls !== undefined) components(value.controls, 'graph controls');
+    if (value.view !== undefined && !views?.has(value.view)) fail('graph view must be one of the declared views');
   }
-  canvas(def.canvas, true);
-  list(def.controls, 'controls');
-  for (const control of def.controls) {
-    switch (control.type) {
+  function component(control) {
+    switch (control?.type) {
       case 'slider':
         object(control, ['type', 'id', 'label', 'min', 'max', 'step', 'value', 'output', 'icons', 'info'], 'slider');
-        id(control.id); text(control.label, 'slider label');
-        for (const key of ['min', 'max', 'step', 'value']) number(control[key], key);
-        if (control.min >= control.max || control.step <= 0 || control.value < control.min || control.value > control.max) fail('invalid slider range/default');
+        id(control.id); text(control.label, 'slider label'); range(control, 'slider');
         if (control.output) output(control.output);
         if (control.icons) { list(control.icons, 'icons'); if (control.icons.length !== 2) fail('slider has two icons'); control.icons.forEach(output); }
         if (control.info !== undefined && (!def.info || !Object.hasOwn(def.info, control.info))) fail('unknown info reference');
+        break;
+      case 'number':
+        object(control, ['type', 'id', 'label', 'min', 'max', 'step', 'value', 'unit', 'hint'], 'number');
+        id(control.id); text(control.label, 'number label'); range(control, 'number');
+        if (control.unit !== undefined) text(control.unit, 'unit');
+        if (control.hint) output(control.hint);
         break;
       case 'actions':
         object(control, ['type', 'buttons'], 'actions'); list(control.buttons, 'buttons'); control.buttons.forEach(button);
@@ -84,6 +98,14 @@ export function validateDefinition(def) {
         object(control, control.type === 'choices' ? ['type', 'id', 'label', 'style', 'options', 'value'] : ['type', 'id', 'label', 'options', 'value'], control.type);
         id(control.id); text(control.label, 'choice label'); options(control.options, control.value);
         if (control.type === 'choices' && !['toolbar', 'segments', 'chips'].includes(control.style)) fail('unknown choice style');
+        break;
+      case 'toggles':
+        object(control, ['type', 'id', 'items'], 'toggles'); if (control.id !== undefined) id(control.id);
+        list(control.items, 'toggle items');
+        if (!control.items.length || control.items.length > 20) fail('toggles need one to 20 items');
+        for (const item of control.items) {
+          object(item, ['id', 'label', 'checked'], 'toggle'); id(item.id); text(item.label, 'toggle label'); boolean(item.checked, 'checked');
+        }
         break;
       case 'readouts':
         object(control, ['type', 'id', 'hidden', 'items'], 'readouts'); if (control.id !== undefined) id(control.id);
@@ -95,8 +117,36 @@ export function validateDefinition(def) {
         }
         break;
       case 'text':
-        object(control, ['type', 'id', 'label', 'text'], 'text'); if (control.id !== undefined) id(control.id);
+        object(control, ['type', 'id', 'label', 'text', 'style', 'hidden'], 'text'); if (control.id !== undefined) id(control.id);
         text(control.text, 'text', true); if (control.label !== undefined) text(control.label, 'text label');
+        if (control.style !== undefined && !['note', 'message', 'alert'].includes(control.style)) fail('unknown text style');
+        boolean(control.hidden, 'hidden');
+        break;
+      case 'panel':
+        object(control, ['type', 'id', 'label', 'text'], 'panel'); id(control.id);
+        text(control.text, 'panel text', true); if (control.label !== undefined) text(control.label, 'panel label');
+        break;
+      case 'table':
+        object(control, ['type', 'id', 'label', 'columns', 'empty', 'hidden'], 'table'); id(control.id);
+        if (control.label !== undefined) text(control.label, 'table label');
+        list(control.columns, 'columns');
+        if (!control.columns.length || control.columns.length > 10) fail('tables need one to 10 columns');
+        for (const column of control.columns) {
+          object(column, ['id', 'label'], 'column'); if (column.id !== undefined) id(column.id); text(column.label, 'column label');
+        }
+        if (control.empty) output(control.empty);
+        boolean(control.hidden, 'hidden');
+        break;
+      case 'dock':
+        object(control, ['type', 'readout', 'swatch', 'buttons'], 'dock');
+        if (control.readout) {
+          object(control.readout, ['id', 'label', 'value'], 'dock readout'); id(control.readout.id);
+          output(control.readout.label); text(control.readout.value, 'dock readout value', true);
+        }
+        if (control.swatch !== undefined) { object(control.swatch, ['id'], 'dock swatch'); id(control.swatch.id); }
+        list(control.buttons, 'dock buttons');
+        if (!control.buttons.length || control.buttons.length > 5) fail('docks need one to five buttons');
+        control.buttons.forEach(button);
         break;
       case 'stepper':
         object(control, ['type', 'label', 'output', 'decrease', 'increase'], 'stepper'); text(control.label, 'stepper label'); output(control.output);
@@ -105,13 +155,23 @@ export function validateDefinition(def) {
       case 'meter':
         object(control, ['type', 'id', 'label', 'output', 'ticks'], 'meter'); id(control.id); text(control.label, 'meter label'); output(control.output); strings(control.ticks, 'ticks');
         break;
-      default: fail(`unknown component type: ${control.type}`);
+      default: fail(`unknown component type: ${control?.type}`);
     }
   }
+  // Views are fullscreen tabs: the first shows the main canvas and controls; graphs may name another.
+  let views = null;
+  if (def.views !== undefined) {
+    object(def.views, ['id', 'value', 'options'], 'views'); id(def.views.id);
+    views = options(def.views.options, def.views.value, 6);
+  }
+  canvas(def.canvas, true);
+  list(def.controls, 'controls');
+  def.controls.forEach(component);
   list(def.graphs, 'graphs'); def.graphs.forEach(value => canvas(value));
   list(def.cards, 'cards');
   for (const card of def.cards) {
-    object(card, ['title', 'formulas', 'paragraphs'], 'card'); text(card.title, 'card title'); strings(card.formulas, 'formulas'); strings(card.paragraphs, 'paragraphs');
+    object(card, ['title', 'formulas', 'paragraphs', 'components'], 'card'); text(card.title, 'card title'); strings(card.formulas, 'formulas'); strings(card.paragraphs, 'paragraphs');
+    if (card.components !== undefined) components(card.components, 'card components');
   }
   if (def.info !== undefined) {
     if (!def.info || typeof def.info !== 'object' || Array.isArray(def.info)) fail('info must be a map');

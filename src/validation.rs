@@ -42,7 +42,7 @@ pub fn validate(def: &Value) -> Result<(), String> {
         }
         Ok(())
     }
-    for key in ["canvas", "controls", "graphs"] {
+    for key in UI_KEYS {
         collect(&def[key], &mut slots)?;
     }
     // JSON Schema integers may be encoded as 700.0; serde's as_u64 rejects that representation.
@@ -57,13 +57,30 @@ pub fn validate(def: &Value) -> Result<(), String> {
     if pixels > 16_777_216.0 {
         return Err("Combined canvas area exceeds 16,777,216 pixels".into());
     }
-    for control in def["controls"].as_array().unwrap() {
-        if control["type"] == "slider" {
+    let views: Option<Vec<&Value>> = def.get("views").map(|views| {
+        let options = views["options"].as_array().unwrap();
+        options.iter().map(|option| &option["value"]).collect()
+    });
+    if let Some(views) = &views {
+        unique(def["views"]["options"].as_array().unwrap(), "value")?;
+        if !views.contains(&&def["views"]["value"]) {
+            return Err("Initial view is not an option".into());
+        }
+    }
+    for graph in def["graphs"].as_array().unwrap() {
+        if let Some(view) = graph.get("view")
+            && !views.as_ref().is_some_and(|views| views.contains(&view))
+        {
+            return Err("Graph view must be one of the declared views".into());
+        }
+    }
+    for control in components(def) {
+        if control["type"] == "slider" || control["type"] == "number" {
             let min = control["min"].as_f64().unwrap();
             let max = control["max"].as_f64().unwrap();
             let value = control["value"].as_f64().unwrap();
             if min >= max || value < min || value > max {
-                return Err("Invalid slider range or initial value".into());
+                return Err("Invalid slider or number range or initial value".into());
             }
             if let Some(info) = control.get("info").and_then(Value::as_str)
                 && def.get("info").and_then(|map| map.get(info)).is_none()
@@ -145,6 +162,31 @@ pub fn validate(def: &Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Every part of a definition that declares UI slots.
+const UI_KEYS: [&str; 5] = ["canvas", "controls", "graphs", "cards", "views"];
+
+/// Top-level controls plus components nested in graphs and sidebar cards.
+fn components(def: &Value) -> impl Iterator<Item = &Value> {
+    let nested = |key: &'static str| {
+        def[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|holder| {
+                holder["components"]
+                    .as_array()
+                    .or(holder["controls"].as_array())
+            })
+            .flatten()
+    };
+    def["controls"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .chain(nested("graphs"))
+        .chain(nested("cards"))
+}
+
 /// Installed modules bind to concrete slot roles and option values, not arbitrary layouts.
 pub fn engine_contract(def: &Value, builtin: &Value) -> Result<(), String> {
     validate(def)?;
@@ -173,7 +215,7 @@ pub fn engine_contract(def: &Value, builtin: &Value) -> Result<(), String> {
     }
     let mut required = std::collections::HashMap::new();
     let mut supplied = std::collections::HashMap::new();
-    for key in ["canvas", "controls", "graphs"] {
+    for key in UI_KEYS {
         bindings(&builtin[key], key, &mut required);
         bindings(&def[key], key, &mut supplied);
     }
@@ -293,6 +335,51 @@ mod tests {
                 *def.pointer_mut(path).unwrap() = value;
             }
             assert!(validate(&def).is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn extended_components_are_checked_wherever_they_are_nested() {
+        let catalog: Value =
+            serde_json::from_str(include_str!("../public/simulations/catalog.json")).unwrap();
+        let by_id = |id: &str| {
+            catalog["simulations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|def| def["id"] == id)
+                .unwrap()
+                .clone()
+        };
+        type Mutation = fn(&mut Value);
+        let cases: [(&str, Mutation); 7] = [
+            ("titration", |d| {
+                d["controls"][1]["value"] = serde_json::json!(99)
+            }),
+            ("titration", |d| {
+                d["controls"][6]["items"][0]["id"] = serde_json::json!("titrCanvas")
+            }),
+            ("titration", |d| {
+                d["cards"][0]["components"][0]["columns"][2]["id"] = serde_json::json!("phReadout")
+            }),
+            ("titration", |d| {
+                d["controls"][10]["swatch"]["id"] = serde_json::json!("simulation-root")
+            }),
+            ("build-a-nucleus", |d| {
+                d["views"]["value"] = serde_json::json!("missing")
+            }),
+            ("build-a-nucleus", |d| {
+                d["graphs"][0]["view"] = serde_json::json!("missing")
+            }),
+            ("build-a-nucleus", |d| {
+                d.as_object_mut().unwrap().remove("views");
+            }),
+        ];
+        for (index, (id, mutate)) in cases.into_iter().enumerate() {
+            let mut def = by_id(id);
+            validate(&def).unwrap();
+            mutate(&mut def);
+            assert!(validate(&def).is_err(), "case {index} ({id}) was accepted");
         }
     }
 }

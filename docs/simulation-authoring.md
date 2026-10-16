@@ -56,11 +56,18 @@ Simulation IDs are lowercase slugs, up to 80 characters; the module filename is 
 | `choices` | `id`, `label`, `style` (`toolbar`, `segments`, `chips`), `options: [{value,label}]`, initial `value` |
 | `select` | `id`, `label`, `options: [{value,label}]`, initial `value` |
 | `readouts` | optional group `id` and `hidden`; `items: [{id,label,value,tone}]`, tones: `default`, `highlight`, `success` |
-| `text` | `text`, optional `id` and `label` for dynamic notes |
+| `text` | `text`, optional `id` and `label` for dynamic notes; optional `style` (`note`, `message`, `alert`) and `hidden` |
+| `number` | `id`, `label`, numeric `min/max/step/value`; optional `unit` text and `hint: {id,text}` |
+| `toggles` | optional group `id`; `items: [{id,label,checked?}]` rendered as checkboxes |
+| `panel` | `id`, initial `text`, optional `label`; a region the module fills with `ui.setContent` |
+| `table` | `id` (the table body), `columns: [{id?,label}]`, optional `label`, `empty: {id,text}` hint and `hidden` |
+| `dock` | `buttons` (1–5), optional `readout: {id, value, label: {id,text}}` and `swatch: {id}`; a bar pinned below the canvas while scrolling |
 | `stepper` | `label`, `output: {id,text}`, `increase` button, optional `decrease` button |
 | `meter` | `id` for the fill, `label`, `output: {id,text}`, `ticks: [text]` |
 
-`cards` contains `{title, formulas: [text], paragraphs: [text]}`. Content is plain text, including mathematical notation; HTML is never interpreted. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, and optional `legend: [{label,color}]` (six-digit hex colors).
+`cards` contains `{title, formulas: [text], paragraphs: [text]}`, plus optional `components` (up to 10 of the components above, such as a log `table`). Content is plain text, including mathematical notation; HTML is never interpreted. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, optional `legend: [{label,color}]` (six-digit hex colors), and optional `controls` (up to 10 components shown above that canvas).
+
+Optional top-level `views: {id, value, options: [{value,label}]}` declares fullscreen tabs. The first option shows the main canvas and controls; a graph with `view` set to another option is shown on its own tab. Outside fullscreen every view stays visible. The tab group's `.value` holds the current view and it dispatches `change` when a tab is chosen.
 
 For information dialogs, define `info: {key: {title,formula,explanation,detail}}` and reference the key from a slider. The shell provides the accessible native dialog and focus restoration.
 
@@ -95,7 +102,7 @@ export function mount(ui) {
 }
 ```
 
-`ui` provides `definition`, `getElementById(id)` (throws for undeclared slots), and scoped `querySelector/querySelectorAll`. Choice buttons have `data-value`; selectors/classes are supplied by the shared renderer. Choice groups expose their current `.value`. `ui.addEventListener('keydown', handler)` only forwards events originating on a declared, focused canvas, preventing shortcuts from hijacking controls or answers. Read defaults from the generated controls. Readout updates use `textContent`; modules must not construct page UI or inject markup.
+`ui` provides `definition`, `getElementById(id)` (throws for undeclared slots), and scoped `querySelector/querySelectorAll`. For dynamic rich text, `ui.setContent(id, parts)` fills a declared slot and `ui.setRows(id, rows)` fills a declared table body (rows are arrays of cells). A part is a string or `{text, strong?, sup?, color?, key?, swatch?}`: `key` draws a legend colour bar and `swatch` a colour square; the shell builds the elements, so modules never write markup. Hide or reveal a declared slot with its `hidden` property. Choice buttons have `data-value`; selectors/classes are supplied by the shared renderer. Choice groups expose their current `.value`. `ui.addEventListener('keydown', handler)` only forwards events originating on a declared, focused canvas, preventing shortcuts from hijacking controls or answers. Read defaults from the generated controls. Readout updates use `textContent`; modules must not construct page UI or inject markup.
 
 Modules are trusted application code, **not a security sandbox**. They own simulation state, input bindings, physics, and canvas drawing. The shell owns page chrome, controls, explanations, graphs' containers, error states, fullscreen, learning UI, and page lifecycle. Avoid module-level side effects; initialize only inside `mount(ui)`.
 

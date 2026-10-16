@@ -24,6 +24,7 @@ export function mount(ui) {
             this.paused = false; this.showTrace = true; this.tracePoints = [];
             this.periodTimer = 0; this.lastSign = null; this.measuredPeriod = null; this._crossingTimes = [];
             this.simTime = 0; this.energyHistory = [];
+            this.damping = 0; this.showForces = false; this.angleHistory = [];
             this._uiAccum = 0;
 
             // DOM refs
@@ -50,6 +51,11 @@ export function mount(ui) {
             this.W = this.logical.w;
             this.H = this.logical.h;
             this.graphCtx = graphCanvas.getContext('2d');
+            this.dampingSlider = document.getElementById('dampingSlider');
+            this.dampingValue  = document.getElementById('dampingValue');
+            this.forcesBtn     = document.getElementById('forcesBtn');
+            this.angleGraphCanvas = document.getElementById('angleGraphCanvas');
+            this.angleGraphCtx = this.angleGraphCanvas.getContext('2d');
 
             // wire controls
             const resetPeriod = () => { this._crossingTimes = []; this.measuredPeriod = null; this.periodTimer = 0; this.lastSign = null; };
@@ -58,6 +64,8 @@ export function mount(ui) {
             SimLib.UI.bindSlider(this.dragSlider, { output: this.dragValue, format: v => v.toFixed(2), oninput: v => { this.cd = v; } });
             SimLib.UI.bindSlider(this.gravitySlider, { output: this.gravityValue, format: v => v.toFixed(1) + ' m/s²', oninput: v => { this.gravity = v; resetPeriod(); } });
             SimLib.UI.bindSlider(this.angleSlider, { output: this.angleValue, format: v => v + '°', oninput: v => { this.angle = v * Math.PI / 180; this.angularVel = 0; resetPeriod(); this.tracePoints = []; this._resetEnergy(); } });
+            SimLib.UI.bindSlider(this.dampingSlider, { output: this.dampingValue, format: v => v.toFixed(2) + ' s⁻¹', oninput: v => { this.damping = v; } });
+            this.forcesBtn.addEventListener('click', () => { this.showForces = !this.showForces; this.forcesBtn.textContent = this.showForces ? 'Hide Forces' : 'Show Forces'; this.forcesBtn.classList.toggle('is-active', this.showForces); });
             this.pauseBtn.addEventListener('click', () => { this.paused = !this.paused; this.pauseBtn.textContent = this.paused ? 'Resume' : 'Pause'; });
             this.resetBtn.addEventListener('click', () => { this.angularVel = 0; const deg = +this.angleSlider.value; this.angle = deg * Math.PI / 180; this._crossingTimes = []; this.measuredPeriod = null; this.periodTimer = 0; this.lastSign = null; this.tracePoints = []; this._resetEnergy(); });
             this.traceBtn.addEventListener('click', () => { this.showTrace = !this.showTrace; this.traceBtn.textContent = this.showTrace ? 'Show Trace' : 'Hide Trace'; this.traceBtn.classList.toggle('is-active', this.showTrace); if (!this.showTrace) this.tracePoints = []; });
@@ -98,6 +106,7 @@ export function mount(ui) {
             this.thermalEnergy = 0;
             this.simTime = 0;
             this.energyHistory = [];
+            this.angleHistory = [];
         }
 
         _computeEnergy() { const bob = this._bobPos(); const bobBaseY = this.PIVOT_Y + this.length * this.PX_PER_METER; const h = Math.max(0, (bobBaseY - bob.y) / this.PX_PER_METER); const speed = Math.abs(this.angularVel) * this.length; const ke = 0.5 * this.mass * speed * speed; const pe = this.mass * this.gravity * h; return { ke, pe, thermal: this.thermalEnergy, total: ke + pe + this.thermalEnergy }; }
@@ -133,13 +142,15 @@ export function mount(ui) {
                 const angularDampingAcc = dragTorque / (this.mass * this.length * this.length);
 
                 const gravityAlpha = -(this.gravity / this.length) * Math.sin(this.angle);
-                const alpha = gravityAlpha - angularDampingAcc;
+                const alpha = gravityAlpha - angularDampingAcc - this.damping * this.angularVel;
 
                 this.angularVel += alpha * subDt;
                 this.angle += this.angularVel * subDt;
 
                 // Dissipated power = drag force * velocity -> thermal
                 this.thermalEnergy += Math.abs(dragForce * v) * subDt;
+                // Linear damping also dissipates energy: P = I * b * omega^2
+                this.thermalEnergy += this.mass * this.length * this.length * this.damping * this.angularVel * this.angularVel * subDt;
             }
 
             this._trackPeriod(dt);
@@ -155,6 +166,13 @@ export function mount(ui) {
             const cutoff = this.simTime - GRAPH_WINDOW_S - GRAPH_TRIM_PAD_S;
             while (this.energyHistory.length > 2 && this.energyHistory[0].t < cutoff) {
                 this.energyHistory.shift();
+            }
+
+            // Record the angle for the angle-vs-time graph (8 s window)
+            this.angleHistory.push({ t: this.simTime, a: this.angle * 180 / Math.PI });
+            const angleCutoff = this.simTime - 8;
+            while (this.angleHistory.length > 2 && this.angleHistory[0].t < angleCutoff) {
+                this.angleHistory.shift();
             }
 
             // trace
@@ -200,7 +218,80 @@ export function mount(ui) {
             const speed = Math.abs(this.angularVel * this.length);
             if (speed > 0.02) { const vDir = Math.sign(this.angularVel); const dc = SimLib.Color.parse(T.danger); ctx.fillStyle = `rgba(${dc.r}, ${dc.g}, ${dc.b}, 0.75)`; ctx.font = T.font(9, 'bold'); ctx.textAlign = 'center'; ctx.fillText(speed.toFixed(1) + ' m/s', bob.x, bob.y + bobR + 16); ctx.strokeStyle = `rgba(${dc.r}, ${dc.g}, ${dc.b}, 0.6)`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bob.x - vDir * 10, bob.y); ctx.lineTo(bob.x, bob.y); ctx.stroke(); }
             if (this.paused) { ctx.fillStyle = 'rgba(0,0,0,0.05)'; ctx.fillRect(0,0,W,H); ctx.fillStyle = T.muted; ctx.font = T.font(24, 'bold'); ctx.textAlign = 'center'; ctx.fillText('PAUSED', W/2, H/2 + 30); }
+            // force vectors (Show Forces)
+            if (this.showForces) {
+                const stringLen = this.length * this.PX_PER_METER;
+                const tension = this.mass * (this.gravity * Math.cos(this.angle) + speed * speed / this.length);
+                const gravLen = Math.min(this.mass * this.gravity * 3.0, 110);
+                this._drawArrow(bob.x, bob.y, bob.x, bob.y + gravLen, T.danger, 'mg');
+                const ux = (this.PIVOT_X - bob.x) / stringLen;
+                const uy = (this.PIVOT_Y - bob.y) / stringLen;
+                const tenLen = Math.min(tension * 3.0, 110);
+                this._drawArrow(bob.x, bob.y, bob.x + ux * tenLen, bob.y + uy * tenLen, '#2f7d32', 'T');
+            }
             this.drawEnergyGraph();
+            this.drawAngleGraph();
+        }
+
+        /** Draw a labelled force vector arrow. */
+        _drawArrow(x1, y1, x2, y2, color, label) {
+            const ctx = this.ctx;
+            const dx = x2 - x1, dy = y2 - y1;
+            const len = Math.hypot(dx, dy);
+            if (len < 1) return;
+            ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            const ang = Math.atan2(dy, dx); const head = 9;
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - head * Math.cos(ang - 0.4), y2 - head * Math.sin(ang - 0.4));
+            ctx.lineTo(x2 - head * Math.cos(ang + 0.4), y2 - head * Math.sin(ang + 0.4));
+            ctx.closePath(); ctx.fill();
+            if (label) { ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(label, x2 + (dx >= 0 ? 14 : -14), y2 + (dy >= 0 ? 12 : -6)); }
+        }
+
+        /** Angle-vs-time line graph on an 8 s rolling window. */
+        drawAngleGraph() {
+            const g = this.angleGraphCtx;
+            if (!g) return;
+            const gW = this.angleGraphCanvas.width, gH = this.angleGraphCanvas.height;
+            g.clearRect(0, 0, gW, gH);
+            g.fillStyle = '#f8f9fa'; g.fillRect(0, 0, gW, gH);
+
+            const padL = 42, padR = 10, padT = 10, padB = 20;
+            const plotW = gW - padL - padR, plotH = gH - padT - padB;
+            const x0 = padL;
+
+            let amp = Math.max(5, Math.abs(this.angleDeg));
+            for (const p of this.angleHistory) amp = Math.max(amp, Math.abs(p.a));
+            amp = Math.min(90, amp * 1.12);
+
+            g.strokeStyle = '#e2e6ea'; g.lineWidth = 1;
+            g.beginPath(); g.moveTo(x0, padT + plotH / 2); g.lineTo(x0 + plotW, padT + plotH / 2); g.stroke();
+            g.strokeStyle = '#cfd6dd';
+            g.beginPath(); g.moveTo(x0, padT); g.lineTo(x0, padT + plotH); g.stroke();
+
+            g.fillStyle = '#9aa3ad'; g.font = T.font(9);
+            g.textAlign = 'right'; g.textBaseline = 'middle';
+            g.fillText(Math.round(amp) + '°', x0 - 4, padT + 8);
+            g.fillText('0°', x0 - 4, padT + plotH / 2);
+            g.fillText('-' + Math.round(amp) + '°', x0 - 4, padT + plotH - 8);
+            g.textAlign = 'center'; g.textBaseline = 'top';
+            g.fillText('time (s)', x0 + plotW / 2, gH - 14);
+
+            const window = 8, t0 = this.simTime - window;
+            if (this.angleHistory.length > 1) {
+                g.strokeStyle = '#4a6fa5'; g.lineWidth = 1.8;
+                g.beginPath();
+                let first = true;
+                for (const p of this.angleHistory) {
+                    if (p.t < t0) continue;
+                    const x = x0 + ((p.t - t0) / window) * plotW;
+                    const y = padT + plotH / 2 - (p.a / amp) * (plotH / 2);
+                    if (first) { g.moveTo(x, y); first = false; } else { g.lineTo(x, y); }
+                }
+                g.stroke();
+            }
         }
 
         /** Energy-vs-time line graph (K, P, Thermal, Total) on the rolling window. */

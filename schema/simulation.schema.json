@@ -51,6 +51,14 @@
             },
             "minItems": 0,
             "maxItems": 30
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/component"
+            },
+            "minItems": 0,
+            "maxItems": 10
           }
         },
         "required": [
@@ -112,6 +120,31 @@
         "additionalProperties": false
       },
       "maxProperties": 50
+    },
+    "views": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slot"
+        },
+        "value": {
+          "$ref": "#/$defs/text"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/option"
+          },
+          "minItems": 2,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "options"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -282,6 +315,17 @@
           },
           "minItems": 0,
           "maxItems": 20
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/component"
+          },
+          "minItems": 0,
+          "maxItems": 10
+        },
+        "view": {
+          "$ref": "#/$defs/text"
         }
       },
       "required": [
@@ -506,6 +550,16 @@
             },
             "text": {
               "$ref": "#/$defs/content"
+            },
+            "style": {
+              "enum": [
+                "note",
+                "message",
+                "alert"
+              ]
+            },
+            "hidden": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -571,6 +625,211 @@
             "label",
             "output",
             "ticks"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "number"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "value": {
+              "type": "number"
+            },
+            "unit": {
+              "$ref": "#/$defs/text"
+            },
+            "hint": {
+              "$ref": "#/$defs/output"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "min",
+            "max",
+            "step",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "toggles"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/slot"
+                  },
+                  "label": {
+                    "$ref": "#/$defs/text"
+                  },
+                  "checked": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 20
+            }
+          },
+          "required": [
+            "type",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "panel"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "text": {
+              "$ref": "#/$defs/content"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "table"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/slot"
+                  },
+                  "label": {
+                    "$ref": "#/$defs/text"
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 10
+            },
+            "empty": {
+              "$ref": "#/$defs/output"
+            },
+            "hidden": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "dock"
+            },
+            "readout": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/slot"
+                },
+                "label": {
+                  "$ref": "#/$defs/output"
+                },
+                "value": {
+                  "$ref": "#/$defs/content"
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "swatch": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/slot"
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false
+            },
+            "buttons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/button"
+              },
+              "minItems": 1,
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "type",
+            "buttons"
           ],
           "additionalProperties": false
         }

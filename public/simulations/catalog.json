@@ -5,7 +5,7 @@
       "id": "pendulum",
       "title": "Pendulum Lab",
       "subject": "physics",
-      "summary": "Explore how length, mass, gravity, and amplitude affect a pendulum's period. Drag the bob to set the angle, or use the slider.",
+      "summary": "Explore how length, mass, gravity, and damping affect a pendulum's period. Drag the bob to set the angle, or use the slider.",
       "canvas": {
         "id": "pendulumCanvas",
         "label": "Pendulum Lab",
@@ -55,6 +55,23 @@
         {
           "type": "text",
           "text": "Drag coefficient — 0.00 is an ideal pendulum, 0.47 is a real sphere in air, 0.94 is double air drag."
+        },
+        {
+          "type": "slider",
+          "id": "dampingSlider",
+          "label": "b",
+          "min": 0,
+          "max": 0.5,
+          "step": 0.01,
+          "value": 0,
+          "output": {
+            "id": "dampingValue",
+            "text": "0.00 s⁻¹"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Linear damping — extra friction proportional to speed. Leave at 0.00 for pure air drag."
         },
         {
           "type": "slider",
@@ -131,6 +148,12 @@
               "label": "Show Trace",
               "variant": "soft",
               "active": true
+            },
+            {
+              "id": "forcesBtn",
+              "label": "Show Forces",
+              "variant": "soft",
+              "active": false
             }
           ]
         }
@@ -196,6 +219,12 @@
               "color": "#22c55e"
             }
           ]
+        },
+        {
+          "id": "angleGraphCanvas",
+          "label": "Angle vs. Time",
+          "width": 650,
+          "height": 150
         }
       ],
       "lessons": [
@@ -492,35 +521,40 @@
       "id": "circuits",
       "title": "Circuit Builder",
       "subject": "physics",
-      "summary": "Build series and parallel circuits. Click to place components, then measure voltage, current, and resistance.",
+      "summary": "Drag batteries, wires, switches, bulbs and resistors onto the board, snap them together, and watch the current flow.",
       "canvas": {
         "id": "circuitCanvas",
-        "label": "Circuit Builder",
-        "width": 800,
-        "height": 520
+        "label": "Circuit building board",
+        "width": 900,
+        "height": 560
       },
       "controls": [
         {
           "type": "choices",
           "id": "tools",
-          "label": "Tool",
+          "label": "Parts",
           "style": "toolbar",
+          "value": "select",
           "options": [
             {
-              "value": "battery",
-              "label": "⚡ Battery"
+              "value": "select",
+              "label": "✥ Move"
             },
             {
-              "value": "resistor",
-              "label": "☰ Resistor"
+              "value": "wire",
+              "label": "― Wire"
+            },
+            {
+              "value": "battery",
+              "label": "🔋 Battery"
             },
             {
               "value": "bulb",
               "label": "💡 Bulb"
             },
             {
-              "value": "wire",
-              "label": "— Wire"
+              "value": "resistor",
+              "label": "Ω Resistor"
             },
             {
               "value": "switch",
@@ -528,39 +562,84 @@
             },
             {
               "value": "delete",
-              "label": "✕ Delete"
+              "label": "✕ Erase"
             }
-          ],
-          "value": "battery"
+          ]
+        },
+        {
+          "type": "text",
+          "id": "selectedPanel",
+          "style": "message",
+          "text": "Select a part to edit it, or drag a part onto the board."
+        },
+        {
+          "type": "slider",
+          "id": "selRange",
+          "label": "Value",
+          "min": 1,
+          "max": 24,
+          "step": 0.5,
+          "value": 9
+        },
+        {
+          "type": "number",
+          "id": "selNum",
+          "label": "Exact value",
+          "min": 1,
+          "max": 1000,
+          "step": 1,
+          "value": 9
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "selToggle",
+              "label": "Close it",
+              "variant": "soft"
+            }
+          ]
         },
         {
           "type": "actions",
           "buttons": [
             {
               "id": "presetSeries",
-              "label": "Preset: Series",
-              "variant": "soft",
-              "active": false
+              "label": "Series Loop",
+              "variant": "soft"
             },
             {
               "id": "presetParallel",
-              "label": "Preset: Parallel",
-              "variant": "soft",
-              "active": false
-            },
-            {
-              "id": "runBtn",
-              "label": "▶ Simulate",
-              "variant": "primary",
-              "active": false
+              "label": "Parallel",
+              "variant": "soft"
             },
             {
               "id": "clearBtn",
               "label": "Clear All",
-              "variant": "ghost",
-              "active": false
+              "variant": "ghost"
             }
           ]
+        },
+        {
+          "type": "toggles",
+          "items": [
+            {
+              "id": "showCurrent",
+              "label": "Show current",
+              "checked": true
+            },
+            {
+              "id": "showValues",
+              "label": "Show values"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "warning",
+          "style": "alert",
+          "hidden": true,
+          "text": "⚠ Short circuit! Current is flowing through a loop with no resistance. Add a resistor or bulb, or open a switch."
         },
         {
           "type": "readouts",
@@ -568,7 +647,7 @@
             {
               "id": "vBat",
               "label": "Battery (V)",
-              "value": "9.00",
+              "value": "0.00",
               "tone": "highlight"
             },
             {
@@ -580,7 +659,7 @@
             {
               "id": "req",
               "label": "Req (Ω)",
-              "value": "0.00",
+              "value": "∞",
               "tone": "default"
             },
             {
@@ -593,7 +672,8 @@
         },
         {
           "type": "text",
-          "text": "Click a tool then click the canvas to place it. Drag components to move them."
+          "id": "hint",
+          "text": "Pick a part, then drag on the board to place it. Drag the ends of a wire to snap it onto another part."
         }
       ],
       "cards": [
@@ -603,7 +683,7 @@
             "V = IR"
           ],
           "paragraphs": [
-            "Voltage (V) equals current (I) times resistance (R). The fundamental relationship governing all circuits."
+            "Voltage (V) equals current (I) times resistance (R). It is the relationship behind every circuit you build here."
           ]
         },
         {
@@ -612,7 +692,7 @@
             "R _eq = R _1 + R _2 + ..."
           ],
           "paragraphs": [
-            "In series, resistances add directly. The same current flows through every component. Voltage divides across resistors."
+            "Parts in a single loop share one current. Resistances add up, and the voltage splits between the parts."
           ]
         },
         {
@@ -621,16 +701,23 @@
             "1/R _eq = 1/R _1 + 1/R _2 + ..."
           ],
           "paragraphs": [
-            "In parallel, the reciprocal of Req is the sum of reciprocals. Voltage is the same across each branch; current divides."
+            "Parts side by side share the same voltage. The current splits between the branches and Req is smaller than any branch."
           ]
         },
         {
           "title": "Power",
           "formulas": [
-            "P = IV = I²R = V²/R"
+            "P = IV = I²R"
           ],
           "paragraphs": [
-            "Power dissipated as heat (or light in a bulb). Measured in watts (W). Higher current means more power."
+            "Energy per second. A bulb lights up in proportion to the power it dissipates, so a brighter bulb means more current."
+          ]
+        },
+        {
+          "title": "How To Use",
+          "formulas": [],
+          "paragraphs": [
+            "Drag a part from the toolbox onto the board, or pick a tool and drag on the board to draw the part. Join two parts by dragging one end dot onto the other — a grey dot appears where they connect. Click a part to select it, then type an exact voltage or resistance in the box below the board (or double-click the part as a shortcut). Right-click, or use Erase, to remove a part."
           ]
         }
       ],
@@ -905,104 +992,311 @@
     },
     {
       "id": "titration",
-      "title": "Titration Lab",
+      "title": "Titration Bench",
       "subject": "chemistry",
-      "summary": "Perform acid-base titrations. Track pH in real time and identify the equivalence point.",
+      "summary": "Mix an acid and a base, then open the tap and watch the pH curve take shape as the drops fall.",
       "canvas": {
         "id": "titrCanvas",
-        "label": "Titration Lab",
-        "width": 700,
-        "height": 480
+        "label": "Titration bench with burette, flask and pH curve",
+        "width": 940,
+        "height": 580
       },
       "controls": [
-        { "type": "choices", "id": "scenarioPick", "label": "Reaction", "style": "segments", "value": "strong-strong", "options": [
-          { "value": "strong-strong", "label": "Strong Acid + Strong Base" },
-          { "value": "weak-strong", "label": "Weak Acid + Strong Base" },
-          { "value": "strong-weak", "label": "Strong Acid + Weak Base" },
-          { "value": "weak-weak", "label": "Weak Acid + Weak Base" }
-        ] },
-        { "type": "select", "id": "indicatorPick", "label": "Indicator", "value": "phenolphthalein", "options": [
-          { "value": "methylorange", "label": "Methyl Orange (3.1–4.4)" },
-          { "value": "bromothymol", "label": "Bromothymol Blue (6.0–7.6)" },
-          { "value": "phenolphthalein", "label": "Phenolphthalein (8.2–10.0)" }
-        ] },
-        { "type": "stepper", "label": "mL titrant added", "output": { "id": "volumeAdded", "text": "0.00" }, "increase": { "id": "dripUp", "label": "+", "variant": "soft" } },
-        { "type": "choices", "id": "quickAdd", "label": "Add titrant", "style": "chips", "value": "0.5", "options": [
-          { "value": "0.1", "label": "+0.1 mL" },
-          { "value": "0.5", "label": "+0.5 mL" },
-          { "value": "1.0", "label": "+1 mL" },
-          { "value": "5.0", "label": "+5 mL" },
-          { "value": "25.0", "label": "+25 mL" }
-        ] },
-        { "type": "text", "id": "phaseHint", "text": "" },
-        { "type": "actions", "buttons": [
-          { "id": "resetBtn", "label": "↻ New Sample", "variant": "outline" },
-          { "id": "revealBtn", "label": "? Reveal Answer", "variant": "soft" }
-        ] },
-        { "type": "actions", "buttons": [ { "id": "pHToggle", "label": "Show pH", "variant": "outline", "pressed": false } ] },
+        {
+          "type": "select",
+          "id": "acidSelect",
+          "label": "Acid solution",
+          "value": "Hydrochloric acid",
+          "options": [
+            {
+              "value": "Hydrochloric acid",
+              "label": "Hydrochloric acid — strong"
+            },
+            {
+              "value": "Acetic acid",
+              "label": "Acetic acid — Ka 1.8e-5"
+            },
+            {
+              "value": "Chlorous acid",
+              "label": "Chlorous acid — Ka 1.2e-2"
+            },
+            {
+              "value": "Hypochlorous acid",
+              "label": "Hypochlorous acid — Ka 3.5e-8"
+            },
+            {
+              "value": "Hydrocyanic acid",
+              "label": "Hydrocyanic acid — Ka 6.2e-10"
+            }
+          ]
+        },
+        {
+          "type": "number",
+          "id": "concAcid",
+          "label": "Acid concentration",
+          "min": 0.001,
+          "max": 5,
+          "step": 0.01,
+          "value": 0.1,
+          "unit": "M",
+          "hint": {
+            "id": "acidHint",
+            "text": ""
+          }
+        },
+        {
+          "type": "select",
+          "id": "baseSelect",
+          "label": "Base solution",
+          "value": "Sodium hydroxide",
+          "options": [
+            {
+              "value": "Sodium hydroxide",
+              "label": "Sodium hydroxide — strong"
+            },
+            {
+              "value": "Ammonia",
+              "label": "Ammonia — Kb 1.8e-5"
+            },
+            {
+              "value": "Methylamine",
+              "label": "Methylamine — Kb 4.4e-4"
+            },
+            {
+              "value": "Ethylamine",
+              "label": "Ethylamine — Kb 5.7e-4"
+            },
+            {
+              "value": "Aniline",
+              "label": "Aniline — Kb 3.8e-10"
+            },
+            {
+              "value": "Pyridine",
+              "label": "Pyridine — Kb 1.7e-9"
+            }
+          ]
+        },
+        {
+          "type": "number",
+          "id": "concBase",
+          "label": "Base concentration",
+          "min": 0.001,
+          "max": 5,
+          "step": 0.01,
+          "value": 0.15,
+          "unit": "M",
+          "hint": {
+            "id": "baseHint",
+            "text": ""
+          }
+        },
+        {
+          "type": "select",
+          "id": "indicatorSelect",
+          "label": "Colour indicator",
+          "value": "Phenolphthalein",
+          "options": [
+            {
+              "value": "Phenolphthalein",
+              "label": "Phenolphthalein (8.0 – 10.0)"
+            },
+            {
+              "value": "Methyl orange",
+              "label": "Methyl orange (3.3 – 4.5)"
+            },
+            {
+              "value": "Bromothymol blue",
+              "label": "Bromothymol blue (6.0 – 7.5)"
+            },
+            {
+              "value": "Crystal violet",
+              "label": "Crystal violet (0.0 – 1.8)"
+            },
+            {
+              "value": "Alizarin yellow",
+              "label": "Alizarin yellow (10.0 – 12.0)"
+            },
+            {
+              "value": "Erichrome black T",
+              "label": "Erichrome black T (5.0 – 6.5)"
+            }
+          ]
+        },
+        {
+          "type": "choices",
+          "id": "titrantPick",
+          "label": "Which solution is in the burette?",
+          "style": "segments",
+          "value": "base",
+          "options": [
+            {
+              "value": "base",
+              "label": "Base"
+            },
+            {
+              "value": "acid",
+              "label": "Acid"
+            }
+          ]
+        },
+        {
+          "type": "toggles",
+          "items": [
+            {
+              "id": "showEqPt",
+              "label": "Reveal equivalence point"
+            },
+            {
+              "id": "showDataPts",
+              "label": "Auto-record readings"
+            },
+            {
+              "id": "realLab",
+              "label": "Real-lab mode (hide pH)"
+            }
+          ]
+        },
+        {
+          "type": "slider",
+          "id": "dropRate",
+          "label": "Drip rate",
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "value": 6,
+          "output": {
+            "id": "dropRateVal",
+            "text": "Medium"
+          }
+        },
         {
           "type": "readouts",
           "items": [
             {
+              "id": "buretteReadout",
+              "label": "Burette reading (mL)",
+              "value": "--",
+              "tone": "default"
+            },
+            {
               "id": "phReadout",
-              "label": "pH",
-              "value": "1.00",
+              "label": "pH of mixture",
+              "value": "--",
               "tone": "highlight"
             },
             {
-              "id": "equivVol",
-              "label": "Equiv. Vol (mL)",
-              "value": "25.0",
+              "id": "eqVolReadout",
+              "label": "Equivalence at (mL)",
+              "value": "--",
               "tone": "success"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "titrMessage",
+          "style": "message",
+          "text": "Setting up the bench…"
+        },
+        {
+          "type": "dock",
+          "readout": {
+            "id": "dockPH",
+            "value": "--",
+            "label": {
+              "id": "dockPHLabel",
+              "text": "pH"
+            }
+          },
+          "swatch": {
+            "id": "dockSwatch"
+          },
+          "buttons": [
+            {
+              "id": "titrateBtn",
+              "label": "Press & hold to open the tap",
+              "variant": "primary"
             },
             {
-              "id": "equivPH",
-              "label": "pH at Equiv.",
-              "value": "7.00",
-              "tone": "default"
+              "id": "resetBtn",
+              "label": "↻ Reset",
+              "variant": "ghost"
             }
-          ],
-          "id": "phReadouts",
-          "hidden": true
+          ]
         }
       ],
       "cards": [
         {
-          "title": "How Titration Works",
+          "title": "Readings Log",
           "formulas": [],
-          "paragraphs": [
-            "A solution of known concentration (the titrant ) is added to a solution of unknown concentration (the analyte ) until the reaction is complete. The equivalence point is reached when moles of acid = moles of base."
+          "paragraphs": [],
+          "components": [
+            {
+              "type": "table",
+              "id": "dataBody",
+              "hidden": true,
+              "columns": [
+                {
+                  "label": "#"
+                },
+                {
+                  "label": "Burette (mL)"
+                },
+                {
+                  "id": "logThirdHead",
+                  "label": "pH"
+                }
+              ],
+              "empty": {
+                "id": "dataHint",
+                "text": "Turn on Auto-record readings and a row is added to this table each time you let go of the tap."
+              }
+            }
           ]
         },
         {
-          "title": "Equivalence Point",
+          "title": "Running the Bench",
+          "formulas": [],
+          "paragraphs": [
+            "The vessel already holds a measured portion of one solution, and the burette is topped up with the other. Squeeze the tap open to let drops fall and let go to pause. When the burette reaches the bottom the run stops on its own."
+          ]
+        },
+        {
+          "title": "Getting Sensible Volumes",
           "formulas": [
-            "M _a V _a = M _b V _b"
+            "volume at equivalence ≈ 25 mL × (concentration in vessel ÷ concentration in burette)"
           ],
           "paragraphs": [
-            "For a 1:1 reaction, moles of acid = moles of base at the equivalence point. The pH at this point depends on the acid/base strength."
+            "The equivalence volume scales with the ratio of the two concentrations. For a comfortable run, keep the solution in the burette roughly 1¼ to 5× as concentrated as the one in the vessel. The suggested ranges under each concentration box update to keep the jump on the chart."
           ]
         },
         {
-          "title": "pH at Equivalence",
-          "formulas": [],
+          "title": "The Equivalence Point",
+          "formulas": [
+            "strong + strong → neutral (pH 7)",
+            "weak acid + strong base → basic (pH > 7)",
+            "strong acid + weak base → acidic (pH < 7)"
+          ],
           "paragraphs": [
-            "Strong-Strong: pH = 7 (neutral) Weak Acid + Strong Base: pH > 7 (basic) Strong Acid + Weak Base: pH < 7 (acidic) The indicator should change colour near the equivalence point pH."
+            "The two solutions have reacted completely when the moles of acid equal the moles of base. The pH at that moment depends on what is left behind in solution."
           ]
         },
         {
-          "title": "Choosing an Indicator",
-          "formulas": [],
+          "title": "Choosing a Colour Indicator",
+          "formulas": [
+            "Crystal violet 0.0–1.8 • Methyl orange 3.3–4.5",
+            "Erichrome black T 5.0–6.5 • Bromothymol blue 6.0–7.5",
+            "Phenolphthalein 8.0–10.0 • Alizarin yellow 10.0–12.0"
+          ],
           "paragraphs": [
-            "An indicator is only useful if its transition range sits inside the steep jump at the equivalence point. Switch indicators and watch which one actually changes colour at the right moment."
+            "Each indicator flips colour across a span of about two pH units. Pick one whose colour change lands on the vertical part of the curve, otherwise the colour change you see will not match the true equivalence point."
           ]
         },
         {
-          "title": "Reading the Flask",
+          "title": "About the Numbers",
           "formulas": [],
           "paragraphs": [
-            "There is deliberately no pH meter by default. In a real lab you cannot see the pH — the only evidence is the colour of the indicator in the flask , and your titre is whatever reading you had when the colour changed.",
-            "Show pH turns on the meter, the titration curve and the pH scale if you want to watch the chemistry instead. Bear in mind that it hands you the endpoint you would otherwise have to find."
+            "The pH is found by solving the full equilibrium relations — a quadratic away from the jump and a cubic across it — so dilute and very weak acids stay accurate instead of relying on the usual short-cut. Pairing a weak acid with a weak base is left out because it needs a quartic."
           ]
         }
       ],
@@ -1356,6 +1650,33 @@
         {
           "type": "text",
           "id": "warnMsg",
+          "text": "",
+          "style": "alert"
+        },
+        {
+          "type": "readouts",
+          "items": [
+            {
+              "id": "decayMode",
+              "label": "Most likely decay",
+              "value": "—",
+              "tone": "highlight"
+            }
+          ]
+        },
+        {
+          "type": "actions",
+          "buttons": [
+            {
+              "id": "decayBtn",
+              "label": "Decay →",
+              "variant": "primary"
+            }
+          ]
+        },
+        {
+          "type": "panel",
+          "id": "decayEq",
           "text": ""
         },
         {
@@ -1432,12 +1753,51 @@
         {
           "id": "chartCanvas",
           "label": "Chart of Nuclides",
-          "width": 900,
-          "height": 550,
-          "caption": "Colours show half-life. Click a cell to select an isotope."
+          "width": 1000,
+          "height": 660,
+          "caption": "Click a cell to select that isotope. Cells that are blank are nuclides that do not exist.",
+          "view": "chart",
+          "controls": [
+            {
+              "type": "choices",
+              "id": "chartModePick",
+              "label": "Colour cells by",
+              "style": "segments",
+              "value": "half",
+              "options": [
+                {
+                  "value": "half",
+                  "label": "Half-life"
+                },
+                {
+                  "value": "decay",
+                  "label": "Decay mode"
+                }
+              ]
+            },
+            {
+              "type": "panel",
+              "id": "chartLegend",
+              "text": ""
+            }
+          ]
         }
       ],
-      "lessons": []
+      "lessons": [],
+      "views": {
+        "id": "buildTabs",
+        "value": "nucleus",
+        "options": [
+          {
+            "value": "nucleus",
+            "label": "Nucleus"
+          },
+          {
+            "value": "chart",
+            "label": "Chart of Nuclides"
+          }
+        ]
+      }
     }
   ]
 }

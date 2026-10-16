@@ -1,7 +1,6 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
-'use strict';
 
 // ═══════════════════════════════════════
 //  ELEMENTS
@@ -10,7 +9,8 @@ const EL_SYMS = ['','H','He','Li','Be','B','C','N','O','F','Ne','Na','Mg','Al','
     'Sc','Ti','V','Cr','Mn','Fe','Co','Ni','Cu','Zn','Ga','Ge','As','Se','Br','Kr','Rb','Sr','Y','Zr','Nb','Mo',
     'Tc','Ru','Rh','Pd','Ag','Cd','In','Sn','Sb','Te','I','Xe','Cs','Ba','La','Ce','Pr','Nd','Pm','Sm','Eu','Gd',
     'Tb','Dy','Ho','Er','Tm','Yb','Lu','Hf','Ta','W','Re','Os','Ir','Pt','Au','Hg','Tl','Pb','Bi','Po','At','Rn',
-    'Fr','Ra','Ac','Th','Pa','U','Np','Pu','Am'];
+    'Fr','Ra','Ac','Th','Pa','U','Np','Pu','Am','Cm','Bk','Cf','Es','Fm','Md','No','Lr','Rf','Db','Sg','Bh','Hs',
+    'Mt','Ds','Rg','Cn','Nh','Fl','Mc','Lv','Ts','Og'];
 const EL_NAMES = ['','Hydrogen','Helium','Lithium','Beryllium','Boron','Carbon','Nitrogen','Oxygen','Fluorine','Neon',
     'Sodium','Magnesium','Aluminium','Silicon','Phosphorus','Sulfur','Chlorine','Argon','Potassium','Calcium',
     'Scandium','Titanium','Vanadium','Chromium','Manganese','Iron','Cobalt','Nickel','Copper','Zinc',
@@ -20,7 +20,24 @@ const EL_NAMES = ['','Hydrogen','Helium','Lithium','Beryllium','Boron','Carbon',
     'Promethium','Samarium','Europium','Gadolinium','Terbium','Dysprosium','Holmium','Erbium','Thulium','Ytterbium',
     'Lutetium','Hafnium','Tantalum','Tungsten','Rhenium','Osmium','Iridium','Platinum','Gold','Mercury','Thallium',
     'Lead','Bismuth','Polonium','Astatine','Radon','Francium','Radium','Actinium','Thorium','Protactinium',
-    'Uranium','Neptunium','Plutonium','Americium'];
+    'Uranium','Neptunium','Plutonium','Americium','Curium','Berkelium','Californium','Einsteinium','Fermium',
+    'Mendelevium','Nobelium','Lawrencium','Rutherfordium','Dubnium','Seaborgium','Bohrium','Hassium','Meitnerium',
+    'Darmstadtium','Roentgenium','Copernicium','Nihonium','Flerovium','Moscovium','Livermorium','Tennessine','Oganesson'];
+
+// ═══════════════════════════════════════
+//  DECAY MODES (data from PhET Build a Nucleus, IAEA/NDS)
+//  Codes: S stable · A alpha · B beta-minus · P beta-plus/EC
+//         p proton emission · n neutron emission · F fission · I isomeric · U unknown
+//  Encoded as "<key><code>" where key = Z*1000 + N.
+// ═══════════════════════════════════════
+const DECAY_RAW = '1B,4U,6U,1002B,1003N,1004N,1005U,1006U,2003N,2004B,2005N,2006B,2007N,2008N,3001U,3002U,3005B,3006B,3007N,3008B,3009N,4002U,4003P,4004A,4006B,4007B,4008B,4009N,4010B,4011N,4012N,5002U,5003P,5004U,5007B,5008B,5009B,5010B,5011N,5012B,5013N,5014B,5015N,5016N,6002U,6003P,6004P,6005P,6008B,6009B,6010B,6011B,6012B,6013B,6014B,6016B,7003U,7004U,7005P,7006P,7009B,7010B,7011B,7012B,7013B,7014B,7015B,7016B,7017N,8003U,8004U,8005p,8006P,8007P,8011B,8012B,8013B,8014B,8015B,8016B,8018N,9004U,9005U,9006U,9007U,9008P,9009P,9011B,9012B,9013B,9014B,9015B,9016B,9017B,9018B,9019N,9020N,9021N,9022N,10005U,10006U,10007P,10008P,10009P,10013B,10014B,10015B,10016B,10017B,10018B,10019B,10020B,10021B,10022B,10023N,10024N,11006U,11007U,11008U,11009P,11010P,11011P,11013B,11014B,11015B,11016B,11017B,11018B,11019B,11020B,11021B,11022B,11023B,11024B,11025N,11026N,12007U,12008P,12009P,12010P,12011P,12015B,12016B,12017B,12018B,12019B,12020B,12021B,12022B,12023B,12024B,12025N,12026B,12027N,12028B,13008U,13009P,13010P,13011P,13012P,13013P,13015B,13016B,13017B,13018B,13019B,13020B,13021B,13022B,13023B,13024B,13025N,13026B,13027B,13028B,13029N,13030N,14008P,14009P,14010P,14011P,14012P,14013P,14017B,14018B,14019B,14020B,14021B,14022B,14023B,14024B,14025B,14026B,14027B,14028B,14029N,14030B,15010U,15011P,15012P,15013P,15014P,15015P,15017B,15018B,15019B,15020B,15021B,15022B,15023B,15024B,15025B,15026B,15027B,15028N,15029N,15030B,15031B,16010U,16011P,16012P,16013P,16014P,16015P,16019B,16021B,16022B,16023B,16024B,16025B,16026B,16027B,16028B,16029B,16030B,16032B,17012U,17013U,17014P,17015P,17016P,17017P,17019B,17021B,17022B,17023B,17024B,17025B,17026B,17027B,17028B,17029B,17030B,17031B,17032B,17033B,17034B,17035B,18012U,18013P,18014P,18015P,18016P,18017P,18019P,18021B,18023B,18024B,18025B,18026B,18027B,18028B,18029B,18030B,18031B,18032B,18033B,18034B,18035N,19014U,19015U,19016P,19017P,19018P,19019P,19021B,19023B,19024B,19025B,19026B,19027B,19028B,19029B,19030B,19031B,19032B,19033B,19034B,19035B,19036N,19037N,20014U,20015P,20016P,20017P,20018P,20019P,20021P,20025B,20027B,20028U,20029B,20030B,20031B,20032B,20033B,20034B,20035B,20036B,20037N,20038N,21017U,21018U,21019P,21020P,21021P,21022P,21023P,21025B,21026B,21027B,21028B,21029B,21030B,21031B,21032B,21033B,21034B,21035B,21036B,21037B,21038B,21040B,22016U,22017P,22018P,22019P,22020P,22021P,22022P,22023P,22029B,22030B,22031B,22032B,22033B,22034B,22035B,22036B,22037B,22038B,22039B,22040N,22041N,22042N,23019U,23020P,23021P,23022P,23023P,23024P,23025P,23026P,23027P,23029B,23030B,23031B,23032B,23033B,23034B,23035B,23036B,23037B,23038B,23039B,23040B,23041B,23042B,23043N,23044N,24018P,24019P,24020P,24021P,24022P,24023P,24024P,24025P,24026P,24027P,24031B,24032B,24033B,24034B,24035B,24036B,24037B,24038B,24039B,24040B,24041B,24042B,24044B,24045N,24046N,25019U,25020U,25021P,25022P,25023P,25024P,25025P,25026P,25027P,25028P,25029P,25031B,25032B,25033B,25034B,25035I,25036B,25037B,25038B,25039B,25040B,25041B,25042B,25043B,25044B,25045B,25046N,25047N,25048B,26019U,26020P,26021P,26022P,26023P,26024P,26025P,26026P,26027P,26029P,26033B,26034B,26035B,26036B,26037B,26038B,26039B,26040B,26041B,26042B,26043B,26044B,26045B,26046B,26047B,26048N,26049N,27023P,27024P,27025P,27026P,27027P,27028P,27029P,27030P,27031P,27033B,27034B,27035B,27036B,27037B,27038B,27039B,27040B,27041B,27042B,27043B,27044B,27045B,27046B,27047B,27048B,27049B,27050B,28020U,28021P,28022P,28023P,28024P,28025P,28026P,28027P,28028P,28029P,28031P,28035B,28037B,28038B,28039B,28040B,28041B,28042B,28043B,28044B,28045B,28046B,28047B,28048B,28049B,28050B,28051B,28052B,28054U,29024U,29025U,29026P,29027P,29028P,29029P,29030P,29031P,29032P,29033P,29035P,29037B,29038B,29039B,29040B,29041B,29042B,29043B,29044B,29045B,29046B,29047B,29048B,29049B,29050B,29051B,29052B,29053B,30024U,30025P,30026P,30027P,30028P,30029P,30030P,30031P,30032P,30033P,30035P,30039B,30040U,30041B,30042B,30043B,30044B,30045B,30046B,30047B,30048B,30049B,30050B,30051B,30052B,30053B,30054N,30055N,31028U,31029P,31030P,31031P,31032P,31033P,31034P,31035P,31036P,31037P,31039B,31041B,31042B,31043B,31044B,31045B,31046B,31047B,31048B,31049B,31050B,31051B,31052B,31053B,31054B,31055B,31056B,32027U,32028P,32029P,32030P,32031P,32032P,32033P,32034P,32035P,32036P,32037P,32039P,32043B,32045B,32046B,32047B,32048B,32049B,32050B,32051B,32052B,32053B,32054B,32055B,32056B,32057N,32058B,33030U,33031P,33032P,33033P,33034P,33035P,33036P,33037P,33038P,33039P,33040P,33041P,33043B,33044B,33045B,33046B,33047B,33048B,33049B,33050B,33051B,33052B,33053B,33054B,33055B,33056N,33057B,33058B,33059B,34030P,34031P,34032P,34033P,34034P,34035P,34036P,34037P,34038P,34039P,34041P,34045B,34047B,34048U,34049B,34050B,34051B,34052B,34053B,34054B,34055B,34056B,34057B,34058B,34059B,34060B,34061N,35034U,35035P,35036P,35037P,35038P,35039P,35040P,35041P,35042P,35043P,35045B,35047B,35048B,35049B,35050B,35051B,35052B,35053B,35054B,35055B,35056B,35057B,35058B,35059B,35060B,35061B,35062B,35063B,35066B,36033P,36034P,36035P,36036P,36037P,36038P,36039P,36040P,36041P,36043P,36045P,36049B,36051B,36052B,36053B,36054B,36055B,36056B,36057B,36058B,36059B,36060B,36061B,36062B,36063B,36064B,36065N,36066B,37035U,37036P,37037P,37038P,37039P,37040P,37041P,37042P,37043P,37044P,37045P,37046P,37047P,37049B,37050B,37051B,37052B,37053B,37054B,37055B,37056B,37057B,37058B,37059B,37060B,37061B,37062B,37063B,37064B,37065B,37066B,37067B,37068B,37069B,38035P,38036P,38037P,38038P,38039P,38040P,38041P,38042P,38043P,38044P,38045P,38047P,38051B,38052B,38053B,38054B,38055B,38056B,38057B,38058B,38059B,38060B,38061B,38062B,38063B,38064B,38065B,38066B,38067B,38068B,38069N,38070B,39037U,39038P,39039P,39040P,39041P,39042P,39043P,39044P,39045P,39046P,39047P,39048P,39049P,39051B,39052B,39053B,39054B,39055B,39056B,39057B,39058B,39059B,39060B,39061B,39062B,39063B,39064B,39065B,39066B,39067B,39068B,39069B,39070B,39071B,39072B,40037U,40038P,40039P,40040P,40041P,40042P,40043P,40044P,40045P,40046P,40047P,40048P,40049P,40053B,40055B,40056U,40057B,40058B,40059B,40060B,40061B,40062B,40063B,40064B,40065B,40066B,40067B,40068B,40069B,40070B,40071B,40072B,40073B,40074B,41040P,41041P,41042P,41043P,41044P,41045P,41046P,41047P,41048P,41049P,41050P,41051P,41053B,41054B,41055B,41056B,41057B,41058B,41059B,41060B,41061B,41062B,41063B,41064B,41065B,41066B,41067B,41068B,41069B,41070B,41071B,41072B,41073B,41074B,41075B,41076B,42039P,42040P,42041P,42042P,42043P,42044P,42045P,42046P,42047P,42048P,42049P,42051P,42057B,42058U,42059B,42060B,42061B,42062B,42063B,42064B,42065B,42066B,42067B,42068B,42069B,42070B,42071B,42072B,42073B,42074N,42075N,42076B,42077B,43042U,43043P,43044P,43045P,43046P,43047P,43048P,43049P,43050P,43051P,43052P,43053P,43054P,43055B,43056B,43057B,43058B,43059B,43060B,43061B,43062B,43063B,43064B,43065B,43066B,43067B,43068B,43069B,43070B,43071B,43072B,43073B,43074B,43075B,43076B,43077B,43078B,43079B,44041U,44042P,44044P,44045P,44046P,44047P,44048P,44049P,44050P,44051P,44053P,44059B,44061B,44062B,44063B,44064B,44065B,44066B,44067B,44068B,44069B,44070B,44071B,44072B,44073B,44074B,44075B,44076B,44077B,44078B,44079B,44080B,44081B,45044P,45045P,45046P,45047P,45048P,45049P,45050P,45051P,45052P,45053P,45054P,45055P,45056P,45057P,45059B,45060B,45061B,45062B,45063B,45064B,45065B,45066B,45067B,45068B,45069B,45070B,45071B,45072B,45073B,45074B,45075B,45076B,45077N,45078B,45079B,45080B,45081B,45082B,45083B,46044P,46045P,46046P,46047P,46048P,46049P,46050P,46051P,46052P,46053P,46054P,46055P,46057P,46061B,46063B,46065B,46066B,46067B,46068B,46069B,46070B,46071B,46072B,46073B,46074B,46075B,46076B,46077B,46078B,46079B,46080B,46081B,46082B,46083B,46084B,46085B,47045P,47046P,47047P,47048P,47049P,47050P,47051P,47052P,47053P,47054P,47055P,47056P,47057P,47058P,47059P,47061B,47063B,47064B,47065B,47066B,47067B,47068B,47069B,47070B,47071B,47072B,47073B,47074B,47075B,47076B,47077B,47078B,47079B,47080B,47081B,47082B,47083B,47084B,47085B,48046P,48047P,48048P,48049P,48050P,48051P,48052P,48053P,48054P,48055P,48056P,48057P,48059P,48061P,48065B,48067B,48068U,48069B,48070B,48071B,48072B,48073B,48074B,48075B,48076B,48077B,48078B,48079B,48080B,48081B,48082B,48083B,48084B,48085B,48086B,49047P,49048P,49049P,49050p,49051P,49052P,49053P,49054P,49055P,49056P,49057P,49058P,49059P,49060P,49061P,49062P,49063P,49065B,49066B,49067B,49068B,49069B,49070B,49071B,49072B,49073B,49074B,49075B,49076B,49077B,49078B,49079B,49080B,49081B,49082B,49083B,49084B,49085B,49086B,49087B,49088B,50049P,50050P,50051P,50052P,50053P,50054P,50055P,50056P,50057P,50058P,50059P,50060P,50061P,50063P,50071B,50073B,50075B,50076B,50077B,50078B,50079B,50080B,50081B,50082B,50083B,50084B,50085B,50086B,50087B,50088B,50089B,50090B,51052U,51053P,51054P,51055P,51056P,51057P,51058P,51059P,51060P,51061P,51062P,51063P,51064P,51065P,51066P,51067P,51068P,51069P,51071B,51073B,51074B,51075B,51076B,51077B,51078B,51079B,51080B,51081B,51082B,51083B,51084B,51085B,51086B,51087N,51088B,51089B,51090B,51091B,52052A,52053A,52054A,52055A,52056P,52057P,52058P,52059P,52060P,52061P,52062P,52063P,52064P,52065P,52066P,52067P,52069P,52071P,52075B,52076U,52077B,52078U,52079B,52080B,52081B,52082B,52083B,52084B,52085B,52086B,52087B,52088B,52090U,52091B,52092B,52093B,53055A,53056U,53057P,53058P,53059P,53060P,53061P,53062P,53063P,53064P,53065P,53066P,53067P,53068P,53069P,53070P,53071P,53072P,53073P,53075B,53076B,53077B,53078B,53079B,53080B,53081B,53082B,53083B,53084B,53085B,53086B,53087B,53088B,53089U,53090B,53091U,53092N,53093B,53094B,54054A,54055A,54056A,54057A,54058P,54059P,54060P,54061P,54062P,54063P,54064P,54065P,54066P,54067P,54068P,54069P,54070U,54071P,54073P,54079B,54080U,54081B,54082U,54083B,54084B,54085B,54086B,54087B,54088B,54089B,54090B,54091B,54092B,54093N,54094N,54095B,54096B,55057U,55058U,55059P,55060P,55061P,55062P,55063P,55064P,55065P,55066P,55067P,55068P,55069P,55070P,55071P,55072P,55073P,55074P,55075P,55076P,55077P,55079B,55080B,55081B,55082B,55083B,55084B,55085B,55086B,55087B,55088B,55089B,55090B,55091B,55092B,55093B,55094B,55095B,55096B,55097B,56058P,56059P,56060P,56061P,56062P,56063P,56064P,56065P,56066P,56067P,56068P,56069P,56070P,56071P,56072P,56073P,56075P,56076U,56077P,56083B,56084B,56085B,56086B,56087B,56088B,56089B,56090B,56091B,56092B,56093B,56094B,56095B,56096B,56097B,56098B,57060U,57063P,57064P,57065P,57066P,57067P,57068P,57069P,57070P,57071P,57072P,57073P,57074P,57075P,57076P,57077P,57078P,57079P,57080P,57081P,57083B,57084B,57085B,57086B,57087B,57088B,57089B,57090B,57091B,57092B,57093B,57094B,57095B,57096B,57097B,57098B,57099B,57100B,58063P,58064P,58065P,58066P,58067P,58068P,58069P,58070P,58071P,58072P,58073P,58074P,58075P,58076P,58077P,58079P,58080P,58081P,58083B,58084U,58085B,58086B,58087B,58088B,58089B,58090B,58091B,58092B,58093B,58094B,58095B,58096B,58097B,58098B,58099B,58100B,59062U,59065P,59066P,59067P,59068P,59069P,59070P,59071P,59072P,59073P,59074P,59075P,59076P,59077P,59078P,59079P,59080P,59081P,59083B,59084B,59085B,59086B,59087B,59088B,59089B,59090B,59091B,59092B,59093B,59094B,59095B,59096B,59097B,59098B,59099B,59100B,59101B,59102B,60065P,60066P,60067P,60068P,60069P,60070P,60071P,60072P,60073P,60074P,60075P,60076P,60077P,60078P,60079P,60080P,60081P,60084A,60087B,60089B,60090U,60091B,60092B,60093B,60094B,60095B,60096B,60097B,60098B,60099B,60100B,60101B,60102B,60103B,61067P,61068P,61069P,61070P,61071P,61072P,61073P,61074P,61075P,61076P,61077P,61078P,61079P,61080P,61081P,61082P,61083P,61084P,61085P,61086B,61087B,61088B,61089B,61090B,61091B,61092B,61093B,61094B,61095B,61096B,61097B,61098B,61099B,61100B,61101B,61102B,61103B,61104B,62067P,62068P,62069P,62070P,62071P,62072P,62073P,62074P,62075P,62076P,62077P,62078P,62079P,62080P,62081P,62083P,62084A,62085A,62086A,62089B,62091B,62093B,62094B,62095B,62096B,62097B,62098B,62099B,62100B,62101B,62102B,62103B,62104B,62105B,62106B,63067U,63068U,63069U,63071P,63072P,63073P,63074P,63075P,63076P,63077P,63078P,63079P,63080P,63081P,63082P,63083P,63084P,63085P,63086P,63087P,63088A,63089P,63091B,63092B,63093B,63094B,63095B,63096B,63097B,63098B,63099B,63100B,63101B,63102B,63103B,63104B,63105B,63106B,64070U,64071P,64072U,64073P,64074P,64075P,64076P,64077P,64078P,64079P,64080P,64081P,64082P,64083P,64084A,64085P,64086A,64087P,64088A,64089P,64095B,64097B,64098B,64099B,64100B,64101B,64102B,64103B,64104B,64105B,64106B,64107B,64108B,65070U,65073P,65074P,65075P,65076P,65077P,65078P,65079P,65080U,65081P,65082P,65083P,65084P,65085P,65086P,65087P,65088P,65089P,65090P,65091P,65092P,65093P,65095B,65096B,65097B,65098B,65099B,65100B,65101B,65102B,65103B,65104B,65105B,65106B,65107B,65108B,65109B,66073P,66074P,66075P,66076P,66077P,66078P,66079P,66080P,66081P,66082P,66083P,66084P,66085P,66086P,66087P,66088A,66089P,66091P,66093P,66099B,66100B,66101B,66102B,66103B,66104B,66105B,66106B,66107B,66108B,66109B,66110B,67073U,67074U,67075P,67076P,67077P,67078P,67079P,67080P,67081P,67082P,67083P,67084P,67085P,67086P,67087P,67088P,67089P,67090P,67091P,67092P,67093P,67094P,67095P,67096P,67097P,67099B,67100B,67101B,67102B,67103B,67104B,67105B,67106B,67107B,67108B,67109N,67110B,67111B,68075U,68076P,68077U,68078P,68079P,68080P,68081P,68082P,68083P,68084A,68085A,68086P,68087P,68088P,68089P,68090P,68091P,68092P,68093P,68095P,68097P,68101B,68103B,68104B,68105B,68106B,68107B,68108B,68109B,68110B,68111B,68112B,69075U,69076U,69077P,69078P,69079P,69080P,69081P,69082P,69083P,69084A,69085A,69086P,69087P,69088P,69089P,69090P,69091P,69092P,69093P,69094P,69095P,69096P,69097P,69098P,69099P,69101B,69102B,69103B,69104B,69105B,69106B,69107B,69108B,69109B,69110B,69111B,69112B,70079P,70080U,70081P,70082P,70083P,70084A,70085A,70086P,70087P,70088P,70089P,70090P,70091P,70092P,70093P,70094P,70095P,70096P,70097P,70099P,70105B,70107B,70108B,70109B,70110B,70111B,70112B,70113B,70114B,70115B,71079U,71080U,71081P,71082P,71083U,71084A,71085A,71086A,71087P,71088P,71089P,71090P,71091P,71092P,71093P,71094P,71095P,71096P,71097P,71098P,71099P,71100P,71101P,71102P,71103P,71105B,71106B,71107B,71108B,71109B,71110B,71111B,71112B,71113B,71114B,71115B,71116B,71117B,72079U,72081U,72082P,72083P,72084A,72085A,72086P,72087P,72088P,72089P,72090P,72091P,72092P,72093P,72094P,72095P,72096P,72097P,72098P,72099P,72100P,72101P,72102A,72103P,72109B,72110B,72111I,72112B,72113B,72114B,72115B,72116B,72117B,72118B,73082U,73083U,73084A,73085A,73086P,73087A,73088A,73089P,73090P,73091P,73092P,73093P,73094P,73095P,73096P,73097P,73098P,73099P,73100P,73101P,73102P,73103P,73104P,73105P,73106P,73107P,73109B,73110B,73111B,73112B,73113B,73114B,73115B,73116B,73117B,73118B,73119B,73120B,73121B,74083P,74084A,74085A,74086A,74087A,74088P,74089P,74090P,74091P,74092P,74093P,74094P,74095P,74096P,74097P,74098P,74099P,74100P,74101P,74102P,74103P,74104P,74105P,74106A,74107P,74109A,74111B,74113B,74114B,74115B,74116B,74118B,74119B,74120B,74121B,74122B,74123B,75084U,75085U,75086U,75087A,75088P,75089A,75090P,75091P,75092P,75093P,75094P,75095P,75096P,75097P,75098P,75099P,75100P,75101P,75102P,75103P,75104P,75105P,75106P,75107P,75108P,75109P,75111B,75112B,75113B,75114B,75115B,75116B,75117B,75118U,75119B,75120B,75121B,75122B,75123N,75124N,76085A,76086A,76087A,76088A,76089A,76090A,76091A,76092P,76093P,76094P,76095P,76096P,76097P,76098P,76099P,76100P,76101P,76102P,76103P,76104P,76105P,76106P,76107P,76108A,76109P,76110A,76115B,76117B,76118B,76119B,76120B,76121B,76122B,76123B,76124B,76125B,76126B,76127B,77087P,77088A,77089A,77090A,77091A,77092A,77093P,77094P,77095P,77096P,77097P,77098P,77099P,77100P,77101P,77102P,77103P,77104P,77105P,77106P,77107P,77108P,77109P,77110P,77111P,77112P,77113P,77115B,77117B,77118B,77119B,77120B,77121B,77122B,77123B,77124B,77125B,77126B,77127N,77128B,78087A,78088A,78089A,78090A,78091A,78092A,78093A,78094A,78095A,78096A,78097A,78098P,78099P,78100P,78101P,78102P,78103P,78104P,78105P,78106P,78107P,78108P,78109P,78110P,78111P,78112A,78113P,78115P,78119B,78121B,78122B,78123B,78124B,78125B,78126B,78127B,78128N,78129N,78130N,79091U,79092U,79093A,79094A,79095A,79096A,79097U,79098P,79099P,79100P,79101P,79102P,79103P,79104P,79105P,79106P,79107P,79108P,79109P,79110P,79111P,79112P,79113P,79114P,79115P,79116P,79117P,79119B,79120B,79121B,79122B,79123B,79124B,79125B,79126B,79127B,79128B,79129N,79130B,79131N,80090A,80091A,80092A,80093A,80094A,80095A,80096A,80097A,80098A,80099A,80100P,80101P,80102P,80103P,80104P,80105P,80106P,80107P,80108P,80109P,80110P,80111P,80112P,80113P,80114P,80115P,80117P,80123B,80125B,80126B,80127B,80128B,80129B,80130U,80131N,80132B,80133N,80134B,80135N,80136N,81095U,81096A,81097A,81098A,81099P,81100A,81101P,81102P,81103P,81104P,81105P,81106P,81107P,81108P,81109P,81110U,81111P,81112P,81113P,81114P,81115P,81116P,81117P,81118P,81119P,81120P,81121P,81123B,81125B,81126B,81127B,81128B,81129B,81130B,81131B,81132B,81133B,81134N,81135B,81136B,82096A,82097A,82098A,82099A,82100A,82101A,82102A,82103A,82104P,82105P,82106P,82107P,82108P,82109P,82110P,82111P,82112P,82113P,82114P,82115P,82116P,82117P,82118P,82119P,82120P,82121P,82122A,82123P,82127B,82128B,82129B,82130B,82131B,82132B,82133B,82134B,82135B,82136B,82137B,82138B,83101A,83102U,83103A,83104A,83105A,83106A,83107A,83108A,83109P,83110P,83111P,83112P,83113P,83114P,83115P,83116P,83117P,83118P,83119P,83120P,83121P,83122P,83123P,83124P,83125P,83126A,83127B,83128A,83129B,83130B,83131B,83132B,83133B,83134B,83135B,83136B,83137B,83138N,83139N,83140N,83141B,84102A,84103A,84104A,84105A,84106A,84107A,84108A,84109A,84110A,84111A,84112A,84113P,84114A,84115P,84116P,84117P,84118P,84119P,84120P,84121P,84122P,84123P,84124A,84125A,84126A,84127A,84128A,84129A,84130A,84131A,84132A,84133A,84134A,84135B,84136B,84137B,84138U,84139B,84140B,84141B,84142B,84143B,85106A,85107A,85108A,85109A,85110A,85111A,85112A,85113A,85114A,85115A,85116A,85117P,85118P,85119P,85120P,85121P,85122P,85123P,85124P,85125P,85126P,85127A,85128A,85129A,85130A,85131A,85132A,85133A,85134A,85135B,85136B,85137B,85138B,85139B,85140B,85141B,85142B,85143B,85144B,86107A,86108A,86109A,86110A,86111A,86112P,86113A,86114A,86115P,86116A,86117A,86118A,86119P,86120A,86121P,86122A,86123P,86124A,86125P,86126A,86127A,86128A,86129A,86130A,86131A,86132A,86133A,86134A,86135B,86136A,86137B,86138B,86139B,86140B,86141B,86142B,86143B,87110A,87111A,87112A,87113A,87114A,87115A,87116A,87117A,87118A,87119A,87120A,87121A,87122A,87123A,87124A,87125P,87126A,87127A,87128A,87129A,87130A,87131A,87132A,87133A,87134A,87135B,87136B,87137B,87138B,87139B,87140B,87141B,87142B,87143B,87144B,87145B,87146B,88113A,88114A,88115A,88116A,88117A,88118A,88119A,88120A,88121A,88122A,88123A,88124A,88125A,88126A,88127A,88128A,88129A,88130A,88131A,88132A,88133A,88134A,88135A,88136A,88137B,88138A,88139B,88140B,88141B,88142B,88143B,88144B,88145B,88146B,89116A,89117A,89118A,89119A,89120A,89121A,89122A,89123A,89124A,89125A,89126A,89127A,89128A,89129A,89130A,89131A,89132A,89133A,89134A,89135P,89136A,89137B,89138B,89139B,89140B,89141B,89142B,89143B,89144B,89145B,89146U,90118A,90119A,90120A,90121P,90122A,90123A,90124A,90125A,90126A,90127A,90128A,90129A,90130A,90131A,90132A,90133A,90134A,90135A,90136A,90137A,90138A,90139A,90140A,90141B,90142A,90143B,90144B,90145B,90146B,91120U,91121A,91122A,91123A,91124A,91125A,91126A,91127A,91128A,91129A,91130A,91131A,91132A,91133A,91134A,91135A,91136A,91137P,91138P,91139P,91140A,91141B,91142B,91143B,91144B,91145B,91146B,92122A,92123A,92124A,92125A,92126A,92127A,92129A,92130A,92131A,92132A,92133A,92134A,92135A,92136A,92137P,92138A,92139P,92140A,92141A,92142A,92143A,92144A,92145B,92146A,93126A,93127A,93129A,93130A,93131A,93132A,93133A,93134A,93135P,93136A,93137P,93138P,93139P,93140P,93141P,93142P,93143P,93144A,93145B,93146B,94134A,94135A,94136A,94137P,94138P,94139P,94140P,94141P,94142A,94143P,94144A,94145A,94146A';
+const DECAY_TYPE = {};
+DECAY_RAW.split(",").forEach(function(t){
+    if(!t) return;
+    const code = t.slice(-1);
+    const key = parseInt(t.slice(0,-1),10);
+    if(!isNaN(key)) DECAY_TYPE[key] = code;
+});
 
 // ═══════════════════════════════════════
 //  LOAD REAL NUCLEAR DATA FROM IAEA
@@ -79,6 +96,8 @@ async function loadNuclearData() {
         }
 
         dataLoaded = true;
+        buildNuclideList();
+        computeStableBand();
         console.log('Loaded '+STABLE.size+' stable isotopes from IAEA');
     } catch(e) {
         console.warn('IAEA data fetch failed, using fallback',e);
@@ -107,6 +126,8 @@ const NUBASE={1000:-1,1001:-1,1002:3.88781e+08,1003:1.39e-22,1004:8.6e-23,1005:2
     // No buffer: only NUBASE isotopes appear on the chart
 
     dataLoaded=true;
+    buildNuclideList();
+    computeStableBand();
 }
 
 function getHalfLife(z,n) {
@@ -136,7 +157,12 @@ function getStability(z,n) {
         const extra=abund?` (${abund.toFixed(1)}% natural abundance)`:' — does not decay.';
         return {level:'stable',desc:'Stable'+extra};
     }
-    if (DECAY_MODES[key]) return {level:'radioactive',desc:'Decays via '+DECAY_MODES[key].replace(/-/g,'⁻')+' emission.'};
+    const code=decayCode(z,n);
+    const info=DECAY_INFO[code];
+    if (info && code!=='U') {
+        const heavy = z>83 || code==='A';
+        return {level: heavy?'radioactive':'unstable', desc:'Decays by '+info.name+'.'};
+    }
     const ratio=n/Math.max(1,z);
     if (z<=20&&Math.abs(ratio-1)<0.25) return {level:'unstable',desc:'Near stability band — may be long-lived.'};
     if (z>20&&ratio>=1.0&&ratio<=1.5) return {level:'unstable',desc:'Within band of stability — likely slow decay.'};
@@ -155,62 +181,182 @@ function canExist(z,n) {
 // ═══════════════════════════════════════
 const C = document.getElementById('nucleusCanvas');
 const ctx = C.getContext('2d');
-const TNuc = SimLib.Theme.use('dark');
-const TChart = SimLib.Theme.palettes.light;
 const W = C.width, H = C.height, CX = W/2, CY = H/2;
 
 let Z = 6, N = 6;
 let particles = [];
-const MAX_Z = 95, MAX_N = 160;
+const MAX_Z = 118, MAX_N = 179;
+
+// Active decay emissions (alpha/beta/etc. flying away from the nucleus)
+let emissions = [];
+let lastAnimTs = 0;
+
+// 3D orientation of the nucleus
+let rotY = 0;
+const TILT = 0.42;
+
+// Current on-screen size of the nucleus, set by rebuildAll()
+let sphereRadius = 40;
+let particleR = 12;
 
 // ═══════════════════════════════════════
 //  PARTICLE LAYOUT
 // ═══════════════════════════════════════
+// ═══════════════════════════════════════
+//  PARTICLE LAYOUT — 3D close-packed sphere
+// ═══════════════════════════════════════
 function particleRadius() {
-    return 10;
+    return particleR;
+}
+
+// Relax a random cluster into a jammed, amorphous ball of touching nucleons.
+// Starting from random points, we repeatedly separate overlaps and slowly
+// shrink the whole cluster. The result is gap-free and rounded, with none of
+// the flat facets a crystal lattice would produce.
+function relaxCluster(count, seed) {
+    let s = seed >>> 0;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    const pts = [];
+    for (let i = 0; i < count; i++) {
+        let x, y, z, d2;
+        do {
+            x = rnd()*2 - 1; y = rnd()*2 - 1; z = rnd()*2 - 1;
+            d2 = x*x + y*y + z*z;
+        } while (d2 > 1);
+        pts.push({ x, y, z });
+    }
+
+    const D = 1;                    // desired spacing between touching nucleons
+    // Large clusters are already statistically round, so they need fewer sweeps.
+    const steps = count <= 70 ? 200 : 90;
+    const sub = count <= 70 ? 5 : 3;
+    const shrink = 0.986;
+    for (let step = 0; step < steps; step++) {
+        for (let it = 0; it < sub; it++) {
+            let cx = 0, cy = 0, cz = 0;
+            for (const p of pts) { cx += p.x; cy += p.y; cz += p.z; }
+            cx /= count; cy /= count; cz /= count;
+            for (const p of pts) { p.x -= cx; p.y -= cy; p.z -= cz; }
+            for (let a = 0; a < count; a++) {
+                for (let b = a+1; b < count; b++) {
+                    let dx = pts[b].x - pts[a].x;
+                    let dy = pts[b].y - pts[a].y;
+                    let dz = pts[b].z - pts[a].z;
+                    let d2 = dx*dx + dy*dy + dz*dz;
+                    if (d2 < D*D && d2 > 1e-12) {
+                        const d = Math.sqrt(d2);
+                        const push = (D - d) / d * 0.5;
+                        pts[a].x -= dx*push; pts[a].y -= dy*push; pts[a].z -= dz*push;
+                        pts[b].x += dx*push; pts[b].y += dy*push; pts[b].z += dz*push;
+                    }
+                }
+            }
+        }
+        for (const p of pts) { p.x *= shrink; p.y *= shrink; p.z *= shrink; }
+    }
+
+    // Normalise so the closest pair is exactly D = 1 apart.
+    let minD = Infinity;
+    for (let a = 0; a < count; a++)
+        for (let b = a+1; b < count; b++)
+            minD = Math.min(minD, Math.hypot(pts[a].x-pts[b].x, pts[a].y-pts[b].y, pts[a].z-pts[b].z));
+    if (!isFinite(minD) || minD <= 0) minD = 1;
+    const sc = 1 / minD;
+    for (const p of pts) { p.x *= sc; p.y *= sc; p.z *= sc; }
+    return pts;
+}
+
+// Pick the roundest of several relaxation runs. Small clusters need more
+// attempts because a handful of random points can end up lopsided.
+function generateCluster(count) {
+    const K = count <= 12 ? 24 : count <= 30 ? 10 : count <= 70 ? 6 : count <= 150 ? 2 : 1;
+    let best = null, bestAniso = Infinity;
+    for (let k = 0; k < K; k++) {
+        const pts = relaxCluster(count, (1234567 + count*7919 + k*104729) >>> 0);
+        let mx = 0, my = 0, mz = 0;
+        for (const p of pts) {
+            mx = Math.max(mx, Math.abs(p.x));
+            my = Math.max(my, Math.abs(p.y));
+            mz = Math.max(mz, Math.abs(p.z));
+        }
+        const aniso = Math.max(mx,my,mz) / Math.max(1e-6, Math.min(mx,my,mz));
+        if (aniso < bestAniso) { bestAniso = aniso; best = pts; }
+    }
+    return best || [{ x:0, y:0, z:0 }];
 }
 
 function rebuildAll() {
     particles = [];
-    const total = Z+N;
-    if (total===0) return;
+    const total = Z + N;
+    if (total === 0) return;
 
-    const displayCount = Math.min(total, 70);
-    const r = particleRadius();
-    // Filled disc: equal-area rings with golden-angle spacing → favours centre
-    const maxR = Math.min(280, r * Math.sqrt(displayCount) * 0.58);
-    const phi = Math.PI * (3 - Math.sqrt(5));
+    // Show every nucleon (up to a safety limit of 300), so the nucleus keeps
+    // visibly gaining protons and neutrons all the way to the heaviest atoms.
+    const displayCount = Math.min(total, 300);
+    const pts = generateCluster(displayCount);
 
-    for (let i = 0; i < displayCount; i++) {
-        const rFrac = Math.sqrt((i + 0.5) / displayCount);
-        const theta = phi * i;
-        const radius = maxR * rFrac;
-        particles.push({
-            x: CX + radius * Math.cos(theta),
-            y: CY + radius * Math.sin(theta),
-            r: r, isProton: false,
-        });
+    if (displayCount === 1) {
+        // A lone nucleon sits at the centre.
+        sphereRadius = 30;
+        particleR = 30;
+        particles.push({ x: 0, y: 0, z: 0, isProton: false });
+    } else {
+        let maxD = 0;
+        for (const p of pts) maxD = Math.max(maxD, Math.hypot(p.x, p.y, p.z));
+        if (maxD < 0.0001) maxD = 1;
+
+        // Nucleons get smaller as the nucleus gets heavier, so more of them
+        // fit on screen. The overall ball still grows, just slowly.
+        particleR = Math.min(32, Math.max(7, 36 / Math.cbrt(1 + displayCount/14)));
+        let scale = particleR / 0.52;   // cluster nearest-neighbour spacing is 1
+        sphereRadius = maxD * scale;
+
+        // Safety cap so the nucleus can never outgrow the canvas.
+        const maxScreen = 175;
+        if (sphereRadius > maxScreen) {
+            const f = maxScreen / sphereRadius;
+            scale *= f;
+            sphereRadius = maxScreen;
+            particleR *= f;
+        }
+
+        for (const p of pts) {
+            particles.push({
+                x: p.x * scale,
+                y: p.y * scale,
+                z: p.z * scale,
+                isProton: false
+            });
+        }
     }
 
-    // Assign proton/neutron identities (shuffled)
-    const all = Array.from({length:displayCount},(_,i)=>i);
-    for (let i=all.length-1;i>0;i--) {const j=Math.floor(Math.random()*(i+1));[all[i],all[j]]=[all[j],all[i]];}
-    const displayProtons = total>0 ? Math.round(Z*displayCount/total) : 0;
-    for (let i=0;i<displayProtons;i++) particles[all[i]].isProton = true;
+    // Spread protons and neutrons evenly through the cluster.
+    const order = Array.from({length:particles.length},(_,i)=>i);
+    for (let i=order.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    const displayProtons = Math.round(Z * particles.length / total);
+    for (let i=0;i<displayProtons;i++) particles[order[i]].isProton = true;
 }
 
 // ═══════════════════════════════════════
-//  DRAWING (clean overlapping circles)
+//  DRAWING (3D close-packed sphere)
 // ═══════════════════════════════════════
+function shadeColor(hex, f) {
+    const n = parseInt(hex.slice(1),16);
+    const r = Math.min(255, Math.round(((n>>16)&255) * f));
+    const g = Math.min(255, Math.round(((n>>8)&255) * f));
+    const b = Math.min(255, Math.round((n&255) * f));
+    return 'rgb('+r+','+g+','+b+')';
+}
+
 function draw() {
     ctx.clearRect(0,0,W,H);
     const grad = ctx.createRadialGradient(CX,CY,30,CX,CY,350);
-    grad.addColorStop(0, TNuc.surface); grad.addColorStop(1, TNuc.bg);
-    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H); SimLib.Draw.title(ctx, 'Build a Nucleus', 14, 22, { size: 13, color: TNuc.muted, theme: TNuc });
+    grad.addColorStop(0,'#1a1a2e'); grad.addColorStop(1,'#0d1117');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
 
     if (Z+N>0) {
         const stab = getStability(Z,N);
-        const sRgb = SimLib.Color.parse(SimLib.Theme.status(stab.level)); const gc = sRgb.r + ',' + sRgb.g + ',' + sRgb.b;
+        const gc = stab.level==='stable'?'16,185,129':stab.level==='unstable'?'245,158,11':stab.level==='impossible'?'156,163,175':'239,68,68';
         const gg = ctx.createRadialGradient(CX,CY,20,CX,CY,270);
         gg.addColorStop(0,'rgba('+gc+',0.10)'); gg.addColorStop(1,'transparent');
         ctx.fillStyle=gg; ctx.fillRect(0,0,W,H);
@@ -219,15 +365,17 @@ function draw() {
         if (Z>0) {
             const shellRadii = [];
             let remaining = Z;
+            // Keep the electron shells outside the nucleus, whatever its size.
+            const baseR = Math.max(85, sphereRadius + particleR + 16);
             for (let shell=1; shell<=7 && remaining>0; shell++) {
                 const capacity = 2*shell*shell;
                 const electrons = Math.min(remaining, capacity);
-                const radius = 80 + shell*28;
+                const radius = baseR + (shell-1)*22;
                 shellRadii.push({r:radius, count:electrons});
                 remaining -= electrons;
             }
             for (const shell of shellRadii) {
-                const oRgb = SimLib.Color.parse(TNuc.accent); ctx.strokeStyle = `rgba(${oRgb.r}, ${oRgb.g}, ${oRgb.b}, 0.30)`;
+                ctx.strokeStyle = 'rgba(100,160,220,0.25)';
                 ctx.lineWidth = 1;
                 ctx.beginPath();
                 ctx.arc(CX, CY, shell.r, 0, Math.PI*2);
@@ -238,7 +386,7 @@ function draw() {
                     const angle = (e/shell.count)*Math.PI*2 + Date.now()*0.0003;
                     const ex = CX+shell.r*Math.cos(angle);
                     const ey = CY+shell.r*Math.sin(angle);
-                    const eRgb = SimLib.Color.parse(TNuc.accent); ctx.fillStyle = `rgba(${eRgb.r}, ${eRgb.g}, ${eRgb.b}, 0.85)`;
+                    ctx.fillStyle = 'rgba(100,180,255,0.7)';
                     ctx.beginPath();
                     ctx.arc(ex, ey, dotSize, 0, Math.PI*2);
                     ctx.fill();
@@ -247,44 +395,172 @@ function draw() {
         }
     }
 
-    // Sort by distance from centre: innermost on top
-    const sorted = [...particles].sort((a,b)=>{
-        const da=(a.x-CX)*(a.x-CX)+(a.y-CY)*(a.y-CY);
-        const db=(b.x-CX)*(b.x-CX)+(b.y-CY)*(b.y-CY);
-        return db-da;
+    // Soft atmosphere that sells the spherical volume of the nucleus.
+    if (particles.length) {
+        const atm = ctx.createRadialGradient(CX,CY,sphereRadius*0.45, CX,CY,sphereRadius*1.28);
+        atm.addColorStop(0,'rgba(90,120,200,0.00)');
+        atm.addColorStop(0.7,'rgba(90,120,200,0.05)');
+        atm.addColorStop(1,'rgba(90,120,200,0.12)');
+        ctx.fillStyle=atm;
+        ctx.beginPath(); ctx.arc(CX,CY,sphereRadius*1.3,0,Math.PI*2); ctx.fill();
+    }
+
+    // Project the 3D cluster and paint it back-to-front so it reads as a ball.
+    const cyR = Math.cos(rotY), syR = Math.sin(rotY);
+    const ct = Math.cos(TILT), st = Math.sin(TILT);
+    const projected = particles.map(p => {
+        const x1 = p.x*cyR - p.z*syR;
+        const z1 = p.x*syR + p.z*cyR;
+        const y1 = p.y;
+        const y2 = y1*ct - z1*st;
+        const z2 = y1*st + z1*ct;
+        return { x: CX + x1, y: CY + y2, z: z2, isProton: p.isProton };
     });
-    const r = 10;
+    projected.sort((a,b)=>a.z-b.z);
 
-    for (const p of sorted) {
-        // Dark outline
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.beginPath();
-        ctx.arc(p.x+1, p.y+1, r, 0, Math.PI*2);
-        ctx.fill();
+    const depth = Math.max(90, sphereRadius*2.6);
+    for (const p of projected) {
+        const zFrac = sphereRadius > 0 ? p.z / sphereRadius : 0;
+        const persp = 1 + zFrac*0.32;                 // nearer nucleons look bigger
+        const r = particleR * persp;
+        const shade = 0.62 + 0.38 * ((zFrac + 1) / 2); // nearer nucleons look brighter
 
-        // Main circle
-        const g = ctx.createRadialGradient(p.x-r*0.3, p.y-r*0.3, r*0.05, p.x, p.y, r);
+        // Dark rim for depth
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.arc(p.x+1.5, p.y+1.5, r, 0, Math.PI*2); ctx.fill();
+
+        const g = ctx.createRadialGradient(p.x-r*0.35, p.y-r*0.38, r*0.05, p.x, p.y, r);
         if (p.isProton) {
-            g.addColorStop(0, SimLib.Color.lighten(TNuc.danger, 0.5)); g.addColorStop(0.5, TNuc.danger); g.addColorStop(1, SimLib.Color.darken(TNuc.danger, 0.25));
+            g.addColorStop(0, shadeColor('#ffb3b3', shade));
+            g.addColorStop(0.5, shadeColor('#dc2626', shade));
+            g.addColorStop(1, shadeColor('#7f1d1d', shade));
         } else {
-            g.addColorStop(0, SimLib.Color.lighten(TNuc.muted, 0.5)); g.addColorStop(0.5, TNuc.muted); g.addColorStop(1, SimLib.Color.darken(TNuc.muted, 0.25));
+            g.addColorStop(0, shadeColor('#ffffff', shade));
+            g.addColorStop(0.5, shadeColor('#9ca3af', shade));
+            g.addColorStop(1, shadeColor('#374151', shade));
         }
         ctx.fillStyle=g;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI*2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
 
-        // Light highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.arc(p.x-r*0.2, p.y-r*0.25, r*0.28, 0, Math.PI*2);
-        ctx.fill();
+        // Specular highlight
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.22*shade).toFixed(2) + ')';
+        ctx.beginPath(); ctx.arc(p.x-r*0.28, p.y-r*0.34, r*0.26, 0, Math.PI*2); ctx.fill();
     }
 
     if (Z+N===0) {
-        ctx.fillStyle=TNuc.muted; ctx.font=TNuc.font(18); ctx.textAlign='center';
+        ctx.fillStyle='#555'; ctx.font='18px system-ui,sans-serif'; ctx.textAlign='center';
         ctx.fillText('Add protons & neutrons',CX,CY);
     }
+
+    drawEmissions();
+}
+
+// ═══════════════════════════════════════
+//  DECAY EMISSIONS
+// ═══════════════════════════════════════
+// Launch the particle(s) produced by a decay. `code` is the decay letter and
+// `pR` is the parent nucleus's nucleon radius at the moment of decay.
+function spawnEmission(code, pR) {
+    const angle = Math.random() * Math.PI * 2;
+    const ux = Math.cos(angle), uy = Math.sin(angle);
+    const startR = sphereRadius + pR * 0.6;
+    const speed = 190 + Math.random() * 80;
+    const em = {
+        x: CX + ux * startR,
+        y: CY + uy * startR,
+        vx: ux * speed,
+        vy: uy * speed,
+        life: 0,
+        rot: Math.random() * Math.PI,
+        spin: (Math.random() - 0.5) * 4,
+        maxLife: 1.7,
+        parts: []
+    };
+
+    if (code === 'A') {
+        // Alpha particle: two protons + two neutrons, tightly grouped.
+        const r = Math.max(4, pR * 0.82);
+        const o = r * 0.92;
+        em.parts.push({ dx:-o, dy:-o, r, role:'proton' });
+        em.parts.push({ dx: o, dy:-o, r, role:'neutron' });
+        em.parts.push({ dx:-o, dy: o, r, role:'neutron' });
+        em.parts.push({ dx: o, dy: o, r, role:'proton' });
+        em.maxLife = 2.0;
+    } else if (code === 'B') {
+        // Beta minus: an electron is emitted.
+        em.parts.push({ dx:0, dy:0, r: Math.max(4, pR*0.5), role:'electron' });
+    } else if (code === 'P') {
+        // Beta plus / EC: a positron is emitted.
+        em.parts.push({ dx:0, dy:0, r: Math.max(4, pR*0.5), role:'positron' });
+    } else if (code === 'p') {
+        em.parts.push({ dx:0, dy:0, r: pR, role:'proton' });
+    } else if (code === 'N') {
+        em.parts.push({ dx:0, dy:0, r: pR, role:'neutron' });
+    }
+    if (em.parts.length) emissions.push(em);
+}
+
+function updateEmissions(dt) {
+    if (!emissions.length) return;
+    for (const em of emissions) {
+        em.life += dt;
+        em.x += em.vx * dt;
+        em.y += em.vy * dt;
+        em.rot += em.spin * dt;
+    }
+    emissions = emissions.filter(em => em.life < em.maxLife &&
+        em.x > -140 && em.x < W+140 && em.y > -140 && em.y < H+140);
+}
+
+function drawNucleonAt(x, y, r, role, alpha) {
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.arc(x+1.5, y+1.5, r, 0, Math.PI*2); ctx.fill();
+    const g = ctx.createRadialGradient(x-r*0.35, y-r*0.38, r*0.05, x, y, r);
+    if (role === 'proton') {
+        g.addColorStop(0, '#ffb3b3'); g.addColorStop(0.5, '#dc2626'); g.addColorStop(1, '#7f1d1d');
+    } else {
+        g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#9ca3af'); g.addColorStop(1, '#374151');
+    }
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath(); ctx.arc(x-r*0.28, y-r*0.34, r*0.26, 0, Math.PI*2); ctx.fill();
+}
+
+function drawEmissions() {
+    if (!emissions.length) return;
+    for (const em of emissions) {
+        const fade = Math.max(0, 1 - em.life / em.maxLife);
+        const alpha = Math.min(1, fade * 1.9);
+        const cos = Math.cos(em.rot), sin = Math.sin(em.rot);
+        for (const part of em.parts) {
+            const rx = part.dx * cos - part.dy * sin;
+            const ry = part.dx * sin + part.dy * cos;
+            const px = em.x + rx, py = em.y + ry;
+            if (part.role === 'electron' || part.role === 'positron') {
+                const isE = part.role === 'electron';
+                const col = isE ? '90,170,255' : '255,140,90';
+                const glow = ctx.createRadialGradient(px, py, 0, px, py, part.r*2.6);
+                glow.addColorStop(0, 'rgba('+col+',0.9)');
+                glow.addColorStop(0.5, 'rgba('+col+',0.35)');
+                glow.addColorStop(1, 'rgba('+col+',0)');
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = glow;
+                ctx.beginPath(); ctx.arc(px, py, part.r*2.6, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = isE ? '#eaf4ff' : '#fff0e6';
+                ctx.beginPath(); ctx.arc(px, py, part.r*0.85, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = isE ? '#1d4ed8' : '#c2410c';
+                ctx.font = 'bold ' + Math.round(part.r*1.1) + 'px system-ui, sans-serif';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(isE ? '\u2212' : '+', px, py + 0.5);
+                ctx.textBaseline = 'alphabetic';
+            } else {
+                drawNucleonAt(px, py, part.r, part.role, alpha);
+            }
+        }
+    }
+    ctx.globalAlpha = 1;
 }
 
 // ═══════════════════════════════════════
@@ -293,59 +569,156 @@ function draw() {
 const chartC = document.getElementById('chartCanvas');
 const chartCtx = chartC.getContext('2d');
 
+// ── Decay-mode colours (data from PhET Build a Nucleus, IAEA/NDS) ──
+const DECAY_INFO = {
+    S:{name:'Stable', color:'#1b1464'},
+    A:{name:'\u03b1 decay', color:'#28d756'},
+    B:{name:'\u03b2\u207b decay', color:'#7fe6e6'},
+    P:{name:'\u03b2\u207a / EC', color:'#85caff'},
+    p:{name:'Proton emission', color:'#f7025d'},
+    N:{name:'Neutron emission', color:'#ff1fff'},
+    F:{name:'Spontaneous fission', color:'#b388ff'},
+    I:{name:'Isomeric transition', color:'#cfd6dd'},
+    U:{name:'Unknown', color:'#d1d5db'}
+};
+
+let chartMode = 'half';
+let ALL_NUCLIDES = [];
+let STABLE_BAND = null;
+
+// Half-life colour bands (thresholds in seconds) and their labels.
+const HL_BANDS=[1e-9,1e-6,1e-3,1,3600,3.156e7,3.156e10,3.156e14,Infinity];
+const HL_HUES=[250,230,210,180,140,80,40,20,0];
+const HL_LABELS=['< 1 ns','1 ns \u2013 1 \u03bcs','1 \u03bcs \u2013 1 ms','1 ms \u2013 1 s','1 s \u2013 1 h','1 h \u2013 1 yr','1 yr \u2013 1,000 yr','1,000 \u2013 100,000 yr','> 100,000 yr'];
+
+function updateChartLegend() {
+    const items = chartMode === 'decay'
+        ? Object.keys(DECAY_INFO).map(k => ({ key: DECAY_INFO[k].color, text: DECAY_INFO[k].name }))
+        : [{ key: '#1a1a2e', text: 'Stable' }, ...HL_BANDS.map((_, i) => ({ key: 'hsl('+HL_HUES[i]+',80%,40%)', text: HL_LABELS[i] }))];
+    ui.setContent('chartLegend', items);
+}
+
+function buildNuclideList() {
+    const set = new Set();
+    STABLE.forEach(k=>set.add(k));
+    Object.keys(HALF_LIVES).forEach(k=>set.add(+k));
+    ALL_NUCLIDES = Array.from(set).map(k=>({z:Math.floor(k/1000), n:k%1000}));
+}
+
+// Neutron range of stable isotopes for each Z. Missing elements (Tc, Pm and
+// the superheavies) are filled in by interpolating the nearest neighbours.
+function computeStableBand() {
+    const tmp = {};
+    STABLE.forEach(key=>{
+        const z=Math.floor(key/1000), n=key%1000;
+        if(!tmp[z]) tmp[z]=[n,n];
+        else { tmp[z][0]=Math.min(tmp[z][0],n); tmp[z][1]=Math.max(tmp[z][1],n); }
+    });
+    STABLE_BAND = {};
+    for (let z=1; z<=118; z++) {
+        if (tmp[z]) { STABLE_BAND[z]=tmp[z]; continue; }
+        let lo=null, hi=null;
+        for (let d=1; d<40; d++) {
+            if (!lo && tmp[z-d]) lo=tmp[z-d];
+            if (!hi && tmp[z+d]) hi=tmp[z+d];
+            if (lo && hi) break;
+        }
+        if (lo && hi) STABLE_BAND[z]=[Math.round((lo[0]+hi[0])/2), Math.round((lo[1]+hi[1])/2)];
+        else if (lo) STABLE_BAND[z]=[lo[0],lo[1]];
+        else if (hi) STABLE_BAND[z]=[hi[0],hi[1]];
+    }
+}
+
+// Best available decay mode for a nuclide. Uses real PhET/IAEA data where
+// available and falls back to a band-of-stability estimate elsewhere.
+function decayCode(z,n) {
+    const key=z*1000+n;
+    if (STABLE.has(key)) return 'S';
+    if (DECAY_TYPE[key]) return DECAY_TYPE[key];
+    if (z===0) return 'U';
+    if (z>=84) return 'A';
+    if (!STABLE_BAND) computeStableBand();
+    const band=STABLE_BAND[z];
+    if (band) {
+        if (n > band[1]) return (n-band[1] > 6) ? 'N' : 'B';
+        if (n < band[0]) return (band[0]-n > 6) ? 'p' : 'P';
+        return (n >= (band[0]+band[1])/2) ? 'B' : 'P';
+    }
+    return 'A';
+}
+
 function drawChart() {
     const cw=chartC.width, ch=chartC.height;
     chartCtx.clearRect(0,0,cw,ch);
-    SimLib.Draw.background(chartCtx, cw, ch, TChart);
-    const pad={l:50,r:10,t:14,b:30}, pw=cw-pad.l-pad.r, ph=ch-pad.t-pad.b;
-    const maxZ=96, maxN=162;
+    chartCtx.fillStyle='#fafbfc'; chartCtx.fillRect(0,0,cw,ch);
+    const pad={l:46,r:10,t:12,b:26}, pw=cw-pad.l-pad.r, ph=ch-pad.t-pad.b;
+    const maxZ=119, maxN=180;
     const cellW=pw/maxZ, cellH=ph/maxN;
     if (cellW<1||cellH<1) return;
 
     // Colour bands by half-life range. Each band = a distinct hue.
-    const cellColor = (z,n) => {
+    const halfColor = (z,n) => {
         const key=z*1000+n;
-        if (STABLE.has(key)) return TChart.ink;
+        if (STABLE.has(key)) return '#1a1a2e';
         const hl=HALF_LIVES[key];
-        if (hl===undefined) return TChart.bg;
-        // Shifted thresholds: red/yellow cover more, blue only for very long-lived
-        const bands=[1e-9,1e-6,1e-3,1,3600,3.156e7,3.156e10,3.156e14,Infinity];
-        const hues=[250,230,210,180,140,80,40,20,0];  // blue→red (long→short)
+        if (hl===undefined) return null;
         let hue=250;
-        for (let i=0;i<bands.length;i++) { if (hl<bands[i]) { hue=hues[i]; break; } }
-        return `hsl(${hue},80%,40%)`;
+        for (let i=0;i<HL_BANDS.length;i++) { if (hl<HL_BANDS[i]) { hue=HL_HUES[i]; break; } }
+        return 'hsl('+hue+',80%,40%)';
     };
+    const decayColor = (z,n) => {
+        const info=DECAY_INFO[decayCode(z,n)];
+        return info ? info.color : null;
+    };
+    const colorFor = chartMode==='decay' ? decayColor : halfColor;
 
-    for (let z=1;z<=95;z++) {
-        const range=N_RANGE[z]; if (!range) continue;
-        const x=pad.l+z*cellW;
-        for (let n=range[0];n<=range[1];n++) {
-            if (n>160) break;
-            const key=z*1000+n;
-            if (!STABLE.has(key) && HALF_LIVES[key]===undefined) continue;  // skip gaps
-            const y=pad.t+(maxN-n)*cellH;
-            chartCtx.fillStyle=cellColor(z,n);
-            chartCtx.fillRect(x,y,cellW,cellH);
-        }
+    // Faint grid every 20 units to help read the chart.
+    chartCtx.strokeStyle='rgba(0,0,0,0.05)';
+    chartCtx.lineWidth=1;
+    for (let gz=20; gz<maxZ; gz+=20) {
+        const x=pad.l+gz*cellW;
+        chartCtx.beginPath(); chartCtx.moveTo(x,pad.t); chartCtx.lineTo(x,pad.t+ph); chartCtx.stroke();
+    }
+    for (let gn=20; gn<maxN; gn+=20) {
+        const y=pad.t+(maxN-gn)*cellH;
+        chartCtx.beginPath(); chartCtx.moveTo(pad.l,y); chartCtx.lineTo(pad.l+pw,y); chartCtx.stroke();
     }
 
-    if (Z>0&&Z<=95&&N<=160) {
+    // Draw every known nuclide (all the gaps are filled).
+    const w=Math.max(1,cellW), h=Math.max(1,cellH);
+    for (const c of ALL_NUCLIDES) {
+        if (c.z<1 || c.z>118 || c.n>179) continue;
+        const col=colorFor(c.z,c.n);
+        if (!col) continue;
+        const x=pad.l+c.z*cellW, y=pad.t+(maxN-c.n)*cellH;
+        chartCtx.fillStyle=col;
+        chartCtx.fillRect(x,y,w,h);
+    }
+
+    // Current selection
+    if (Z>0 && Z<=118 && N<=179) {
         const x=pad.l+Z*cellW, y=pad.t+(maxN-N)*cellH;
-        chartCtx.strokeStyle=TChart.surface; chartCtx.lineWidth=2;
-        chartCtx.strokeRect(x-1,y-1,cellW+2,cellH+2);
+        chartCtx.strokeStyle=chartMode==='decay'?'#111':'#fff';
+        chartCtx.lineWidth=2;
+        chartCtx.strokeRect(x-1,y-1,w+2,h+2);
     }
 
-    chartCtx.fillStyle=TChart.muted; chartCtx.font=TChart.font(9); chartCtx.textAlign='center';
-    chartCtx.fillText('Protons (Z) →',pad.l+pw/2,ch-3);
+    // Axis labels
+    chartCtx.fillStyle='#6c757d'; chartCtx.font='9px system-ui,sans-serif';
+    chartCtx.textAlign='center';
+    chartCtx.fillText('Protons (Z) \u2192', pad.l+pw/2, ch-3);
+    for (let gz=20; gz<maxZ; gz+=20) chartCtx.fillText(gz, pad.l+gz*cellW, pad.t-3);
     chartCtx.save(); chartCtx.translate(8,pad.t+ph/2); chartCtx.rotate(-Math.PI/2);
-    chartCtx.fillText('Neutrons (N) →',0,0); chartCtx.restore();
+    chartCtx.fillText('Neutrons (N) \u2192',0,0); chartCtx.restore();
 
     chartC.onclick = e => {
         const rect=chartC.getBoundingClientRect();
         const mx=(e.clientX-rect.left)*(cw/rect.width), my=(e.clientY-rect.top)*(ch/rect.height);
         const cz=Math.round((mx-pad.l)/cellW), cn=maxN-Math.round((my-pad.t)/cellH);
-        if (cz>=1&&cz<=95&&cn>=0&&cn<=160 && canExist(cz,cn)) { Z=cz; N=cn; rebuild(); }
+        if (cz>=1 && cz<=118 && cn>=0 && cn<=179 && canExist(cz,cn)) { Z=cz; N=cn; rebuild(); }
     };
+
+    updateChartLegend();
 }
 
 // ═══════════════════════════════════════
@@ -356,6 +729,36 @@ const btnPPlus = document.getElementById('btnProtonPlus');
 const btnPMinus = document.getElementById('btnProtonMinus');
 const btnNPlus = document.getElementById('btnNeutronPlus');
 const btnNMinus = document.getElementById('btnNeutronMinus');
+const decayBtn = document.getElementById('decayBtn');
+const decayModeEl = document.getElementById('decayMode');
+const decayEq = document.getElementById('decayEq');
+
+// ── Decay helpers ──
+function decayProduct(code){
+    switch(code){
+        case 'A': return {dZ:-2, dN:-2, symbol:'\u03b1'};
+        case 'B': return {dZ:+1, dN:-1, symbol:'\u03b2\u207b'};
+        case 'P': return {dZ:-1, dN:+1, symbol:'\u03b2\u207a'};
+        case 'p': return {dZ:-1, dN:0,  symbol:'p'};
+        case 'N': return {dZ:0,  dN:-1, symbol:'n'};
+        default:  return null;
+    }
+}
+function isotopeParts(z,n,color){
+    return [{ sup:true, text:String(z+n), color }, { text:EL_SYMS[z]||'?', color }];
+}
+function applyDecay(){
+    const code=decayCode(Z,N);
+    const prod=decayProduct(code);
+    if (!prod || Z===0) return;
+    const nz=Z+prod.dZ, nn=N+prod.dN;
+    if (nz<0 || nn<0) return;
+    // Emit the decay product before the nucleus changes size.
+    spawnEmission(code, particleR);
+    Z=nz; N=nn;
+    rebuild();
+    warnMsg.textContent = 'Decayed by '+DECAY_INFO[code].name+'.';
+}
 
 function updateUI() {
     const a=Z+N, ratio=Z>0?(N/Z).toFixed(2):'—';
@@ -381,6 +784,26 @@ function updateUI() {
     if (hl==='stable') { hlBar.style.width='100%'; hlBar.style.background='#10b981'; }
     else if (hl===0||hl<1e-12) { hlBar.style.width='2%'; hlBar.style.background='#ef4444'; }
     else { const pct=Math.max(2,Math.min(100,Math.log10(hl)*5+10)); hlBar.style.width=pct+'%'; hlBar.style.background=pct>50?'#f59e0b':'#ef4444'; }
+
+    // Decay mode panel
+    const dcode=decayCode(Z,N);
+    const dinfo=DECAY_INFO[dcode];
+    const prod=decayProduct(dcode);
+    if (decayModeEl) {
+        decayModeEl.textContent = (Z>0 && dinfo) ? dinfo.name : '\u2014';
+        decayModeEl.style.color = (dinfo && dcode!=='S') ? dinfo.color : '#1a1a2e';
+    }
+    if (decayBtn) decayBtn.disabled = !prod || Z===0;
+    if (decayEq) {
+        if (prod) {
+            const nz=Z+prod.dZ, nn=N+prod.dN;
+            ui.setContent('decayEq', [...isotopeParts(Z,N), ' \u2192 ', ...isotopeParts(nz,nn), ' + ' + prod.symbol]);
+        } else if (dcode==='S') {
+            ui.setContent('decayEq', [...isotopeParts(Z,N,'#10b981'), { text:' is stable \u2014 it does not decay.', color:'#10b981' }]);
+        } else {
+            ui.setContent('decayEq', { text:'No single-step decay available.', color:'#9ca3af' });
+        }
+    }
 
     // Warning for impossible nuclei
     if (stab.level==='impossible') {
@@ -408,24 +831,48 @@ btnPMinus.addEventListener('click',()=>{if(Z>0&&canExist(Z-1,N)){Z--;rebuild();}
 btnNPlus.addEventListener('click',()=>{if(N<MAX_N&&Z>0&&canExist(Z,N+1)){N++;rebuild();}});
 btnNMinus.addEventListener('click',()=>{if(N>0&&canExist(Z,N-1)){N--;rebuild();}});
 
-// ═══════════════════════════════════════
-//  INIT + SimLib integration
-// ═══════════════════════════════════════
+if (decayBtn) decayBtn.addEventListener('click', applyDecay);
+
+// Chart colour-mode toggle
+const chartModePick = document.getElementById('chartModePick');
+chartModePick.addEventListener('click', () => {
+    if (chartModePick.value === chartMode) return;
+    chartMode = chartModePick.value;
+    drawChart();
+});
+
+// Build the chart legend (refreshed whenever the chart is drawn)
+updateChartLegend();
+
+// ── Fullscreen tabs (declared views): redraw the chart when it is shown ──
+const buildTabs = document.getElementById('buildTabs');
+buildTabs.addEventListener('change', () => { if (buildTabs.value === 'chart') drawChart(); });
+
+// ── Animation loop (rotation + decay emissions) ──
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function tick(dt){
+    if (!reduceMotion) rotY += 0.0045;
+    updateEmissions(dt);
+    draw();
+}
+
+loadNuclearData().then(() => rebuild());
+setTimeout(() => { if (!dataLoaded) { loadFallbackData(); rebuild(); } }, 3000);
+
+// ═══ Animation (SimLib) ═══
 // The nucleus is drawn in a fixed 600x600 logical space; SimLib maps it onto
 // the responsive (HiDPI-aware) displayed canvas so nothing is clipped.
 const app = SimLib.attach({
     canvas: C,
-    logicalWidth: 600,
-    logicalHeight: 600,
+    logicalWidth: W,
+    logicalHeight: H,
     SimulationClass: class NucleusSim extends SimLib.Simulation {
         onResize() { draw(); }
-        onTick() { /* state is driven by the controls and chart clicks */ }
-        onDraw(ctx) { draw(); }
+        onTick(dt) { tick(dt); }
+        onDraw() { draw(); }
     }
 });
 app.sim.start();
 
-loadNuclearData().then(() => rebuild());
-setTimeout(() => { if (!dataLoaded) { loadFallbackData(); rebuild(); } }, 3000);
     return { app };
 }

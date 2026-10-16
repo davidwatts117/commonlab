@@ -1,720 +1,1068 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
-'use strict';
 
-// ═══ Constants ═══
-const canvas = document.getElementById('titrCanvas');
-const T = SimLib.Theme.use('light');
-const ctx = canvas.getContext('2d');
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Reference data
+// ═══════════════════════════════════════════════════════════════
+const Kw = 1e-14;
+const VESSEL_L = 0.025;      // L of solution initially in the vessel
+const SCALE_MAX = 25.0;      // mL across the x-axis / capacity of the burette
+const DROP = 1 / 15;         // mL per drop
+
+const ACIDS = {
+    'Hydrochloric acid': { strong: true,  Ka: null,    formula: 'HCl' },
+    'Acetic acid':       { strong: false, Ka: 1.8e-5,  formula: 'CH\u2083COOH' },
+    'Chlorous acid':     { strong: false, Ka: 1.2e-2,  formula: 'HClO\u2082' },
+    'Hypochlorous acid': { strong: false, Ka: 3.5e-8,  formula: 'HClO' },
+    'Hydrocyanic acid':  { strong: false, Ka: 6.2e-10, formula: 'HCN' }
+};
+
+const BASES = {
+    'Sodium hydroxide': { strong: true,  Kb: null,    formula: 'NaOH' },
+    'Ammonia':          { strong: false, Kb: 1.8e-5,  formula: 'NH\u2083' },
+    'Methylamine':      { strong: false, Kb: 4.38e-4, formula: 'CH\u2083NH\u2082' },
+    'Ethylamine':       { strong: false, Kb: 5.68e-4, formula: 'C\u2082H\u2085NH\u2082' },
+    'Aniline':          { strong: false, Kb: 3.8e-10, formula: 'C\u2086H\u2085NH\u2082' },
+    'Pyridine':         { strong: false, Kb: 1.7e-9,  formula: 'C\u2085H\u2085N' }
+};
+
+// base = colour of the basic form (high pH), acid = colour of the acidic form (low pH)
+// lo/hi are the pH bounds over which the colour develops visually
+const INDICATORS = {
+    'Phenolphthalein':   { lo: 6.6,  hi: 9.2,  base: [244, 114, 182], acid: [248, 250, 252], range: '8.0 \u2013 10.0' },
+    'Methyl orange':     { lo: 2.6,  hi: 4.6,  base: [250, 204,  21], acid: [234,  88,  12], range: '3.3 \u2013 4.5' },
+    'Bromothymol blue':  { lo: 5.8,  hi: 8.0,  base: [ 37,  99, 235], acid: [250, 204,  21], range: '6.0 \u2013 7.5' },
+    'Crystal violet':    { lo: 0.0,  hi: 1.8,  base: [126,  34, 206], acid: [132, 204,  22], range: '0.0 \u2013 1.8' },
+    'Alizarin yellow':   { lo: 9.8,  hi: 12.0, base: [220,  38,  38], acid: [250, 204,  21], range: '10.0 \u2013 12.0' },
+    'Erichrome black T': { lo: 4.6,  hi: 6.8,  base: [ 30,  64, 175], acid: [225,  29,  72], range: '5.0 \u2013 6.5' }
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════
+let acid = 'Hydrochloric acid';
+let base = 'Sodium hydroxide';
+let indicator = 'Phenolphthalein';
+let concAcid = 0.100;
+let concBase = 0.150;
+let titrant = 'base';
+
+let filled = false;         // glassware contains the solutions
+let tapOpen = false;
+let volumeAdded = 0;
+let zeroReading = 0;        // burette level before any titrant is added
+let eqVol = 0;
+let eqPH = 7;
+let crossedEq = false;
+
+let trace = [];             // { v, pH, rgb:[r,g,b] }
+let logRows = [];           // { v, reading, pH }
+let clock = 0;
+let realLab = false;        // real-lab mode: hide the curve and every pH readout
+let displayF = 0;           // eased fraction of the indicator's high-pH form
+let swirl = 0;              // decaying strength of freshly added (unmixed) titrant
+
+// ═══════════════════════════════════════════════════════════════
+//  DOM
+// ═══════════════════════════════════════════════════════════════
+const canvas        = document.getElementById('titrCanvas');
+const ctx           = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 
-// ═══ State ═══
-let scenario = 'strong-strong';
-let acidConc = 0.1;     // M
-let acidVol = 25.0;     // mL (analyte in flask)
-let baseConc = 0.1;     // M (titrant in burette)
-let volumeAdded = 0.0;  // mL of base added
-let showAnswer = false; // reveal the "unknown" analyte concentration
-let showPH = false;     // show pH instrumentation (off by default)
+const acidSelect    = document.getElementById('acidSelect');
+const baseSelect    = document.getElementById('baseSelect');
+const indicatorSel  = document.getElementById('indicatorSelect');
+const concAcidInput = document.getElementById('concAcid');
+const concBaseInput = document.getElementById('concBase');
+const acidHint      = document.getElementById('acidHint');
+const baseHint      = document.getElementById('baseHint');
+const showEqCb      = document.getElementById('showEqPt');
+const showDataCb    = document.getElementById('showDataPts');
+const dropRate      = document.getElementById('dropRate');
+const dropRateVal   = document.getElementById('dropRateVal');
+const tapBtn        = document.getElementById('titrateBtn');
+const burReadout    = document.getElementById('buretteReadout');
+const phReadout     = document.getElementById('phReadout');
+const eqReadout     = document.getElementById('eqVolReadout');
+const dockPH        = document.getElementById('dockPH');
+const resetBtn      = document.getElementById('resetBtn');
+const dockSwatch    = document.getElementById('dockSwatch');
+const dockPHLabel   = document.getElementById('dockPHLabel');
+const realLabCb     = document.getElementById('realLab');
+const logThirdHead  = document.getElementById('logThirdHead');
+const messageEl     = document.getElementById('titrMessage');
+const dataBody      = document.getElementById('dataBody');
+const titrantPick   = document.getElementById('titrantPick');
+const dataWrap      = dataBody.closest('.simulation-table-wrap');
+const dataHint      = document.getElementById('dataHint');
 
-// Indicator
-let indicator = 'phenolphthalein';
+// ═══════════════════════════════════════════════════════════════
+//  Equilibrium pH  (full quadratic / cubic treatment)
+// ═══════════════════════════════════════════════════════════════
+function sgn(a) { return a > 0 ? 1 : a < 0 ? -1 : 0; }
 
-const INDICATORS = {
-    methylorange:    { label: 'Methyl Orange',    lo: 3.1, hi: 4.4,  acid: [255, 140, 0],  base: [255, 210, 60] },
-    bromothymol:     { label: 'Bromothymol Blue', lo: 6.0, hi: 7.6,  acid: [255, 220, 60], base: [40, 110, 200] },
-    phenolphthalein: { label: 'Phenolphthalein',  lo: 8.2, hi: 10.0, acid: [250, 250, 250], base: [220, 40, 110] },
-};
-
-// ═══ Chemistry ═══
-// Instead of hand-rolled piecewise formulas (which drift out of sync and were
-// demonstrably wrong for the strong-acid/weak-base case), we solve the
-// charge-balance equation numerically. This one expression is correct for
-// every strong/weak combination, including near the equivalence point where
-// the piecewise versions needed fudge factors.
-//
-//   [H+] + cation = anion + [OH-]
-//
-//   cation = [base species carrying a charge]
-//            strong base -> fully dissociated,  [Na+]  = CB
-//            weak base   -> [BH+] = CB·Kb/(Kb+[OH-])
-//   anion  = [acid species carrying a charge]
-//            strong acid -> fully dissociated,  [Cl-]  = CA
-//            weak acid   -> [A-]  = CA·Ka/(Ka+[H+])
-
-const KW = 1e-14; // Kw at 25 °C
-
-const SCENARIOS = {
-    'strong-strong': { label: 'Strong Acid + Strong Base', acid: 'strong', base: 'strong', Ka: null,    Kb: null },
-    'weak-strong':   { label: 'Weak Acid + Strong Base',   acid: 'weak',   base: 'strong', Ka: 1.8e-5, Kb: null },
-    'strong-weak':   { label: 'Strong Acid + Weak Base',   acid: 'strong', base: 'weak',   Ka: null,    Kb: 1.8e-5 },
-    'weak-weak':     { label: 'Weak Acid + Weak Base',     acid: 'weak',   base: 'weak',   Ka: 1.8e-5, Kb: 1.8e-5 },
-};
-
-function currentSpec() {
-    return SCENARIOS[scenario] || SCENARIOS['strong-strong'];
+function positiveRoot(b, c) {                 // x² + b·x + c = 0 → positive x
+    const d = b * b - 4 * c;
+    if (d < 0) return 0;
+    const r1 = (-b + Math.sqrt(d)) / 2;
+    if (r1 >= 0) return r1;
+    const r2 = (-b - Math.sqrt(d)) / 2;
+    return r2 >= 0 ? r2 : 0;
 }
 
-function computeEquivalenceVolume() {
-    return (acidConc * acidVol) / baseConc;
-}
+function cubicRoots(a, b, c, d) {             // a·x³ + b·x² + c·x + d = 0
+    const out = [0, 0, 0, 0, 0, 0];
+    const f = (3 * c / a - b * b / (a * a)) / 3;
+    const g = (2 * b * b * b / (a * a * a) - 9 * b * c / (a * a) + 27 * d / a) / 27;
+    const h = g * g / 4 + f * f * f / 27;
 
-/** Volume of titrant the burette can hold; the titration is clamped to this. */
-function buretteCapacity() {
-    const needed = computeEquivalenceVolume() * 2 + 5;
-    return Math.max(50, Math.ceil(needed / 10) * 10);
-}
-
-// Solve the charge balance for [H+] by bisection in log space.
-// The residual is strictly increasing in [H+], so bisection is guaranteed to
-// converge; 50 halvings of a 15-decade range is far more precision than needed.
-function solveH(CA, Ka, CB, Kb) {
-    const residual = (h) => {
-        const oh = KW / h;
-        const cation = Kb ? CB * Kb / (Kb + oh) : CB;
-        const anion = Ka ? CA * Ka / (Ka + h) : CA;
-        return h + cation - anion - oh;
-    };
-
-    let loExp = -15, hiExp = 0; // [H+] from 1e-15 to 1
-    for (let i = 0; i < 50; i++) {
-        const midExp = (loExp + hiExp) / 2;
-        if (residual(Math.pow(10, midExp)) > 0) hiExp = midExp;
-        else loExp = midExp;
+    if (h > 0) {                              // one real root
+        const r = -g / 2 + Math.sqrt(h);
+        const s = sgn(r) * Math.pow(Math.abs(r), 1 / 3);
+        const t = -g / 2 - Math.sqrt(h);
+        const u = sgn(t) * Math.pow(Math.abs(t), 1 / 3);
+        out[0] = (s + u) - b / (3 * a);         out[3] = 0;
+        out[1] = -(s + u) / 2 - b / (3 * a);    out[4] = (s - u) * Math.sqrt(3) / 2;
+        out[2] = -(s + u) / 2 - b / (3 * a);    out[5] = -(s - u) * Math.sqrt(3) / 2;
+        return out;
     }
-    return Math.pow(10, (loExp + hiExp) / 2);
-}
-
-function computePH(volAdded) {
-    const spec = currentSpec();
-    const totalVolL = (acidVol + volAdded) / 1000; // litres
-    if (totalVolL <= 0) return 7;
-
-    const nAcid = acidConc * acidVol / 1000;  // moles
-    const nBase = baseConc * volAdded / 1000;  // moles
-
-    const CA = nAcid / totalVolL; // total acid species concentration
-    const CB = nBase / totalVolL; // total base species concentration
-
-    const Ka = spec.acid === 'weak' ? spec.Ka : null;
-    const Kb = spec.base === 'weak' ? spec.Kb : null;
-
-    const h = solveH(CA, Ka, CB, Kb);
-    return Math.max(0, Math.min(14, -Math.log10(h)));
-}
-
-// ═══ Drawing ═══
-// By default there is NO pH meter, pH scale, or pH curve. In a real lab you
-// cannot see the pH — the only evidence is the indicator colour in the flask,
-// and the titre is whatever reading you had when the colour changed. Anything
-// that displayed a number would defeat the exercise.
-//
-// The "Show pH" toggle (showPH) turns all three on for anyone who would rather
-// watch the chemistry than find the endpoint by eye.
-function draw() {
-    ctx.clearRect(0, 0, W, H);
-    SimLib.Draw.background(ctx, W, H, T);
-    SimLib.Draw.title(ctx, 'Titration', 14, 22, { size: 13, color: T.muted, theme: T });
-
-    // ── Lab apparatus ──
-    const labW = 280;
-    drawLabApparatus(labW);
-
-    // ── Right side: either the pH curve, or the burette reading panel ──
-    // They are mutually exclusive: the pH curve claims the same space, and
-    // showing it already hands over the pH the exercise is meant to hide.
-    if (showPH) {
-        const curveX = labW + 20, curveY = 30;
-        const curveW = W - curveX - 15, curveH = H - 60;
-        drawPHCurve(curveX, curveY, curveW, curveH);
-        drawPHBar(curveX, H - 20, curveW);
-    } else {
-        drawBurettePanel(W - 150, 40, 130, 150);
+    if (f === 0 && g === 0 && h === 0) {
+        const v = -sgn(d / a) * Math.pow(Math.abs(d / a), 1 / 3);
+        out[0] = out[1] = out[2] = v;
+        return out;
     }
+    const i = Math.sqrt(g * g / 4 - h);       // three real roots
+    const j = sgn(i) * Math.pow(Math.abs(i), 1 / 3);
+    const k = Math.acos(Math.max(-1, Math.min(1, -g / (2 * i))));
+    const l = -j;
+    const m = Math.cos(k / 3);
+    const n = Math.sqrt(3) * Math.sin(k / 3);
+    const p = -b / (3 * a);
+    out[0] = 2 * j * Math.cos(k / 3) - b / (3 * a); out[3] = 0;
+    out[1] = l * (m + n) + p;                        out[4] = 0;
+    out[2] = l * (m - n) + p;                        out[5] = 0;
+    return out;
 }
 
-function drawLabApparatus(labW) {
-    // ── Burette (left, tall) ──
-    const buretteX = 70, buretteTop = 40, buretteW = 22, buretteH = 260;
-    const buretteBottom = buretteTop + buretteH;
+function biggestReal(roots) {
+    if (roots[4] !== 0) return roots[0] > 0 ? roots[0] : 0;
+    let r = 0;
+    for (let i = 0; i < 3; i++) if (roots[i] > r) r = roots[i];
+    return r;
+}
 
-    // Burette body
-    ctx.fillStyle = T.accentSoft;
-    ctx.strokeStyle = T.accent;
-    ctx.lineWidth = 2;
+function pHstrongStrong(vA, vB, tot) {
+    const net = (vA * concAcid - vB * concBase) / tot;
+    if (net > 0) return -Math.log10(positiveRoot(net, -Kw) + net);
+    return 14 + Math.log10(positiveRoot(-net, -Kw) - net);
+}
+
+function pHweakAcidStrongBase(vA, vB, tot, Ka) {
+    const net = (vA * concAcid - vB * concBase) / tot;
+    const conj = (vB * concBase) / tot;
+    if (net > 2e-3) return -Math.log10(positiveRoot(conj + Ka, -(net * Ka)));
+    if (net >= -2e-3) {
+        const y = biggestReal(cubicRoots(-Ka, -(Kw + Ka * net), (conj * Kw + Ka * Kw), Kw * Kw));
+        if (y !== 0) return -Math.log10(Kw / y);
+        return 14 + Math.log10(Math.sqrt(conj * Kw / Ka));
+    }
+    return 14 + Math.log10(positiveRoot(-net, -Kw) - net);
+}
+
+function pHstrongAcidWeakBase(vA, vB, tot, Kb) {
+    const net = (vB * concBase - vA * concAcid) / tot;
+    const conj = (vA * concAcid) / tot;
+    if (net > 2e-3) return 14 + Math.log10(positiveRoot(conj + Kb, -(net * Kb)));
+    if (net >= -2e-3) {
+        const y = biggestReal(cubicRoots(-Kb, -(Kw + Kb * net), (conj * Kw + Kb * Kw), Kw * Kw));
+        if (y !== 0) return 14 + Math.log10(Kw / y);
+        return -Math.log10(Math.sqrt(conj * Kw / Kb));
+    }
+    return -Math.log10(positiveRoot(-net, -Kw) - net);
+}
+
+function pHat(v) {
+    const A = ACIDS[acid], B = BASES[base];
+    const vA = titrant === 'acid' ? v / 1000 : VESSEL_L;
+    const vB = titrant === 'base' ? v / 1000 : VESSEL_L;
+    const tot = vA + vB;
+    let pH;
+    if (A.strong && B.strong)       pH = pHstrongStrong(vA, vB, tot);
+    else if (!A.strong && B.strong) pH = pHweakAcidStrongBase(vA, vB, tot, A.Ka);
+    else if (A.strong && !B.strong) pH = pHstrongAcidWeakBase(vA, vB, tot, B.Kb);
+    else                            pH = 7;
+    return Math.max(0, Math.min(14, pH));
+}
+
+function weakPair() { return !ACIDS[acid].strong && !BASES[base].strong; }
+
+// ═══════════════════════════════════════════════════════════════
+//  Colour helpers
+// ═══════════════════════════════════════════════════════════════
+function smoothstep(a, b, x) {
+    if (a === b) return x < a ? 0 : 1;
+    let t = (x - a) / (b - a);
+    t = Math.max(0, Math.min(1, t));
+    return t * t * (3 - 2 * t);
+}
+
+// how far into its basic (high-pH) colour the indicator is at a given pH
+function fractionAt(pH) {
+    const ind = INDICATORS[indicator];
+    // the exponent lifts the first faint tint so it is actually perceptible
+    return Math.pow(smoothstep(ind.lo, ind.hi, pH), 0.72);
+}
+
+function colorForFraction(f, shade) {
+    const ind = INDICATORS[indicator];
+    const c = [
+        ind.acid[0] + (ind.base[0] - ind.acid[0]) * f,
+        ind.acid[1] + (ind.base[1] - ind.acid[1]) * f,
+        ind.acid[2] + (ind.base[2] - ind.acid[2]) * f
+    ];
+    const s = shade == null ? 1 : shade;
+    return [Math.round(c[0] * s), Math.round(c[1] * s), Math.round(c[2] * s)];
+}
+
+// true colour at a pH (used for the plotted band and the log)
+function mixRGB(pH, shade) {
+    return colorForFraction(fractionAt(pH), shade);
+}
+
+// live, time-smoothed colour of the mixture
+function liveRGB(shade) {
+    return colorForFraction(displayF, shade);
+}
+
+function rgbStr(c, a) {
+    return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + (a == null ? ')' : ',' + a + ')');
+}
+
+function nearlyWhite(c) { return c[0] > 244 && c[1] > 244 && c[2] > 244; }
+
+function asSwatch(c) {
+    return nearlyWhite(c) ? [226, 232, 240] : c;
+}
+
+function liquidStyle() {
+    const c = liveRGB(1);
+    if (nearlyWhite(c)) return 'rgba(203, 221, 240, 0.7)';
+    return rgbStr(c, 0.72);
+}
+
+function solutionSwatch(pH) {
+    return asSwatch(mixRGB(pH, 1));
+}
+
+function liveSwatch() {
+    return asSwatch(liveRGB(1));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Formatting
+// ═══════════════════════════════════════════════════════════════
+function fmtM(x) {
+    const r = Math.round(x * 1000) / 1000;
+    return String(r);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Drawing — helpers
+// ═══════════════════════════════════════════════════════════════
+function rrect(x, y, w, h, r) {
     ctx.beginPath();
-    ctx.moveTo(buretteX, buretteTop);
-    ctx.lineTo(buretteX + buretteW, buretteTop);
-    ctx.lineTo(buretteX + buretteW - 2, buretteBottom - 10);
-    ctx.lineTo(buretteX + 2, buretteBottom - 10);
-    ctx.closePath();
+    ctx.roundRect(x, y, w, h, r);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Drawing — apparatus
+// ═══════════════════════════════════════════════════════════════
+function drawApparatus() {
+    // ── Retort stand ──
+    ctx.fillStyle = '#334155';
+    rrect(18, 527, 216, 14, 6); ctx.fill();
+    ctx.fillRect(36, 68, 9, 460);
+    ctx.fillStyle = '#475569';
+    rrect(45, 151, 54, 10, 4); ctx.fill();
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(98, 144, 6, 24);
+
+    // ── Burette ──
+    const bx = 101, bw = 30, bTop = 56, bBot = 360;
+    const bcx = bx + bw / 2;
+    ctx.fillStyle = '#f1f5f9';
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 2;
+    rrect(bx, bTop, bw, bBot - bTop, 4);
     ctx.fill();
     ctx.stroke();
 
-    // Burette graduations
-    const maxML = 50;
-    const fillPct = 1 - (volumeAdded / maxML);
-    const liquidTop = buretteBottom - 10 - (buretteH - 30) * fillPct;
-    const mLPerPx = maxML / (buretteH - 30);
-
-    // Liquid inside burette
-    if (fillPct > 0.01) {
-        ctx.fillStyle = 'rgba(180, 210, 240, 0.5)';
+    const reading = filled ? zeroReading + volumeAdded : 0;
+    const frac = Math.max(0, Math.min(1, reading / SCALE_MAX));
+    const surfaceY = bTop + frac * (bBot - bTop);
+    if (filled) {
+        ctx.fillStyle = 'rgba(45, 212, 191, 0.26)';
+        ctx.fillRect(bx + 2, surfaceY, bw - 4, bBot - surfaceY - 2);
+        ctx.strokeStyle = 'rgba(13, 148, 136, 0.85)';
+        ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.rect(buretteX + 3, liquidTop, buretteW - 6, buretteBottom - 10 - liquidTop);
-        ctx.fill();
-    }
-
-    // Tick marks
-    ctx.fillStyle = T.accent;
-    ctx.font = T.font(8);
-    ctx.textAlign = 'right';
-    for (let mL = 0; mL <= 50; mL += 5) {
-        const y = buretteBottom - 10 - (mL / maxML) * (buretteH - 30);
-        ctx.fillText(mL, buretteX - 6, y + 3);
-        ctx.strokeStyle = T.borderStrong;
-        ctx.lineWidth = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(buretteX + 2, y);
-        ctx.lineTo(buretteX + buretteW - 2, y);
+        ctx.moveTo(bx + 2, surfaceY + 4);
+        ctx.quadraticCurveTo(bcx, surfaceY - 3, bx + bw - 2, surfaceY + 4);
         ctx.stroke();
     }
-    ctx.textAlign = 'center';
-    ctx.fillStyle = T.accent;
-    ctx.font = T.font(9, 'bold');
-    ctx.fillText('NaOH', buretteX + buretteW/2, buretteTop - 10);
-    ctx.fillText(baseConc.toFixed(2) + ' M', buretteX + buretteW/2, buretteBottom + 12);
 
-    // Stopcock
-    const stopcockY = buretteBottom - 10;
-    ctx.fillStyle = T.muted;
-    ctx.beginPath();
-    ctx.roundRect(buretteX - 6, stopcockY - 4, buretteW + 12, 10, 3);
-    ctx.fill();
-    ctx.fillStyle = T.text;
-    ctx.beginPath();
-    ctx.arc(buretteX + buretteW/2, stopcockY + 1, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Drop forming
-    if (volumeAdded < computeEquivalenceVolume() + 10) {
-        const dropY = stopcockY + 15 + Math.sin(Date.now() * 0.005) * 3;
-        ctx.fillStyle = 'rgba(140, 180, 220, 0.7)';
+    // Graduations: ticks every 1 mL, labels every 5
+    ctx.font = '9px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    for (let mL = 0; mL <= 25; mL++) {
+        const y = bTop + (mL / SCALE_MAX) * (bBot - bTop);
+        const major = mL % 5 === 0;
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = major ? 1.2 : 0.6;
         ctx.beginPath();
-        ctx.arc(buretteX + buretteW/2, dropY, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        // Drop falling
-        const dropY2 = dropY + 18;
-        ctx.fillStyle = 'rgba(140, 180, 220, 0.4)';
-        ctx.beginPath();
-        ctx.arc(buretteX + buretteW/2 - 1, dropY2, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-    }
-
-    // ── Flask (below burette tip) ──
-    const flaskCX = buretteX + buretteW/2, flaskTop = stopcockY + 38;
-    const flaskW = 90, flaskH = 100;
-    const flaskBottom = flaskTop + flaskH;
-
-    // Flask body (Erlenmeyer shape)
-    ctx.fillStyle = T.surface;
-    ctx.strokeStyle = T.muted;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(flaskCX - flaskW/2 + 25, flaskTop);
-    ctx.lineTo(flaskCX + flaskW/2 - 25, flaskTop);
-    ctx.lineTo(flaskCX + flaskW/2, flaskTop + 20);
-    ctx.lineTo(flaskCX + flaskW/2 - 10, flaskBottom);
-    ctx.lineTo(flaskCX - flaskW/2 + 10, flaskBottom);
-    ctx.lineTo(flaskCX - flaskW/2, flaskTop + 20);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Flask neck
-    ctx.fillStyle = T.surface;
-    ctx.strokeStyle = T.muted;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.rect(flaskCX - 16, flaskTop - 6, 32, 12);
-    ctx.fill();
-    ctx.stroke();
-
-    // Solution in flask
-    const pH = computePH(volumeAdded);
-    const indicatorColor = getIndicatorColor(pH);
-    const flaskMidY = flaskTop + flaskH/2 + 5;
-
-    ctx.fillStyle = indicatorColor;
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.moveTo(flaskCX - flaskW/2 + 28, flaskTop + 8);
-    ctx.lineTo(flaskCX + flaskW/2 - 28, flaskTop + 8);
-    ctx.lineTo(flaskCX + flaskW/2 - 12, flaskBottom - 4);
-    ctx.lineTo(flaskCX - flaskW/2 + 12, flaskBottom - 4);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    // Flask label
-    ctx.fillStyle = T.accent;
-    ctx.font = T.font(9, 'bold');
-    ctx.textAlign = 'center';
-    const spec = currentSpec();
-    const acidLabel = spec.acid === 'weak' ? 'CH\u2083COOH' : 'HCl';
-    ctx.fillText(acidLabel, flaskCX, flaskBottom + 16);
-    // The analyte concentration is the "unknown" the user is meant to determine,
-    // so it stays hidden until explicitly revealed.
-    ctx.fillText(
-        (showAnswer ? acidConc.toFixed(3) + ' M' : '? M') + ', ' + acidVol.toFixed(0) + ' mL',
-        flaskCX, flaskBottom + 30
-    );
-
-    // On reveal, also give the true endpoint so the user can grade their own run.
-    if (showAnswer) {
-        ctx.fillStyle = T.success;
-        ctx.font = T.font(9, 'bold');
-        ctx.fillText(
-            'True endpoint: ' + computeEquivalenceVolume().toFixed(2) + ' mL',
-            flaskCX, flaskBottom + 44
-        );
-    }
-
-    // ── pH meter (only when pH instrumentation is switched on) ──
-    if (showPH) {
-        const pHMeterX = flaskCX + flaskW / 2 + 20, pHMeterY = flaskTop;
-        ctx.fillStyle = T.surface2;
-        ctx.strokeStyle = T.ink;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(pHMeterX, pHMeterY, 50, 70, 6);
-        ctx.fill();
+        ctx.moveTo(bx + 3, y);
+        ctx.lineTo(bx + 3 + (major ? 9 : 5), y);
         ctx.stroke();
-        ctx.fillStyle = T.ink;
-        ctx.font = T.font(18, 'bold');
-        ctx.textAlign = 'center';
-        ctx.fillText(pH.toFixed(2), pHMeterX + 25, pHMeterY + 32);
-        ctx.fillStyle = T.muted;
-        ctx.font = T.font(9, 'bold');
-        ctx.fillText('pH', pHMeterX + 25, pHMeterY + 50);
-        // Probe wire
-        ctx.strokeStyle = T.faint;
+        if (major) {
+            ctx.fillStyle = '#64748b';
+            ctx.fillText(String(mL), bx + bw + 5, y + 3);
+        }
+    }
+
+    // Burette label
+    const inBurette = titrant === 'base' ? base : acid;
+    const buretteConc = titrant === 'base' ? concBase : concAcid;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0f766e';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillText(inBurette, bcx, bTop - 20);
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText(buretteConc.toFixed(3) + ' M in burette', bcx, bTop - 7);
+
+    // ── Stopcock ──
+    ctx.fillStyle = '#94a3b8';
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.5;
+    rrect(bcx - 13, bBot, 26, 13, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = tapOpen ? '#0f766e' : '#64748b';
+    ctx.beginPath();
+    ctx.arc(bcx, bBot + 6, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    if (tapOpen) { ctx.moveTo(bcx - 4, bBot + 6); ctx.lineTo(bcx + 4, bBot + 6); }
+    else         { ctx.moveTo(bcx, bBot + 2);     ctx.lineTo(bcx, bBot + 10); }
+    ctx.stroke();
+    ctx.fillStyle = '#94a3b8';
+    ctx.beginPath();
+    ctx.moveTo(bcx - 4, bBot + 13);
+    ctx.lineTo(bcx + 4, bBot + 13);
+    ctx.lineTo(bcx + 2, bBot + 24);
+    ctx.lineTo(bcx - 2, bBot + 24);
+    ctx.closePath();
+    ctx.fill();
+
+    // ── Falling drops ──
+    if (tapOpen) {
+        const phases = [0, 0.5];
+        phases.forEach(function (offset) {
+            const t = ((clock / 520) + offset) % 1;
+            const y = bBot + 26 + t * 44;
+            ctx.fillStyle = 'rgba(13, 148, 136, ' + (0.85 - t * 0.4) + ')';
+            ctx.beginPath();
+            ctx.ellipse(bcx, y, 2.8, 3.9, 0, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    // ── Digital burette readout ──
+    ctx.fillStyle = '#1e293b';
+    rrect(168, 78, 132, 64, 9); ctx.fill();
+    ctx.fillStyle = '#5eead4';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('BURETTE', 180, 96);
+    ctx.font = 'bold 22px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillText(filled ? (zeroReading + volumeAdded).toFixed(2) : '--.--', 180, 125);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText('mL', 280, 125);
+
+    // ── Reaction vessel (beaker) ──
+    const kx = 116, kTop = 438, kBot = 524, khw = 52;
+    function vesselPath() {
+        ctx.beginPath();
+        ctx.moveTo(kx - khw, kTop);
+        ctx.lineTo(kx + khw, kTop);
+        ctx.lineTo(kx + khw, kBot - 9);
+        ctx.quadraticCurveTo(kx + khw, kBot, kx + khw - 9, kBot);
+        ctx.lineTo(kx - khw + 9, kBot);
+        ctx.quadraticCurveTo(kx - khw, kBot, kx - khw, kBot - 9);
+        ctx.closePath();
+    }
+    // liquid
+    let liquidTop = kBot;
+    if (filled) {
+        const totalVol = 25 + volumeAdded;
+        const fillFrac = Math.min(1, totalVol / 150);
+        liquidTop = kBot - 9 - fillFrac * (kBot - 9 - (kTop + 12));
+        ctx.save();
+        vesselPath();
+        ctx.clip();
+        ctx.fillStyle = liquidStyle();
+        ctx.fillRect(kx - khw, liquidTop, khw * 2, kBot + 6 - liquidTop);
+        const c = liveRGB(0.78);
+        ctx.strokeStyle = rgbStr(c, 0.95);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(pHMeterX, pHMeterY + 15);
-        ctx.quadraticCurveTo(flaskCX, flaskTop - 20, flaskCX, flaskTop + 5);
+        ctx.moveTo(kx - khw, liquidTop);
+        ctx.quadraticCurveTo(kx, liquidTop - 5, kx + khw, liquidTop);
         ctx.stroke();
-        // Probe tip in flask
-        ctx.fillStyle = T.ink;
-        ctx.beginPath();
-        ctx.arc(flaskCX, flaskTop + 10, 3, 0, Math.PI * 2);
-        ctx.fill();
-    }
 
-    // Magnetic stirrer
-    // Offset down so it never collides with the reveal caption.
-    const stirY = flaskBottom + (showAnswer ? 60 : 48);
-    ctx.fillStyle = T.borderStrong;
-    ctx.beginPath();
-    ctx.roundRect(flaskCX - 35, stirY, 70, 14, 4);
-    ctx.fill();
-    ctx.fillStyle = T.faint;
-    ctx.font = T.font(8);
-    ctx.textAlign = 'center';
-    ctx.fillText('Stirrer', flaskCX, stirY + 10);
-    // Stir bar in flask
-    const stirAngle = Date.now() * 0.008;
-    const stirLen = 12;
-    ctx.save();
-    ctx.translate(flaskCX, flaskBottom - 10);
-    ctx.rotate(stirAngle);
-    ctx.fillStyle = T.faint;
-    ctx.beginPath();
-    ctx.roundRect(-stirLen/2, -2.5, stirLen, 5, 2);
-    ctx.fill();
-    ctx.restore();
-}
-
-// The solution colour follows the chosen indicator across its transition
-// range; outside that range it sits at the pure acid or base colour.
-function getIndicatorColor(pH) {
-    const ind = INDICATORS[indicator] || INDICATORS.phenolphthalein;
-    const t = Math.max(0, Math.min(1, (pH - ind.lo) / (ind.hi - ind.lo)));
-    const mix = (a, b, f) => Math.round(a + (b - a) * f);
-    const r = mix(ind.acid[0], ind.base[0], t);
-    const g = mix(ind.acid[1], ind.base[1], t);
-    const b = mix(ind.acid[2], ind.base[2], t);
-    // A fully transparent "colourless" acid end (phenolphthalein) still needs
-    // enough alpha for the liquid to be visible against the white flask.
-    const alpha = (0.55 + t * 0.2).toFixed(2);
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-}
-
-/** Horizontal pH scale with a marker at the current pH. */
-function drawPHBar(x, y, w) {
-    const barH = 14;
-    const pH = computePH(volumeAdded);
-
-    // Gradient bar from pH 0 (red) to pH 14 (blue)
-    const barGrad = ctx.createLinearGradient(x, 0, x + w, 0);
-    for (let i = 0; i <= 14; i++) {
-        const t = i / 14;
-        let r, g, B;
-        if (t < 0.5) {
-            // Red to yellow
-            const tt = t * 2;
-            r = 220; g = Math.round(50 + tt * 180); B = Math.round(50 - tt * 20);
-        } else {
-            // Yellow to blue
-            const tt = (t - 0.5) * 2;
-            r = Math.round(220 - tt * 180); g = Math.round(230 - tt * 160); B = Math.round(30 + tt * 150);
+        // A drop does not mix instantly: a faint streak of the titrant's colour
+        // lingers near the surface and lasts longer as the endpoint nears.
+        const prox = smoothstep(eqVol - 1.5, eqVol - 0.05, volumeAdded);
+        const a = Math.min(0.5, swirl * prox * 0.55);
+        if (a > 0.012) {
+            const sc = colorForFraction(titrant === 'base' ? 1 : 0, 1);
+            ctx.strokeStyle = rgbStr(sc, a);
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            const yy = liquidTop + 13;
+            ctx.beginPath();
+            ctx.moveTo(kx - 42, yy);
+            ctx.quadraticCurveTo(kx, yy + 9, kx + 42, yy - 3);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(kx - 30, yy + 15);
+            ctx.quadraticCurveTo(kx + 6, yy + 21, kx + 36, yy + 9);
+            ctx.stroke();
         }
-        barGrad.addColorStop(t, 'rgb(' + r + ',' + g + ',' + B + ')');
+        ctx.restore();
     }
-    ctx.fillStyle = barGrad;
+    // glass
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 2.5;
+    vesselPath();
+    ctx.stroke();
+    // pour spout
     ctx.beginPath();
-    ctx.roundRect(x, y, w, barH, 4);
-    ctx.fill();
-
-    // Current pH indicator
-    const pHX = x + (pH / 14) * w;
-    ctx.fillStyle = T.ink;
-    ctx.beginPath();
-    ctx.moveTo(pHX, y - 6);
-    ctx.lineTo(pHX - 5, y - 2);
-    ctx.lineTo(pHX + 5, y - 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(pHX, y + barH + 6);
-    ctx.lineTo(pHX - 5, y + barH + 2);
-    ctx.lineTo(pHX + 5, y + barH + 2);
-    ctx.fill();
-
-    // pH label
-    ctx.fillStyle = T.ink;
-    ctx.font = T.font(10, 'bold');
-    ctx.textAlign = 'center';
-    ctx.fillText('pH ' + pH.toFixed(2), pHX, y - 8);
-
-    // Tick marks
-    ctx.fillStyle = T.text;
-    ctx.font = T.font(8);
-    ctx.textAlign = 'center';
-    for (let p = 0; p <= 14; p += 2) {
-        const tx = x + (p / 14) * w;
-        ctx.fillText(p, tx, y + barH + 16);
+    ctx.moveTo(kx - khw, kTop);
+    ctx.quadraticCurveTo(kx - khw - 7, kTop - 1, kx - khw - 11, kTop - 9);
+    ctx.stroke();
+    // volume ticks on the glass
+    ctx.strokeStyle = 'rgba(100,116,139,0.6)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 5; i++) {
+        const y = kBot - 9 - (i / 6) * (kBot - 9 - (kTop + 12));
+        ctx.beginPath();
+        ctx.moveTo(kx + khw - 12, y);
+        ctx.lineTo(kx + khw, y);
+        ctx.stroke();
     }
+    // stirrer bar
+    ctx.save();
+    ctx.translate(kx, kBot - 7);
+    ctx.rotate(Math.sin(clock * 0.02) * 0.55);
+    ctx.fillStyle = '#94a3b8';
+    rrect(-11, -3, 22, 6, 3); ctx.fill();
+    ctx.restore();
+
+    // ── Vessel labels ──
+    const inVessel = titrant === 'base' ? acid : base;
+    const vesselConc = titrant === 'base' ? concAcid : concBase;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillText('IN THE VESSEL \u2014 25.0 mL', 186, 452);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillText(inVessel, 186, 468);
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText(vesselConc.toFixed(3) + ' M', 186, 484);
 }
 
-/** Titration curve: pH against volume of titrant added, with the endpoint marked. */
-function drawPHCurve(cx, cy, cw, ch) {
-    const eqVol = computeEquivalenceVolume();
-    const maxVol = Math.max(eqVol * 2 + 5, volumeAdded + 5);
+// ═══════════════════════════════════════════════════════════════
+//  Drawing — pH curve
+// ═══════════════════════════════════════════════════════════════
+function drawCurve() {
+    const px = 330, py = 34, pw = 595, ph = 517;
+    const gx0 = 392, gy0 = 102, gx1 = 890, gy1 = 472;
+    const gw = gx1 - gx0, gh = gy1 - gy0;
+    const X = v => gx0 + (v / SCALE_MAX) * gw;
+    const Y = p => gy1 - (Math.max(0, Math.min(14, p)) / 14) * gh;
 
-    // Axes
-    ctx.strokeStyle = T.ink;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx, cy + ch);
-    ctx.lineTo(cx + cw, cy + ch);
+    // panel
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    rrect(px, py, pw, ph, 14);
+    ctx.fill();
     ctx.stroke();
 
-    // Labels
-    ctx.fillStyle = T.ink;
-    ctx.font = T.font(11, 'bold');
+    // header
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('pH Curve', px + 22, py + 30);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText('shaded band = colour of the mixture', px + 96, py + 30);
+
+    // current-colour swatch
+    const sw = filled ? liveSwatch() : [226, 232, 240];
+    ctx.fillStyle = rgbStr(sw, 1);
+    rrect(px + pw - 96, py + 14, 22, 22, 6); ctx.fill();
+    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText('current', px + pw - 66, py + 29);
+
+    ctx.strokeStyle = '#eef2f6';
+    ctx.beginPath();
+    ctx.moveTo(px + 18, py + 46);
+    ctx.lineTo(px + pw - 18, py + 46);
+    ctx.stroke();
+
+    // plot background
+    ctx.fillStyle = '#fcfdfe';
+    ctx.fillRect(gx0, gy0, gw, gh);
+
+    // ── shaded band under the curve tinted by the indicator ──
+    if (trace.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(gx0, gy0, gw, gh);
+        ctx.clip();
+        for (let i = 1; i < trace.length; i++) {
+            const a = trace[i - 1], b = trace[i];
+            const c = solutionSwatch(b.pH);
+            ctx.fillStyle = rgbStr(c, 0.34);
+            ctx.beginPath();
+            ctx.moveTo(X(a.v), Y(a.pH));
+            ctx.lineTo(X(b.v), Y(b.pH));
+            ctx.lineTo(X(b.v), gy1);
+            ctx.lineTo(X(a.v), gy1);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // grid
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    for (let p = 0; p <= 14; p += 2) {
+        const y = Y(p);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(gx0, y);
+        ctx.lineTo(gx1, y);
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(String(p), gx0 - 9, y + 3);
+    }
     ctx.textAlign = 'center';
-    ctx.fillText('Volume of Titrant Added (mL)', cx + cw / 2, cy + ch + 30);
+    for (let v = 0; v <= SCALE_MAX; v += 5) {
+        const x = X(v);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, gy0);
+        ctx.lineTo(x, gy1);
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(String(v), x, gy1 + 16);
+    }
+
+    // axes
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(gx0, gy0);
+    ctx.lineTo(gx0, gy1);
+    ctx.lineTo(gx1, gy1);
+    ctx.stroke();
+
+    // titles
+    ctx.fillStyle = '#475569';
+    ctx.font = 'bold 10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('volume added (mL)', gx0 + gw / 2, gy1 + 40);
     ctx.save();
-    ctx.translate(cx - 28, cy + ch / 2);
+    ctx.translate(gx0 - 42, gy0 + gh / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText('pH', 0, 0);
     ctx.restore();
 
-    // Y-axis ticks
-    ctx.fillStyle = T.muted;
-    ctx.font = T.font(8);
-    ctx.textAlign = 'right';
-    for (let p = 0; p <= 14; p += 2) {
-        const y = cy + ch - (p / 14) * ch;
-        ctx.fillText(p, cx - 6, y + 3);
-        ctx.strokeStyle = T.grid;
-        ctx.lineWidth = 0.5;
+    // equivalence marker
+    if (showEqCb.checked && filled && eqVol <= SCALE_MAX && volumeAdded >= eqVol + 0.2) {
+        const ex = X(eqVol), ey = Y(eqPH);
+        ctx.strokeStyle = '#d97706';
+        ctx.lineWidth = 1.3;
+        ctx.setLineDash([5, 4]);
         ctx.beginPath();
-        ctx.moveTo(cx, y);
-        ctx.lineTo(cx + cw, y);
+        ctx.moveTo(ex, gy0);
+        ctx.lineTo(ex, ey);
         ctx.stroke();
-    }
-
-    // X-axis ticks
-    ctx.fillStyle = T.muted;
-    ctx.textAlign = 'center';
-    const tickStep = maxVol > 100 ? 25 : maxVol > 50 ? 10 : 5;
-    for (let v = 0; v <= maxVol; v += tickStep) {
-        const x = cx + (v / maxVol) * cw;
-        ctx.fillText(v, x, cy + ch + 14);
-        ctx.strokeStyle = T.grid;
-        ctx.lineWidth = 0.5;
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#d97706';
         ctx.beginPath();
-        ctx.moveTo(x, cy);
-        ctx.lineTo(x, cy + ch);
-        ctx.stroke();
-    }
-
-    // Equivalence point line
-    const eqX = cx + (eqVol / maxVol) * cw;
-    ctx.strokeStyle = T.success;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(eqX, cy);
-    ctx.lineTo(eqX, cy + ch);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = T.success;
-    ctx.font = T.font(9, 'bold');
-    ctx.fillText('Equiv: ' + eqVol.toFixed(1) + ' mL', eqX, cy - 4);
-
-    // Draw pH curve
-    const points = [];
-    const numPoints = 200;
-    for (let i = 0; i <= numPoints; i++) {
-        const v = (i / numPoints) * maxVol;
-        const pH = computePH(v);
-        const px = cx + (v / maxVol) * cw;
-        const py = cy + ch - (pH / 14) * ch;
-        points.push({ x: px, y: py, pH, v });
-    }
-
-    // Fill under curve
-    ctx.fillStyle = 'rgba(74, 111, 165, 0.08)';
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, cy + ch);
-    for (const pt of points) ctx.lineTo(pt.x, pt.y);
-    ctx.lineTo(points[points.length - 1].x, cy + ch);
-    ctx.fill();
-
-    // Curve line
-    ctx.strokeStyle = T.accent;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (const pt of points) ctx.lineTo(pt.x, pt.y);
-    ctx.stroke();
-
-    // Current point highlight
-    const curX = cx + (volumeAdded / maxVol) * cw;
-    const curY = cy + ch - (computePH(volumeAdded) / 14) * ch;
-    ctx.fillStyle = T.danger;
-    ctx.beginPath();
-    ctx.arc(curX, curY, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = T.surface;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Equivalence point dot
-    if (volumeAdded >= eqVol - 0.5) {
-        const eqPY = cy + ch - (computePH(eqVol) / 14) * ch;
-        ctx.fillStyle = T.success;
-        ctx.beginPath();
-        ctx.arc(eqX, eqPY, 4, 0, Math.PI * 2);
+        ctx.moveTo(ex, ey - 5);
+        ctx.lineTo(ex + 5, ey);
+        ctx.lineTo(ex, ey + 5);
+        ctx.lineTo(ex - 5, ey);
+        ctx.closePath();
         ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(ex - 34, gy0 - 16, 68, 15);
+        ctx.fillStyle = '#b45309';
+        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('equivalence', ex, gy0 - 5);
     }
-}
 
-/**
- * The burette reading panel. Shown when pH instrumentation is OFF, where it is
- * the only numeric evidence, mirroring the graduations on real glassware.
- */
-function drawBurettePanel(x, y, w, h) {
-    SimLib.Draw.panel(ctx, x, y, w, h, { theme: T });
-    SimLib.Draw.text(ctx, 'Burette', x + w / 2, y + 16, {
-        size: 10, weight: 'bold', color: T.muted, align: 'center', theme: T,
-    });
-
-    const cap = buretteCapacity();
-    const reading = Math.min(volumeAdded, cap);
-    const frac = cap > 0 ? reading / cap : 0;
-
-    // Column showing the titrant level
-    const colX = x + w / 2 - 11, colY = y + 28, colW = 22, colH = h - 46;
-    ctx.fillStyle = T.surface2;
-    ctx.strokeStyle = T.borderStrong;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(colX, colY, colW, colH, 4);
-    ctx.fill();
-    ctx.stroke();
-
-    // Remaining titrant (empties as the titration proceeds)
-    const fillH = colH * (1 - frac);
-    ctx.fillStyle = SimLib.Color.parse(T.accent);
-    ctx.fillStyle = T.accentSoft;
-    ctx.beginPath();
-    ctx.roundRect(colX + 1, colY + colH - fillH, colW - 2, Math.max(0, fillH), 3);
-    ctx.fill();
-
-    // Graduation marks every 10 %
-    ctx.strokeStyle = T.faint;
-    for (let i = 1; i < 10; i++) {
-        const gy = colY + (colH / 10) * i;
-        const major = i % 5 === 0;
-        ctx.lineWidth = major ? 1.5 : 1;
+    // curve
+    if (trace.length > 1) {
+        ctx.strokeStyle = '#0f766e';
+        ctx.lineWidth = 2.6;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(colX, gy);
-        ctx.lineTo(colX + (major ? colW : colW * 0.5), gy);
+        ctx.moveTo(X(trace[0].v), Y(trace[0].pH));
+        for (let i = 1; i < trace.length; i++) ctx.lineTo(X(trace[i].v), Y(trace[i].pH));
         ctx.stroke();
     }
 
-    SimLib.Draw.text(ctx, reading.toFixed(2) + ' mL', x + w / 2, y + h - 8, {
-        size: 11, weight: 'bold', color: T.ink, align: 'center', theme: T,
-    });
-}
-
-// ═══ Event Handling ═══
-// Titrant can only ever be ADDED. addVolume() rejects non-positive amounts
-// outright, so no code path (button, keyboard, or any UI added later) can
-// withdraw titrant. The only way to lower the volume is "New Sample".
-function addVolume(amt) {
-    if (!(amt > 0)) return;
-    volumeAdded = Math.min(buretteCapacity(), volumeAdded + amt);
-    updateUI();
-    draw();
-}
-
-document.getElementById('dripUp').addEventListener('click', () => addVolume(0.5));
-
-document.querySelectorAll('.sim-chip').forEach(btn => {
-    btn.addEventListener('click', () => addVolume(parseFloat(btn.dataset.value)));
-});
-
-document.getElementById('resetBtn').addEventListener('click', () => {
-    volumeAdded = 0;
-    showAnswer = false;
-    document.getElementById('revealBtn').textContent = '? Reveal Answer';
-    updateUI();
-    draw();
-});
-
-document.getElementById('revealBtn').addEventListener('click', () => {
-    showAnswer = !showAnswer;
-    document.getElementById('revealBtn').textContent = showAnswer ? '\u2713 Answer Shown' : '? Reveal Answer';
-    updateUI();
-    draw();
-});
-
-document.getElementById('pHToggle').addEventListener('click', () => {
-    showPH = !showPH;
-    const btn = document.getElementById('pHToggle');
-    btn.textContent = showPH ? 'Hide pH' : 'Show pH';
-    btn.setAttribute('aria-pressed', String(showPH));
-    btn.classList.toggle('is-active', showPH);
-    document.getElementById('phReadouts').hidden = !showPH;
-    updateUI();
-    draw();
-});
-
-document.getElementById('indicatorPick').addEventListener('change', (e) => {
-    indicator = e.target.value;
-    updateUI();
-    draw();
-});
-
-document.querySelectorAll('.sim-seg__btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.sim-seg__btn').forEach(b => b.classList.remove('is-active'));
-        btn.classList.add('is-active');
-        scenario = btn.dataset.value;
-        volumeAdded = 0;
-        acidConc = 0.1; baseConc = 0.1;
-
-        // Default the indicator to one whose transition range actually sits in
-        // the equivalence-point jump for this combination.
-        const spec = currentSpec();
-        const eqPH = computePH(computeEquivalenceVolume());
-        if (spec.base === 'strong' && spec.acid === 'weak') {
-            indicator = 'phenolphthalein';
-        } else if (spec.base === 'weak' && spec.acid === 'strong') {
-            indicator = 'methylorange';
-        } else {
-            indicator = eqPH > 8.4 ? 'phenolphthalein' : eqPH < 6 ? 'methylorange' : 'bromothymol';
+    // recorded readings
+    if (showDataCb.checked) {
+        for (const row of logRows) {
+            ctx.fillStyle = '#d97706';
+            ctx.beginPath();
+            ctx.arc(X(Math.min(SCALE_MAX, row.v)), Y(row.pH), 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
         }
-        document.getElementById('indicatorPick').value = indicator;
+    }
 
-        updateUI();
-        draw();
+    // current point
+    if (filled) {
+        const cx2 = X(Math.min(SCALE_MAX, volumeAdded)), cy2 = Y(pHat(volumeAdded));
+        ctx.fillStyle = '#0f766e';
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+    }
+}
+
+function render() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, W, H);
+    drawApparatus();
+    if (realLab) drawObservationPanel();
+    else drawCurve();
+}
+
+function drawObservationPanel() {
+    const px = 330, py = 34, pw = 595, ph = 517;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    rrect(px, py, pw, ph, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('Observation', px + 22, py + 30);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillText('everything the bench lets you see', px + 112, py + 30);
+
+    // large colour field matching the vessel contents
+    const fx = px + 40, fy = py + 66, fw = pw - 80, fh = 300;
+    const sw = filled ? liveSwatch() : [241, 245, 249];
+    ctx.fillStyle = rgbStr(sw, 1);
+    rrect(fx, fy, fw, fh, 14);
+    ctx.fill();
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // glass-like highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(fx + 18, fy + fh - 24);
+    ctx.lineTo(fx + 18, fy + 24);
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText(indicator, fx, fy + fh + 36);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('indicator in the vessel', fx, fy + fh + 54);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('No meter on this bench \u2014 the colour is your only reading.', fx, py + ph - 28);
+    ctx.fillText('Add titrant slowly near the change and watch for the first permanent colour.', fx, py + ph - 11);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI state helpers
+// ═══════════════════════════════════════════════════════════════
+// `content` is text, or text parts such as { strong: true, text } (never markup).
+function say(content, tone) {
+    ui.setContent('titrMessage', content);
+    messageEl.dataset.tone = tone || '';
+}
+
+function readControls() {
+    realLab = realLabCb.checked;
+    acid = acidSelect.value;
+    base = baseSelect.value;
+    indicator = indicatorSel.value;
+    concAcid = Math.max(0.001, Math.min(5, parseFloat(concAcidInput.value) || 0.1));
+    concBase = Math.max(0.001, Math.min(5, parseFloat(concBaseInput.value) || 0.1));
+    titrant = titrantPick.value === 'acid' ? 'acid' : 'base';
+}
+
+function updateHints() {
+    const inVessel = titrant === 'base' ? concAcid : concBase;
+    const inBurette = titrant === 'base' ? concBase : concAcid;
+
+    // keep the equivalence volume between ~5 and ~20 mL
+    const buretteLo = inVessel * 1.25;
+    const buretteHi = inVessel * 5;
+    const vesselLo = inBurette / 5;
+    const vesselHi = inBurette / 1.25;
+
+    function paint(el, value, lo, hi) {
+        const ok = value >= lo - 1e-9 && value <= hi + 1e-9;
+        el.textContent = 'suggested ' + fmtM(lo) + ' \u2013 ' + fmtM(hi) + ' M';
+        el.dataset.tone = ok ? '' : 'warn';
+    }
+    if (titrant === 'base') {
+        paint(baseHint, concBase, buretteLo, buretteHi);
+        paint(acidHint, concAcid, vesselLo, vesselHi);
+    } else {
+        paint(acidHint, concAcid, buretteLo, buretteHi);
+        paint(baseHint, concBase, vesselLo, vesselHi);
+    }
+}
+
+function refreshButtons() {
+    tapBtn.disabled = !filled || weakPair();
+}
+
+function refreshLog() {
+    logThirdHead.textContent = realLab ? 'Colour' : 'pH';
+    if (showDataCb.checked && logRows.length) {
+        ui.setRows('dataBody', logRows.map(function (row, i) {
+            const third = realLab
+                ? { swatch: rgbStr(solutionSwatch(row.pH), 1), text: 'Indicator colour' }
+                : row.pH.toFixed(2);
+            return [String(i + 1), row.reading.toFixed(2), third];
+        }));
+        dataWrap.hidden = false;
+        dataHint.hidden = true;
+    } else {
+        ui.setRows('dataBody', []);
+        dataWrap.hidden = true;
+        dataHint.hidden = false;
+    }
+}
+
+function addLogRow() {
+    if (!showDataCb.checked || !filled) return;
+    logRows.push({ v: volumeAdded, reading: zeroReading + volumeAdded, pH: pHat(volumeAdded) });
+    refreshLog();
+}
+
+function refreshReadouts() {
+    if (!filled) {
+        burReadout.textContent = '--';
+        phReadout.textContent = '--';
+        eqReadout.textContent = '--';
+        dockPH.textContent = '--';
+        dockSwatch.style.background = '#e2e8f0';
+        return;
+    }
+    burReadout.textContent = (zeroReading + volumeAdded).toFixed(2);
+    phReadout.textContent = pHat(volumeAdded).toFixed(2);
+    eqReadout.textContent = eqVol.toFixed(2);
+    dockPH.textContent = pHat(volumeAdded).toFixed(2);
+    dockSwatch.style.background = rgbStr(liveSwatch(), 1);
+}
+
+const phOnly = [showEqCb.closest('label'), phReadout.parentElement, eqReadout.parentElement];
+
+function applyMode() {
+    realLab = realLabCb.checked;
+    // Real-lab mode strips every live pH hint, leaving only the indicator colour.
+    for (const el of phOnly) el.hidden = realLab;
+    dockPH.hidden = realLab;
+    dockSwatch.hidden = !realLab;
+    dockPHLabel.textContent = realLab ? 'colour' : 'pH';
+    refreshReadouts();
+    refreshLog();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Filling / resetting the bench
+// ═══════════════════════════════════════════════════════════════
+function fillBench() {
+    filled = true;
+    tapOpen = false;
+    crossedEq = false;
+    volumeAdded = 0;
+    trace = [];
+    logRows = [];
+    zeroReading = Math.round(Math.random() * 60) / 100;   // 0.00 – 0.60 mL
+
+    const inVessel = titrant === 'base' ? concAcid : concBase;
+    const inBurette = titrant === 'base' ? concBase : concAcid;
+    eqVol = SCALE_MAX * inVessel / inBurette;
+    eqPH = pHat(eqVol);
+
+    const startPH = pHat(0);
+    trace.push({ v: 0, pH: startPH, rgb: mixRGB(startPH, 1) });
+    displayF = fractionAt(startPH);
+    swirl = 0;
+
+    tapBtn.classList.remove('is-active');
+    tapBtn.textContent = 'Press & hold to open the tap';
+    refreshButtons();
+    refreshReadouts();
+    addLogRow();
+    refreshLog();
+
+    if (realLab) {
+        say('Bench is ready and stirring. Add titrant until the indicator changes colour, then release the tap.', 'ok');
+    } else if (eqVol > SCALE_MAX + 0.01) {
+        say(['Bench ready. The equivalence point would land at ', { strong: true, text: eqVol.toFixed(1) + ' mL' }, ', off the right-hand edge \u2014 raise the burette concentration or lower the vessel one. Aim for the suggested ranges.'], 'warn');
+    } else if (eqVol < 4) {
+        say(['Bench ready. The jump sits at just ', { strong: true, text: eqVol.toFixed(1) + ' mL' }, ', so it will happen almost at once. Try a more concentrated vessel solution.'], 'warn');
+    } else {
+        say('Bench ready and stirring. Press and hold the tap (or the button) to titrate, then release to pause.', 'ok');
+    }
+}
+
+function resetBench() {
+    readControls();
+    updateHints();
+
+    filled = false;
+    tapOpen = false;
+    volumeAdded = 0;
+    trace = [];
+    logRows = [];
+    crossedEq = false;
+    tapBtn.classList.remove('is-active');
+    tapBtn.textContent = 'Press & hold to open the tap';
+
+    if (weakPair()) {
+        refreshButtons();
+        refreshReadouts();
+        refreshLog();
+        say('A weak acid paired with a weak base is outside this model \u2014 make at least one partner strong.', 'warn');
+        return;
+    }
+    fillBench();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Tap control
+// ═══════════════════════════════════════════════════════════════
+function openTap() {
+    if (!filled || tapOpen || weakPair()) return;
+    tapOpen = true;
+    clock = 0;
+    tapBtn.classList.add('is-active');
+    tapBtn.textContent = 'Release to stop';
+    say('Tap is open \u2014 drops are falling. Let go to pause.', 'ok');
+}
+
+function closeTap(automatic) {
+    if (!tapOpen) return;
+    tapOpen = false;
+    tapBtn.classList.remove('is-active');
+    tapBtn.textContent = 'Press & hold to open the tap';
+    addLogRow();
+    if (!automatic) {
+        say('Tap closed. Hold it again to carry on, or change any setting to start a fresh run.', 'ok');
+    }
+}
+
+function dripInterval() {
+    const v = parseInt(dropRate.value, 10);
+    return 100 - (v - 1) * (70 / 9);   // 100 ms slow … 30 ms fast
+}
+
+function advance() {
+    volumeAdded = Math.min(SCALE_MAX, volumeAdded + DROP);
+    const pH = pHat(volumeAdded);
+    trace.push({ v: volumeAdded, pH: pH, rgb: mixRGB(pH, 1) });
+    swirl = Math.min(1, swirl + 0.75);
+
+    if (!crossedEq && volumeAdded >= eqVol) {
+        crossedEq = true;
+        if (!realLab) {
+            say(['The jump has been passed at about ', { strong: true, text: eqVol.toFixed(2) + ' mL' }, '. Keep going to see the curve flatten out on the other side.'], 'ok');
+        }
+    }
+    if (volumeAdded >= SCALE_MAX) {
+        closeTap(true);
+        say('Burette empty \u2014 the run finished automatically. Change a setting to start another.', 'ok');
+    }
+    refreshReadouts();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Loop
+// ═══════════════════════════════════════════════════════════════
+let dripAccum = 0;
+function tick(dt) {
+    const ms = dt * 1000;
+    clock += ms;
+    if (tapOpen) {
+        const step = dripInterval();
+        dripAccum += ms;
+        let guard = 0;
+        while (tapOpen && dripAccum >= step && guard++ < 200) {
+            dripAccum -= step;
+            advance();
+        }
+    } else {
+        dripAccum = 0;
+    }
+
+    // ease the displayed colour so the indicator develops smoothly rather than snapping
+    const targetF = filled ? fractionAt(pHat(volumeAdded)) : 0;
+    displayF += (targetF - displayF) * 0.05;
+    swirl *= 0.93;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Wiring
+// ═══════════════════════════════════════════════════════════════
+// Options are declared in the catalog; only the starting selections are applied here.
+function buildSelects() {
+    acidSelect.value = acid;
+    baseSelect.value = base;
+    indicatorSel.value = indicator;
+}
+
+function wire() {
+    [acidSelect, baseSelect, indicatorSel].forEach(function (el) {
+        el.addEventListener('change', resetBench);
     });
-});
+    [concAcidInput, concBaseInput].forEach(function (el) {
+        el.addEventListener('change', resetBench);
+    });
+    let lastTitrant = titrantPick.value;
+    titrantPick.addEventListener('click', function () {
+        if (titrantPick.value === lastTitrant) return;
+        lastTitrant = titrantPick.value;
+        resetBench();
+    });
+    showDataCb.addEventListener('change', function () {
+        if (!showDataCb.checked) logRows = [];
+        refreshLog();
+    });
+    realLabCb.addEventListener('change', applyMode);
+    dropRate.addEventListener('input', function () {
+        const v = parseInt(dropRate.value, 10);
+        dropRateVal.textContent = v <= 3 ? 'Slow' : v <= 7 ? 'Medium' : 'Fast';
+    });
 
-// ═══ Keyboard ═══
-document.addEventListener('keydown', (e) => {
-    // Never hijack keys while the user is interacting with a control.
-    const tag = e.target.tagName;
-    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    resetBtn.addEventListener('click', function () {
+        tapBtn.classList.remove('is-active');
+        tapBtn.textContent = 'Press & hold to open the tap';
+        resetBench();
+    });
 
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-        addVolume(0.5);
-        e.preventDefault(); // stop the page from scrolling
-    } else if (e.key === 'r' || e.key === 'R') {
-        volumeAdded = 0;
-        updateUI();
-        draw();
-    }
-});
+    // hold the on-screen button
+    tapBtn.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        if (tapBtn.setPointerCapture) {
+            try { tapBtn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        }
+        openTap();
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+        tapBtn.addEventListener(ev, function () { closeTap(false); });
+    });
 
-// Guidance that never reveals how close you are. With pH instrumentation off
-// it deliberately does NOT mention pH, the equivalence volume, or whether you
-// have passed the endpoint — that information is exactly what you are meant to
-// judge from the flask colour.
-function phaseHint() {
-    if (volumeAdded <= 0) {
-        return { cls: '', text: 'Add titrant and watch the flask colour.' };
+    // hold the stopcock drawn on the canvas
+    function onTap(e) {
+        const r = canvas.getBoundingClientRect();
+        const x = (e.clientX - r.left) * (W / r.width);
+        const y = (e.clientY - r.top) * (H / r.height);
+        return x > 78 && x < 152 && y > 352 && y < 390;
     }
-    if (showPH) {
-        return {
-            cls: '',
-            text: 'pH instrumentation is on, so the endpoint is visible — the curve marker shows the true equivalence volume.',
-        };
-    }
-    return {
-        cls: '',
-        text: 'Watch the flask. Record the burette reading at the first permanent colour change.',
+    canvas.addEventListener('pointerdown', function (e) {
+        if (onTap(e)) {
+            e.preventDefault();
+            openTap();
+        }
+    });
+    window.addEventListener('pointerup', function () { closeTap(false); });
+    window.addEventListener('blur', function () { closeTap(false); });
+}
+
+// ── roundRect polyfill ──
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+        r = typeof r === 'number' ? r : (r || 0);
+        this.moveTo(x + r, y); this.lineTo(x + w - r, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r); this.lineTo(x + w, y + h - r);
+        this.quadraticCurveTo(x + w, y + h, x + w - r, y + h); this.lineTo(x + r, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r); this.lineTo(x, y + r);
+        this.quadraticCurveTo(x, y, x + r, y);
     };
 }
 
-function updateUI() {
-    document.getElementById('volumeAdded').textContent = volumeAdded.toFixed(2);
-
-    // Kept in sync even while hidden, so switching the toggle on shows
-    // correct values immediately rather than a stale frame.
-    document.getElementById('phReadout').textContent = computePH(volumeAdded).toFixed(2);
-    document.getElementById('equivVol').textContent = computeEquivalenceVolume().toFixed(1);
-    document.getElementById('equivPH').textContent = computePH(computeEquivalenceVolume()).toFixed(2);
-
-    const hint = phaseHint();
-    const hintEl = document.getElementById('phaseHint');
-    hintEl.textContent = hint.text;
-    hintEl.className = 'titr-hint ' + hint.cls;
-}
+// ═══════════════════════════════════════════════════════════════
+//  Go
+// ═══════════════════════════════════════════════════════════════
+buildSelects();
+wire();
+applyMode();
+resetBench();
 
 // ═══ Animation (SimLib) ═══
-// The scene is drawn in a fixed 700x480 logical space; SimLib maps it onto
+// The scene is drawn in a fixed 940x580 logical space; SimLib maps it onto
 // the responsive (HiDPI-aware) displayed canvas so nothing is clipped.
-
-updateUI();
-
 const app = SimLib.attach({
     canvas: canvas,
-    logicalWidth: 700,
-    logicalHeight: 480,
+    logicalWidth: 940,
+    logicalHeight: 580,
     SimulationClass: class TitrationSim extends SimLib.Simulation {
-        onResize() { draw(); }
-        onTick() { /* no physics required each tick */ }
-        onDraw(ctx) { draw(); }
+        onResize() { render(); }
+        onTick(dt) { tick(dt); }
+        onDraw() { render(); }
     }
 });
 app.sim.start();
+
     return { app };
 }

@@ -22,6 +22,18 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     if (data.pressed !== undefined) el.setAttribute('aria-pressed', String(data.pressed));
     return el;
   }
+  /** Text parts for module-filled slots: strings, or { text, sup, strong, color, key, swatch }. */
+  function inline(content) {
+    return [content].flat().map(part => {
+      if (typeof part !== 'object' || part === null) return doc.createTextNode(String(part ?? ''));
+      const el = doc.createElement(part.sup ? 'sup' : part.strong ? 'strong' : 'span');
+      el.textContent = part.text ?? '';
+      if (part.color) el.style.color = part.color;
+      if (part.key) { el.className = 'simulation-key'; el.style.borderColor = part.key; }
+      if (part.swatch) { el.className = 'simulation-swatch'; el.style.background = part.swatch; el.setAttribute('role', 'img'); el.setAttribute('aria-label', part.text || 'colour'); el.textContent = ''; }
+      return el;
+    });
+  }
   function canvas(data) {
     const el = node('canvas', 'simulation-canvas', undefined, data.id);
     el.width = data.width; el.height = data.height;
@@ -98,9 +110,60 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
         return row;
       }
       case 'text': {
-        const wrap = node('div', 'simulation-note');
+        const wrap = node('div', `simulation-note${data.style && data.style !== 'note' ? ` simulation-note--${data.style}` : ''}`);
         if (data.label) wrap.append(node('strong', '', data.label));
-        wrap.append(node('p', '', data.text, data.id)); return wrap;
+        // `hidden` applies to the slot itself so the module can reveal it later.
+        const body = node('p', '', data.text, data.id); body.hidden = !!data.hidden;
+        wrap.append(body); return wrap;
+      }
+      case 'number': {
+        const wrap = node('div', 'simulation-field');
+        const label = node('label', 'simulation-label', data.label); label.htmlFor = `${idPrefix}${data.id}`;
+        const row = node('div', 'simulation-inline');
+        const input = node('input', '', undefined, data.id);
+        input.type = 'number'; input.min = data.min; input.max = data.max; input.step = data.step; input.value = data.value;
+        row.append(input);
+        if (data.unit) row.append(node('span', 'simulation-unit', data.unit));
+        wrap.append(label, row);
+        if (data.hint) wrap.append(node('div', 'simulation-hint', data.hint.text, data.hint.id));
+        return wrap;
+      }
+      case 'toggles': {
+        const wrap = node('div', 'simulation-toggles', undefined, data.id);
+        for (const item of data.items) {
+          const label = node('label', 'simulation-toggle');
+          const input = node('input', '', undefined, item.id); input.type = 'checkbox'; input.checked = !!item.checked;
+          label.append(input, doc.createTextNode(` ${item.label}`)); wrap.append(label);
+        }
+        return wrap;
+      }
+      case 'panel': {
+        // An empty region the module fills with its own trusted DOM.
+        const body = node('div', 'simulation-panel', data.text, data.id);
+        if (!data.label) return body;
+        const wrap = node('div', 'simulation-panel-host'); wrap.append(node('strong', 'simulation-label', data.label), body); return wrap;
+      }
+      case 'table': {
+        const host = node('div', 'simulation-table-host');
+        if (data.label) host.append(node('strong', 'simulation-label', data.label));
+        if (data.empty) host.append(node('p', 'simulation-note', data.empty.text, data.empty.id));
+        const wrap = node('div', 'simulation-table-wrap'); wrap.hidden = !!data.hidden;
+        const table = node('table', 'simulation-table'); const head = node('thead'); const row = node('tr');
+        for (const column of data.columns) row.append(node('th', '', column.label, column.id));
+        head.append(row); table.append(head, node('tbody', '', undefined, data.id)); wrap.append(table); host.append(wrap);
+        return host;
+      }
+      case 'dock': {
+        const dock = node('div', 'simulation-dock'); const inner = node('div', 'simulation-dock-inner');
+        if (data.readout || data.swatch) {
+          const reading = node('div', 'simulation-dock-readout');
+          if (data.readout) reading.append(node('span', 'simulation-dock-value', data.readout.value, data.readout.id));
+          if (data.swatch) { const swatch = node('span', 'simulation-dock-swatch', undefined, data.swatch.id); swatch.hidden = true; reading.append(swatch); }
+          if (data.readout) reading.append(node('span', 'simulation-dock-label', data.readout.label.text, data.readout.label.id));
+          inner.append(reading);
+        }
+        data.buttons.forEach(data => inner.append(button(data)));
+        dock.append(inner); return dock;
       }
       case 'stepper': {
         const row = node('div', 'sim-stepper');
@@ -121,17 +184,50 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   }
 
   root.replaceChildren(); root.className = 'container sim-layout';
+  // Views are fullscreen tabs. Outside fullscreen every view stays visible, in page order.
+  const viewMembers = [];
+  let viewBar = null;
+  if (definition.views) {
+    viewBar = node('div', 'simulation-views', undefined, definition.views.id);
+    viewBar.setAttribute('role', 'tablist'); viewBar.value = definition.views.value;
+    for (const option of definition.views.options) {
+      const tab = node('button', 'sim-chip', option.label); tab.type = 'button'; tab.dataset.value = option.value;
+      tab.setAttribute('role', 'tab');
+      tab.addEventListener('click', () => { viewBar.value = option.value; applyView(); viewBar.dispatchEvent(new Event('change')); });
+      viewBar.append(tab);
+    }
+    const exit = node('button', 'sim-btn sim-btn--ghost simulation-views-exit', 'Exit fullscreen'); exit.type = 'button';
+    exit.addEventListener('click', () => { if (doc.fullscreenElement) doc.exitFullscreen(); });
+    viewBar.append(exit);
+  }
+  function applyView() {
+    if (!viewBar) return;
+    for (const tab of viewBar.querySelectorAll('[role="tab"]')) {
+      const selected = tab.dataset.value === viewBar.value;
+      tab.classList.toggle('is-active', selected); tab.setAttribute('aria-selected', String(selected));
+    }
+    for (const [el, view] of viewMembers) el.classList.toggle('simulation-view-hidden', view !== viewBar.value);
+  }
+  const firstView = definition.views?.options[0].value;
   const main = node('div', 'sim-main');
   const wrap = node('div', 'canvas-wrapper'); wrap.append(canvas(definition.canvas)); main.append(wrap);
   const controls = node('div', 'controls-panel');
+  viewMembers.push([wrap, firstView], [controls, firstView]);
   const checkHost = node('div', 'simulation-check');
   if (definition.assessment) controls.append(checkHost);
-  definition.controls.forEach(data => controls.append(component(data))); main.append(controls);
+  // A dock follows the controls panel so it can stay pinned over the canvas while scrolling.
+  const docks = [];
+  for (const data of definition.controls) {
+    const el = component(data);
+    if (data.type === 'dock') docks.push(el); else controls.append(el);
+  }
+  main.append(controls, ...docks);
   const sidebar = node('aside', 'sim-sidebar'); sidebar.setAttribute('aria-label', 'Science explanations');
   for (const data of definition.cards) {
     const card = node('div', 'equation-card'); card.append(node('h3', '', data.title));
     data.formulas.forEach(text => card.append(node('div', 'equation-formula', text)));
-    data.paragraphs.forEach(text => card.append(node('p', 'eq-explanation', text))); sidebar.append(card);
+    data.paragraphs.forEach(text => card.append(node('p', 'eq-explanation', text)));
+    data.components?.forEach(data => card.append(component(data))); sidebar.append(card);
   }
   const dialog = node('dialog', 'simulation-dialog'); dialog.setAttribute('aria-label', 'Science explanation');
   for (const data of definition.graphs) {
@@ -143,13 +239,28 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
       }
       graph.append(legend);
     }
+    if (data.controls) {
+      const tools = node('div', 'simulation-graph-controls'); data.controls.forEach(data => tools.append(component(data))); graph.append(tools);
+    }
     graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); main.append(graph);
+    viewMembers.push([graph, data.view || firstView]);
   }
   if (!definition.cards.length) root.classList.add('simulation-no-sidebar');
+  if (viewBar) root.append(viewBar);
   root.append(main, sidebar, dialog);
+  applyView();
 
   return {
     root, definition, checkHost,
+    // Modules never build DOM or markup: dynamic panel/table content goes through these helpers.
+    setContent(id, content) { this.getElementById(id).replaceChildren(...inline(content)); },
+    setRows(id, rows) {
+      this.getElementById(id).replaceChildren(...rows.map(cells => {
+        const row = doc.createElement('tr');
+        for (const cell of cells) { const td = doc.createElement('td'); td.append(...inline(cell)); row.append(td); }
+        return row;
+      }));
+    },
     getElementById(id) { const el = slots.get(id); if (!el) throw new Error(`Missing declared UI slot: ${id}`); return el; },
     querySelector: selector => root.querySelector(selector),
     querySelectorAll: selector => root.querySelectorAll(selector),
