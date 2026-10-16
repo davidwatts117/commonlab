@@ -5,15 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CommonLab — Free Science Simulations for Everyone</title>
     <meta name="description" content="CommonLab delivers free, browser-based physics and chemistry lab simulations for underserved schools and homeschooled students without access to high-tech lab equipment.">
-    <link rel="stylesheet" href="main.css?v=3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atma:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+    <link rel="stylesheet" href="main.css?v=5">
 </head>
-<body>
+<body class="paper">
 
     <!-- Navigation -->
     <header class="site-header">
         <div class="container nav-container">
             <a href="/" class="logo" aria-label="CommonLab Home">
-                <img src="commonlab-logo.png" alt="CommonLab" class="logo-icon">
+                <svg class="logo-mark" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M15 2 L28 15 L15 28 Z" fill="#892f35"/><path d="M15 2 L2 15 L15 28 Z" fill="#c14953"/></svg>
                 <span class="logo-text">CommonLab</span>
             </a>
             <nav class="primary-nav" aria-label="Main navigation">
@@ -23,8 +26,8 @@
                     <li><a href="#features">Features</a></li>
                     <li><a href="#simulations">Simulations</a></li>
                     <li><a href="#contact">Contact</a></li>
-                    <li><a href="/submit.html">Submit a simulation</a></li>
                     <li><a href="/contributions.html">My submissions</a></li>
+                    <li><a href="/submit.html" class="btn btn-ghost btn-sm">Submit a simulation</a></li>
                 </ul>
             </nav>
         </div>
@@ -32,117 +35,142 @@
 
     <main>
 
-        <!-- Hero / Logo Area -->
-        <section class="hero section">
+        <!-- Hero -->
+        <section class="hero">
             <div class="container hero-content">
-                <div class="hero-logo">
-                    <img src="commonlab-logo.png" alt="CommonLab" class="hero-logo-icon">
+                <div class="hero-copy">
+                    <h1>A lab bench for every student with a browser.</h1>
+                    <p class="hero-subtitle">
+                        Free, browser-based physics and chemistry lab simulations
+                        for schools and students without access to lab equipment.
+                    </p>
+                    <div class="hero-actions">
+                        <a href="#simulations" class="btn btn-primary">Explore simulations <span aria-hidden="true">→</span></a>
+                        <a href="/submit.html" class="btn btn-ghost">Submit a simulation</a>
+                    </div>
                 </div>
-                <p class="hero-subtitle">
-                    Free, browser-based physics and chemistry lab simulations
-                    for schools and students without access to lab equipment.
-                </p>
-                <a href="#simulations" class="btn btn-primary">Explore Simulations</a>
+                <figure class="hero-figure">
+                    <svg viewBox="0 0 520 440" aria-hidden="true">
+                        <g stroke="#2d2d2a" stroke-width="1.5">
+                            <line x1="150" y1="40" x2="370" y2="40"/>
+                            <line x1="160" y1="40" x2="172" y2="28"/><line x1="180" y1="40" x2="192" y2="28"/><line x1="200" y1="40" x2="212" y2="28"/><line x1="220" y1="40" x2="232" y2="28"/><line x1="240" y1="40" x2="252" y2="28"/><line x1="260" y1="40" x2="272" y2="28"/><line x1="280" y1="40" x2="292" y2="28"/><line x1="300" y1="40" x2="312" y2="28"/><line x1="320" y1="40" x2="332" y2="28"/><line x1="340" y1="40" x2="352" y2="28"/>
+                        </g>
+                        <line x1="260" y1="40" x2="260" y2="340" stroke="#848fa5" stroke-width="1.5" stroke-dasharray="5 5"/>
+                        <path d="M129 287 A280 280 0 0 0 391 287" fill="none" stroke="#848fa5" stroke-width="1.5" stroke-dasharray="2 6"/>
+                        <line x1="260" y1="40" x2="129" y2="287" stroke="#848fa5" stroke-width="1"/>
+                        <circle cx="129" cy="287" r="22" fill="none" stroke="#848fa5" stroke-width="1.5" stroke-dasharray="4 4"/>
+                        <line x1="260" y1="40" x2="391" y2="287" stroke="#2d2d2a" stroke-width="2"/>
+                        <path d="M260 110 A70 70 0 0 0 292.9 101.8" fill="none" stroke="#c14953" stroke-width="2"/>
+                        <text x="280" y="138" font-family="IBM Plex Mono, monospace" font-size="18" fill="#892f35">θ</text>
+                        <text x="338" y="158" font-family="IBM Plex Mono, monospace" font-size="18" fill="#2d2d2a">L</text>
+                        <circle cx="391" cy="287" r="22" fill="#c14953" stroke="#2d2d2a" stroke-width="2"/>
+                        <circle cx="384" cy="280" r="6" fill="#e5dcc5" opacity=".55"/>
+                        <text x="424" y="292" font-family="IBM Plex Mono, monospace" font-size="18" fill="#2d2d2a">m</text>
+                        <circle cx="260" cy="40" r="6" fill="#ece5d2" stroke="#2d2d2a" stroke-width="2"/>
+                        <line x1="40" y1="395" x2="500" y2="395" stroke="#2d2d2a" stroke-width="1"/>
+                        <line x1="40" y1="360" x2="40" y2="430" stroke="#2d2d2a" stroke-width="1"/>
+                        <polyline fill="none" stroke="#c14953" stroke-width="2" stroke-linejoin="round" points="40,367 51.5,372.7 63,386.6 74.5,403.2 86,416.2 97.5,420.8 109,415.5 120.5,402.7 132,387.4 143.5,375.5 155,371.3 166.5,376.1 178,387.9 189.5,402 201,413 212.5,416.9 224,412.4 235.5,401.5 247,388.6 258.5,378.4 270,374.9 281.5,379 293,389 304.5,400.9 316,410.3 327.5,413.6 339,409.8 350.5,400.6 362,389.5 373.5,380.9 385,378 396.5,381.5 408,389.9 419.5,400 431,407.9 442.5,410.6 454,407.4 465.5,399.7 477,390.4 488.5,383.2 500,380.6"/>
+                        <text x="48" y="358" font-family="IBM Plex Mono, monospace" font-size="13" fill="#4c4c47">θ(t)</text>
+                        <text x="470" y="424" font-family="IBM Plex Mono, monospace" font-size="13" fill="#4c4c47">t →</text>
+                    </svg>
+                    <figcaption>Fig. 1 — Simple pendulum with air drag. T ≈ 2π√(L/g)</figcaption>
+                </figure>
             </div>
         </section>
 
         <!-- About / Mission -->
-        <section id="about" class="section section-alt">
+        <section id="about" class="section">
             <div class="container">
-                <h2 class="section-title">Our Mission</h2>
-                <div class="card-grid">
-                    <div class="card">
-                        <div class="card-icon">&#9672;</div>
-                        <h3>Equity in Science</h3>
-                        <p>
-                            Every student deserves hands-on science learning, regardless of
-                            their school's budget. CommonLab brings the lab to any device
-                            with a browser.
-                        </p>
-                    </div>
-                    <div class="card">
-                        <div class="card-icon">&#9672;</div>
-                        <h3>For Homeschoolers Too</h3>
-                        <p>
-                            Homeschooled students often lack access to lab equipment. Our
-                            simulations fill that gap with safe, repeatable experiments.
-                        </p>
-                    </div>
-                    <div class="card">
-                        <div class="card-icon">&#9672;</div>
-                        <h3>Real Science, Real Learning</h3>
-                        <p>
-                            Built on accurate physics engines and chemical models &mdash;
-                            not animations &mdash; so students learn genuine scientific principles.
-                        </p>
-                    </div>
+                <h2 class="section-title">Our mission</h2>
+                <div class="mission-grid">
+                    <article class="mission-item">
+                        <h3>Equity in science</h3>
+                        <p>Every student deserves hands-on science learning, regardless of their school's budget. CommonLab brings the lab to any device with a browser.</p>
+                    </article>
+                    <article class="mission-item">
+                        <h3>For homeschoolers too</h3>
+                        <p>Homeschooled students often lack access to lab equipment. Our simulations fill that gap with safe, repeatable experiments.</p>
+                    </article>
+                    <article class="mission-item">
+                        <h3>Real science, real learning</h3>
+                        <p>Built on accurate physics engines and chemical models &mdash; not animations &mdash; so students learn genuine scientific principles.</p>
+                    </article>
                 </div>
             </div>
         </section>
 
         <!-- Project Goals -->
         <section id="goals" class="section">
-            <div class="container">
-                <h2 class="section-title">Project Goals</h2>
-                <ul class="goals-list">
+            <div class="container goals-layout">
+                <div class="goals-intro">
+                    <h2 class="section-title">Project goals</h2>
+                    <p class="section-intro">Four commitments that shape every simulation we publish.</p>
+                </div>
+                <ol class="goals-list">
                     <li>
                         <span class="goal-number">01</span>
                         <div class="goal-content">
-                            <h3>Accessible to All</h3>
+                            <h3>Accessible to all</h3>
                             <p>Zero cost, zero login. Open a browser and start experimenting. Works on low-end devices and slow connections.</p>
                         </div>
                     </li>
                     <li>
                         <span class="goal-number">02</span>
                         <div class="goal-content">
-                            <h3>Curriculum-Aligned</h3>
+                            <h3>Curriculum-aligned</h3>
                             <p>Simulations map to standard high-school and introductory college physics and chemistry curricula.</p>
                         </div>
                     </li>
                     <li>
                         <span class="goal-number">03</span>
                         <div class="goal-content">
-                            <h3>No Install, No Setup</h3>
+                            <h3>No install, no setup</h3>
                             <p>Everything runs in the browser. No apps, no downloads, no IT support needed.</p>
                         </div>
                     </li>
                     <li>
                         <span class="goal-number">04</span>
                         <div class="goal-content">
-                            <h3>Open and Free Forever</h3>
+                            <h3>Open and free forever</h3>
                             <p>Built with open web standards. No paywalls, no ads, no data collection.</p>
                         </div>
                     </li>
-                </ul>
+                </ol>
             </div>
         </section>
 
         <!-- Features -->
-        <section id="features" class="section section-alt">
+        <section id="features" class="section">
             <div class="container">
-                <h2 class="section-title">Features</h2>
-                <div class="card-grid">
-                    <div class="card">
-                        <h3>Works Everywhere</h3>
+                <h2 class="section-title">Spec sheet</h2>
+                <div class="spec-grid">
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="6" width="24" height="16" rx="1"/><line x1="2" y1="26" x2="30" y2="26"/></svg>
+                        <h3>Works everywhere</h3>
                         <p>Desktop, tablet, phone &mdash; even Chromebooks. No special hardware required. Works on low-end devices.</p>
                     </div>
-                    <div class="card">
-                        <h3>Real-Time Physics</h3>
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><line x1="16" y1="4" x2="24" y2="22"/><circle cx="24" cy="24" r="4"/><line x1="8" y1="4" x2="24" y2="4"/><path d="M10 24 Q16 29 22 27"/></svg>
+                        <h3>Real-time physics</h3>
                         <p>Physics simulations run at 60 fps with accurate numerical integration and real-time feedback.</p>
                     </div>
-                    <div class="card">
-                        <h3>Interactive Chemistry</h3>
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 4 V13 L5 26 A2 2 0 0 0 7 29 H25 A2 2 0 0 0 27 26 L20 13 V4"/><line x1="10" y1="4" x2="22" y2="4"/><line x1="8" y1="21" x2="24" y2="21"/></svg>
+                        <h3>Interactive chemistry</h3>
                         <p>Mix reagents, observe reactions, and measure outcomes interactively. Safe and repeatable experiments.</p>
                     </div>
-                    <div class="card">
-                        <h3>Data Export</h3>
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><polyline points="4,4 4,28 28,28"/><polyline points="8,22 14,15 19,18 27,8"/></svg>
+                        <h3>Data export</h3>
                         <p>Export measurements and graphs for lab reports and analysis. Supports CSV and chart downloads.</p>
                     </div>
-                    <div class="card">
-                        <h3>Offline Ready</h3>
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><path d="M5 13 A16 16 0 0 1 27 13"/><path d="M9 18 A10 10 0 0 1 23 18"/><circle cx="16" cy="24" r="1.5"/><line x1="4" y1="4" x2="28" y2="28"/></svg>
+                        <h3>Offline ready</h3>
                         <p>Once loaded, many simulations work without an internet connection. No backend dependencies.</p>
                     </div>
-                    <div class="card">
+                    <div class="spec-item">
+                        <svg class="spec-icon" width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="14" rx="2"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="13" y1="14" x2="13" y2="14.01"/><line x1="18" y1="14" x2="18" y2="14.01"/><line x1="23" y1="14" x2="23" y2="14.01"/><line x1="10" y1="18" x2="22" y2="18"/></svg>
                         <h3>Accessible</h3>
                         <p>Keyboard-navigable, screen-reader friendly, and high-contrast themes for inclusive learning.</p>
                     </div>
@@ -153,52 +181,42 @@
         <!-- Simulations Overview -->
         <section id="simulations" class="section">
             <div class="container">
-                <h2 class="section-title">Simulations</h2>
-                <p class="section-intro">
-                    Choose a simulation to launch it in our shared interactive lab.
-                </p>
-                <p><a href="/submit.html">Create and submit a new simulation →</a></p>
+                <div class="section-head">
+                    <div>
+                        <h2 class="section-title">Pick an experiment</h2>
+                        <p class="section-intro">Choose a simulation to launch it in our shared interactive lab.</p>
+                    </div>
+                    <a href="/submit.html" class="text-link">Create and submit a new simulation →</a>
+                </div>
                 <p id="catalog-status" role="status">Loading simulations…</p>
                 <div class="sim-grid" id="simulation-catalog"></div>
                 <noscript><p>Enable JavaScript to browse and run simulations.</p></noscript>
             </div>
         </section>
 
-        <!-- Contact -->
-        <section id="contact" class="section section-alt">
-            <div class="container contact-content">
-                <h2 class="section-title">Get In Touch</h2>
-                <p class="contact-intro">
-                    Is your school or organization interested in using CommonLab?
-                    Have a suggestion for a new simulation? We'd love to hear from you.
-                </p>
-                <div class="contact-links">
-                    <a href="mailto:hello@commonlab.org" class="contact-item">
-                        <span class="contact-icon">&#9993;</span>
-                        hello@commonlab.org
-                    </a>
-                    <a href="#" class="contact-item">
-                        <span class="contact-icon">&#9670;</span>
-                        GitHub
-                    </a>
-                    <a href="#" class="contact-item">
-                        <span class="contact-icon">&#9670;</span>
-                        X / Twitter
-                    </a>
-                </div>
-            </div>
-        </section>
-
     </main>
 
-    <!-- Footer -->
-    <footer class="site-footer">
+    <!-- Contact / Footer -->
+    <footer id="contact" class="site-footer paper-dark">
         <div class="container footer-container">
-            <p>&copy; 2026 CommonLab. Free science simulations for everyone.</p>
+            <div class="footer-cta">
+                <div class="footer-copy">
+                    <h2>Questions, feedback, or an experiment we should build?</h2>
+                    <p>Write to us at <a href="mailto:hello@commonlab.org">hello@commonlab.org</a></p>
+                </div>
+                <a href="/submit.html" class="btn btn-primary btn-on-dark">Submit a simulation <span aria-hidden="true">→</span></a>
+            </div>
+            <div class="footer-base">
+                <span class="logo">
+                    <svg class="logo-mark" width="22" height="22" viewBox="0 0 30 30" aria-hidden="true"><path d="M15 2 L28 15 L15 28 Z" fill="#892f35"/><path d="M15 2 L2 15 L15 28 Z" fill="#c14953"/></svg>
+                    <span class="logo-text">CommonLab</span>
+                </span>
+                <p>&copy; 2026 CommonLab. Free science simulations for everyone.</p>
+            </div>
         </div>
     </footer>
 
-    <script src="index.js?v=4"></script>
+    <script src="index.js?v=5"></script>
     <script type="module" src="catalog-page.mjs"></script>
 </body>
 </html>

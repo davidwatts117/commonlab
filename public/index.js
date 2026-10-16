@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sections.forEach(section => { if (window.scrollY >= section.offsetTop - 100) currentId = section.getAttribute('id'); });
         navLinks.forEach(link => {
             const active = link.getAttribute('href') === `#${currentId}`;
-            link.style.color = active ? '#4a6fa5' : ''; link.style.fontWeight = active ? '600' : '';
+            link.classList.toggle('is-active', active);
         });
     };
     window.addEventListener('scroll', updateActiveNav, { passive: true }); updateActiveNav();

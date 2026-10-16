@@ -189,35 +189,31 @@ export function mount(ui) {
         onDraw(ctx) {
             const W = this.W, H = this.H;
             ctx.clearRect(0, 0, W, H);
-            SimLib.Draw.background(ctx, W, H, T);
-            SimLib.Draw.grid(ctx, W, H, { step: 40, color: 'rgba(26, 42, 78, 0.035)', lineWidth: 1, theme: T });
+            SimLib.Draw.paper(ctx, W, H, { theme: T });
             SimLib.Draw.title(ctx, 'Pendulum', 14, 22, { size: 13, color: T.muted, theme: T });
             // ceiling
-            ctx.fillStyle = T.text; ctx.fillRect(0, this.PIVOT_Y - 14, W, 18);
-            ctx.fillStyle = T.muted; ctx.fillRect(0, this.PIVOT_Y - 14, W, 3);
-            ctx.fillStyle = T.ink; ctx.fillRect(0, this.PIVOT_Y + 2, W, 2);
+            ctx.strokeStyle = T.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(this.PIVOT_X - 170, this.PIVOT_Y); ctx.lineTo(this.PIVOT_X + 170, this.PIVOT_Y); ctx.stroke();
+            ctx.lineWidth = 1.5; ctx.beginPath(); for (let hx = this.PIVOT_X - 160; hx <= this.PIVOT_X + 160; hx += 16) { ctx.moveTo(hx, this.PIVOT_Y); ctx.lineTo(hx + 12, this.PIVOT_Y - 12); } ctx.stroke();
             // reference line
-            ctx.setLineDash([4,6]); ctx.strokeStyle = T.gridStrong; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(this.PIVOT_X, this.PIVOT_Y); ctx.lineTo(this.PIVOT_X, this.PIVOT_Y + this.length * this.PX_PER_METER); ctx.stroke(); ctx.setLineDash([]);
+            ctx.setLineDash([4,6]); ctx.strokeStyle = T.secondary; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(this.PIVOT_X, this.PIVOT_Y); ctx.lineTo(this.PIVOT_X, this.PIVOT_Y + this.length * this.PX_PER_METER); ctx.stroke(); ctx.setLineDash([]);
             // angle arc
             if (Math.abs(this.angleDeg) > 1) {
-                const arcR = 55; ctx.strokeStyle = T.faint; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(this.PIVOT_X, this.PIVOT_Y, arcR, -Math.PI/2, -Math.PI/2 - this.angle, this.angle < 0); ctx.stroke(); const midA = -Math.PI/2 - this.angle/2; ctx.fillStyle = T.muted; ctx.font = T.font(10, 'bold'); ctx.textAlign = 'center'; ctx.fillText(Math.abs(this.angleDeg).toFixed(0) + '\u00B0', this.PIVOT_X + (arcR + 20) * Math.cos(midA), this.PIVOT_Y + (arcR + 20) * Math.sin(midA));
+                const arcR = 55; ctx.strokeStyle = T.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(this.PIVOT_X, this.PIVOT_Y, arcR, Math.PI/2, Math.PI/2 - this.angle, this.angle > 0); ctx.stroke(); const midA = Math.PI/2 - this.angle/2; ctx.fillStyle = T.accentDark; ctx.font = T.font(12, '500'); ctx.textAlign = 'center'; ctx.fillText(Math.abs(this.angleDeg).toFixed(0) + '\u00B0', this.PIVOT_X + (arcR + 20) * Math.cos(midA), this.PIVOT_Y + (arcR + 20) * Math.sin(midA));
             }
             // trace
             if (this.showTrace && this.tracePoints.length > 1) {
-                const tc = SimLib.Color.parse(T.accent);
-                ctx.strokeStyle = `rgba(${tc.r}, ${tc.g}, ${tc.b}, 0.25)`; ctx.lineWidth = 2; ctx.setLineDash([2,4]); ctx.beginPath(); for (let i = 0; i < this.tracePoints.length; i++) { if (i === 0) ctx.moveTo(this.tracePoints[i].x, this.tracePoints[i].y); else ctx.lineTo(this.tracePoints[i].x, this.tracePoints[i].y); } ctx.stroke(); ctx.setLineDash([]);
+                ctx.strokeStyle = SimLib.Color.alpha(T.accent, 0.25); ctx.lineWidth = 2; ctx.setLineDash([2,4]); ctx.beginPath(); for (let i = 0; i < this.tracePoints.length; i++) { if (i === 0) ctx.moveTo(this.tracePoints[i].x, this.tracePoints[i].y); else ctx.lineTo(this.tracePoints[i].x, this.tracePoints[i].y); } ctx.stroke(); ctx.setLineDash([]);
             }
             // string
             const bob = this._bobPos(); ctx.strokeStyle = T.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(this.PIVOT_X, this.PIVOT_Y); ctx.lineTo(bob.x, bob.y); ctx.stroke();
             // pivot bolt
-            const boltGrad = ctx.createRadialGradient(this.PIVOT_X - 2, this.PIVOT_Y - 1, 1, this.PIVOT_X, this.PIVOT_Y, 9);
-            boltGrad.addColorStop(0, T.faint); boltGrad.addColorStop(0.6, T.muted); boltGrad.addColorStop(1, T.ink); ctx.fillStyle = boltGrad; ctx.beginPath(); ctx.arc(this.PIVOT_X, this.PIVOT_Y, 9, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = T.bg; ctx.strokeStyle = T.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(this.PIVOT_X, this.PIVOT_Y, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             // bob
-            const bobR = this._bobPixelRadius(); const bobGrad = ctx.createRadialGradient(bob.x - bobR*0.3, bob.y - bobR*0.35, bobR*0.05, bob.x, bob.y, bobR); bobGrad.addColorStop(0, SimLib.Color.lighten(T.accent, 0.55)); bobGrad.addColorStop(0.4, T.accent); bobGrad.addColorStop(0.7, T.accentDark); bobGrad.addColorStop(1, SimLib.Color.darken(T.accent, 0.35)); ctx.fillStyle = bobGrad; ctx.beginPath(); ctx.arc(bob.x, bob.y, bobR, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath(); ctx.arc(bob.x - bobR*0.25, bob.y - bobR*0.3, bobR*0.32, 0, Math.PI*2); ctx.fill();
+            const bobR = this._bobPixelRadius(); SimLib.CanvasUtils.drawGlossySphere(ctx, bob.x, bob.y, bobR, T.accent);
             // speed indicator
             const speed = Math.abs(this.angularVel * this.length);
-            if (speed > 0.02) { const vDir = Math.sign(this.angularVel); const dc = SimLib.Color.parse(T.danger); ctx.fillStyle = `rgba(${dc.r}, ${dc.g}, ${dc.b}, 0.75)`; ctx.font = T.font(9, 'bold'); ctx.textAlign = 'center'; ctx.fillText(speed.toFixed(1) + ' m/s', bob.x, bob.y + bobR + 16); ctx.strokeStyle = `rgba(${dc.r}, ${dc.g}, ${dc.b}, 0.6)`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bob.x - vDir * 10, bob.y); ctx.lineTo(bob.x, bob.y); ctx.stroke(); }
-            if (this.paused) { ctx.fillStyle = 'rgba(0,0,0,0.05)'; ctx.fillRect(0,0,W,H); ctx.fillStyle = T.muted; ctx.font = T.font(24, 'bold'); ctx.textAlign = 'center'; ctx.fillText('PAUSED', W/2, H/2 + 30); }
+            if (speed > 0.02) { const vDir = Math.sign(this.angularVel); ctx.fillStyle = T.accentDark; ctx.font = T.font(11, '500'); ctx.textAlign = 'center'; ctx.fillText(speed.toFixed(1) + ' m/s', bob.x, bob.y + bobR + 16); ctx.strokeStyle = SimLib.Color.alpha(T.accentDark, 0.6); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(bob.x - vDir * 10, bob.y); ctx.lineTo(bob.x, bob.y); ctx.stroke(); }
+            if (this.paused) { ctx.fillStyle = SimLib.Color.alpha(T.ink, 0.05); ctx.fillRect(0,0,W,H); ctx.fillStyle = T.muted; ctx.font = T.displayFont(26); ctx.textAlign = 'center'; ctx.fillText('PAUSED', W/2, H/2 + 30); }
             // force vectors (Show Forces)
             if (this.showForces) {
                 const stringLen = this.length * this.PX_PER_METER;
@@ -227,7 +223,7 @@ export function mount(ui) {
                 const ux = (this.PIVOT_X - bob.x) / stringLen;
                 const uy = (this.PIVOT_Y - bob.y) / stringLen;
                 const tenLen = Math.min(tension * 3.0, 110);
-                this._drawArrow(bob.x, bob.y, bob.x + ux * tenLen, bob.y + uy * tenLen, '#2f7d32', 'T');
+                this._drawArrow(bob.x, bob.y, bob.x + ux * tenLen, bob.y + uy * tenLen, T.secondary, 'T');
             }
             this.drawEnergyGraph();
             this.drawAngleGraph();
@@ -247,7 +243,7 @@ export function mount(ui) {
             ctx.lineTo(x2 - head * Math.cos(ang - 0.4), y2 - head * Math.sin(ang - 0.4));
             ctx.lineTo(x2 - head * Math.cos(ang + 0.4), y2 - head * Math.sin(ang + 0.4));
             ctx.closePath(); ctx.fill();
-            if (label) { ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(label, x2 + (dx >= 0 ? 14 : -14), y2 + (dy >= 0 ? 12 : -6)); }
+            if (label) { ctx.font = T.font(12, '500'); ctx.textAlign = 'center'; ctx.fillText(label, x2 + (dx >= 0 ? 14 : -14), y2 + (dy >= 0 ? 12 : -6)); }
         }
 
         /** Angle-vs-time line graph on an 8 s rolling window. */
@@ -256,7 +252,7 @@ export function mount(ui) {
             if (!g) return;
             const gW = this.angleGraphCanvas.width, gH = this.angleGraphCanvas.height;
             g.clearRect(0, 0, gW, gH);
-            g.fillStyle = '#f8f9fa'; g.fillRect(0, 0, gW, gH);
+            g.fillStyle = T.surface; g.fillRect(0, 0, gW, gH);
 
             const padL = 42, padR = 10, padT = 10, padB = 20;
             const plotW = gW - padL - padR, plotH = gH - padT - padB;
@@ -266,12 +262,12 @@ export function mount(ui) {
             for (const p of this.angleHistory) amp = Math.max(amp, Math.abs(p.a));
             amp = Math.min(90, amp * 1.12);
 
-            g.strokeStyle = '#e2e6ea'; g.lineWidth = 1;
+            g.strokeStyle = T.ink; g.lineWidth = 1;
             g.beginPath(); g.moveTo(x0, padT + plotH / 2); g.lineTo(x0 + plotW, padT + plotH / 2); g.stroke();
-            g.strokeStyle = '#cfd6dd';
+            g.strokeStyle = T.ink;
             g.beginPath(); g.moveTo(x0, padT); g.lineTo(x0, padT + plotH); g.stroke();
 
-            g.fillStyle = '#9aa3ad'; g.font = T.font(9);
+            g.fillStyle = T.muted; g.font = T.font(10);
             g.textAlign = 'right'; g.textBaseline = 'middle';
             g.fillText(Math.round(amp) + '°', x0 - 4, padT + 8);
             g.fillText('0°', x0 - 4, padT + plotH / 2);
@@ -281,7 +277,7 @@ export function mount(ui) {
 
             const window = 8, t0 = this.simTime - window;
             if (this.angleHistory.length > 1) {
-                g.strokeStyle = '#4a6fa5'; g.lineWidth = 1.8;
+                g.strokeStyle = T.accent; g.lineWidth = 2;
                 g.beginPath();
                 let first = true;
                 for (const p of this.angleHistory) {
@@ -300,7 +296,7 @@ export function mount(ui) {
             if (!g) return;
             const gW = graphCanvas.width, gH = graphCanvas.height;
             g.clearRect(0, 0, gW, gH);
-            g.fillStyle = '#f8f9fa';
+            g.fillStyle = T.surface;
             g.fillRect(0, 0, gW, gH);
 
             const padL = 42, padR = 10, padT = 10, padB = 20;
@@ -322,10 +318,10 @@ export function mount(ui) {
             for (let i = 0; i <= 4; i++) {
                 const val = (maxE / 4) * i;
                 const y = y0 - (val / maxE) * plotH;
-                g.strokeStyle = '#e9ecef';
+                g.strokeStyle = T.grid;
                 g.lineWidth = 1;
                 g.beginPath(); g.moveTo(x0, y); g.lineTo(x0 + plotW, y); g.stroke();
-                g.fillStyle = '#868e96';
+                g.fillStyle = T.muted;
                 g.fillText(val.toFixed(1), x0 - 6, y);
             }
 
@@ -334,9 +330,9 @@ export function mount(ui) {
             g.textBaseline = 'top';
             for (let t = Math.ceil(tStart / 5) * 5; t <= tNow; t += 5) {
                 const x = x0 + ((t - tStart) / GRAPH_WINDOW_S) * plotW;
-                g.strokeStyle = '#f1f3f5';
+                g.strokeStyle = T.grid;
                 g.beginPath(); g.moveTo(x, padT); g.lineTo(x, y0); g.stroke();
-                g.fillStyle = '#868e96';
+                g.fillStyle = T.muted;
                 g.fillText(t + 's', x, y0 + 4);
             }
 
@@ -348,7 +344,7 @@ export function mount(ui) {
             g.restore();
 
             if (this.energyHistory.length < 2) {
-                g.fillStyle = '#adb5bd';
+                g.fillStyle = T.faint;
                 g.font = T.font(11);
                 g.textAlign = 'center';
                 g.textBaseline = 'middle';
@@ -375,10 +371,10 @@ export function mount(ui) {
                 g.setLineDash([]);
             };
 
-            plotLine('pe', '#4a6fa5', 2);              // Potential
-            plotLine('ke', '#e05252', 2);              // Kinetic
-            plotLine('thermal', '#d97706', 2);         // Thermal dissipated by drag
-            plotLine('total', '#22c55e', 1.5, [5, 4]); // Conserved total
+            plotLine('pe', T.series[1], 2);              // Potential
+            plotLine('ke', T.series[0], 2);              // Kinetic
+            plotLine('thermal', T.series[2], 2);         // Thermal dissipated by drag
+            plotLine('total', T.series[3], 1.5, [5, 4]); // Conserved total
         }
 
         updateUI() {

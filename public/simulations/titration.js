@@ -1,6 +1,7 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
+    const T = SimLib.Theme.use('light');
 
 
 
@@ -238,18 +239,20 @@ function liveRGB(shade) {
 }
 
 function rgbStr(c, a) {
-    return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + (a == null ? ')' : ',' + a + ')');
+    return SimLib.Color.rgb(c[0], c[1], c[2], a == null ? undefined : a);
 }
 
 function nearlyWhite(c) { return c[0] > 244 && c[1] > 244 && c[2] > 244; }
 
 function asSwatch(c) {
-    return nearlyWhite(c) ? [226, 232, 240] : c;
+    if (!nearlyWhite(c)) return c;
+    const clear = SimLib.Color.parse(T.secondarySoft);
+    return [clear.r, clear.g, clear.b];
 }
 
 function liquidStyle() {
     const c = liveRGB(1);
-    if (nearlyWhite(c)) return 'rgba(203, 221, 240, 0.7)';
+    if (nearlyWhite(c)) return SimLib.Color.alpha(T.secondarySoft, 0.7);
     return rgbStr(c, 0.72);
 }
 
@@ -282,19 +285,19 @@ function rrect(x, y, w, h, r) {
 // ═══════════════════════════════════════════════════════════════
 function drawApparatus() {
     // ── Retort stand ──
-    ctx.fillStyle = '#334155';
+    ctx.fillStyle = T.text;
     rrect(18, 527, 216, 14, 6); ctx.fill();
     ctx.fillRect(36, 68, 9, 460);
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = T.text;
     rrect(45, 151, 54, 10, 4); ctx.fill();
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = T.ink;
     ctx.fillRect(98, 144, 6, 24);
 
     // ── Burette ──
     const bx = 101, bw = 30, bTop = 56, bBot = 360;
     const bcx = bx + bw / 2;
-    ctx.fillStyle = '#f1f5f9';
-    ctx.strokeStyle = '#64748b';
+    ctx.fillStyle = T.surface2;
+    ctx.strokeStyle = T.muted;
     ctx.lineWidth = 2;
     rrect(bx, bTop, bw, bBot - bTop, 4);
     ctx.fill();
@@ -304,9 +307,9 @@ function drawApparatus() {
     const frac = Math.max(0, Math.min(1, reading / SCALE_MAX));
     const surfaceY = bTop + frac * (bBot - bTop);
     if (filled) {
-        ctx.fillStyle = 'rgba(45, 212, 191, 0.26)';
+        ctx.fillStyle = SimLib.Color.alpha(T.secondary, 0.26);
         ctx.fillRect(bx + 2, surfaceY, bw - 4, bBot - surfaceY - 2);
-        ctx.strokeStyle = 'rgba(13, 148, 136, 0.85)';
+        ctx.strokeStyle = SimLib.Color.alpha(T.secondary, 0.85);
         ctx.lineWidth = 1.4;
         ctx.beginPath();
         ctx.moveTo(bx + 2, surfaceY + 4);
@@ -315,19 +318,19 @@ function drawApparatus() {
     }
 
     // Graduations: ticks every 1 mL, labels every 5
-    ctx.font = '9px system-ui, sans-serif';
+    ctx.font = T.font(9);
     ctx.textAlign = 'left';
     for (let mL = 0; mL <= 25; mL++) {
         const y = bTop + (mL / SCALE_MAX) * (bBot - bTop);
         const major = mL % 5 === 0;
-        ctx.strokeStyle = '#94a3b8';
+        ctx.strokeStyle = T.faint;
         ctx.lineWidth = major ? 1.2 : 0.6;
         ctx.beginPath();
         ctx.moveTo(bx + 3, y);
         ctx.lineTo(bx + 3 + (major ? 9 : 5), y);
         ctx.stroke();
         if (major) {
-            ctx.fillStyle = '#64748b';
+            ctx.fillStyle = T.muted;
             ctx.fillText(String(mL), bx + bw + 5, y + 3);
         }
     }
@@ -336,31 +339,31 @@ function drawApparatus() {
     const inBurette = titrant === 'base' ? base : acid;
     const buretteConc = titrant === 'base' ? concBase : concAcid;
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#0f766e';
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = T.secondary;
+    ctx.font = T.font(11, '500');
     ctx.fillText(inBurette, bcx, bTop - 20);
-    ctx.font = '10px system-ui, sans-serif';
-    ctx.fillStyle = '#64748b';
+    ctx.font = T.font(10);
+    ctx.fillStyle = T.muted;
     ctx.fillText(buretteConc.toFixed(3) + ' M in burette', bcx, bTop - 7);
 
     // ── Stopcock ──
-    ctx.fillStyle = '#94a3b8';
-    ctx.strokeStyle = '#64748b';
+    ctx.fillStyle = T.faint;
+    ctx.strokeStyle = T.muted;
     ctx.lineWidth = 1.5;
     rrect(bcx - 13, bBot, 26, 13, 4);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = tapOpen ? '#0f766e' : '#64748b';
+    ctx.fillStyle = tapOpen ? T.secondary : T.muted;
     ctx.beginPath();
     ctx.arc(bcx, bBot + 6, 7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = T.surface;
     ctx.lineWidth = 2.4;
     ctx.beginPath();
     if (tapOpen) { ctx.moveTo(bcx - 4, bBot + 6); ctx.lineTo(bcx + 4, bBot + 6); }
     else         { ctx.moveTo(bcx, bBot + 2);     ctx.lineTo(bcx, bBot + 10); }
     ctx.stroke();
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = T.faint;
     ctx.beginPath();
     ctx.moveTo(bcx - 4, bBot + 13);
     ctx.lineTo(bcx + 4, bBot + 13);
@@ -375,7 +378,7 @@ function drawApparatus() {
         phases.forEach(function (offset) {
             const t = ((clock / 520) + offset) % 1;
             const y = bBot + 26 + t * 44;
-            ctx.fillStyle = 'rgba(13, 148, 136, ' + (0.85 - t * 0.4) + ')';
+            ctx.fillStyle = SimLib.Color.alpha(T.secondary, 0.85 - t * 0.4);
             ctx.beginPath();
             ctx.ellipse(bcx, y, 2.8, 3.9, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -383,16 +386,16 @@ function drawApparatus() {
     }
 
     // ── Digital burette readout ──
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = T.ink;
     rrect(168, 78, 132, 64, 9); ctx.fill();
-    ctx.fillStyle = '#5eead4';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillStyle = SimLib.Color.lighten(T.secondary, 0.45);
+    ctx.font = T.font(9, '500');
     ctx.textAlign = 'left';
     ctx.fillText('BURETTE', 180, 96);
-    ctx.font = 'bold 22px ui-monospace, Menlo, Consolas, monospace';
+    ctx.font = T.font(22, '500');
     ctx.fillText(filled ? (zeroReading + volumeAdded).toFixed(2) : '--.--', 180, 125);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = T.faint;
+    ctx.font = T.font(10);
     ctx.fillText('mL', 280, 125);
 
     // ── Reaction vessel (beaker) ──
@@ -448,7 +451,7 @@ function drawApparatus() {
         ctx.restore();
     }
     // glass
-    ctx.strokeStyle = '#64748b';
+    ctx.strokeStyle = T.muted;
     ctx.lineWidth = 2.5;
     vesselPath();
     ctx.stroke();
@@ -458,7 +461,7 @@ function drawApparatus() {
     ctx.quadraticCurveTo(kx - khw - 7, kTop - 1, kx - khw - 11, kTop - 9);
     ctx.stroke();
     // volume ticks on the glass
-    ctx.strokeStyle = 'rgba(100,116,139,0.6)';
+    ctx.strokeStyle = SimLib.Color.alpha(T.muted, 0.6);
     ctx.lineWidth = 1;
     for (let i = 1; i <= 5; i++) {
         const y = kBot - 9 - (i / 6) * (kBot - 9 - (kTop + 12));
@@ -471,7 +474,7 @@ function drawApparatus() {
     ctx.save();
     ctx.translate(kx, kBot - 7);
     ctx.rotate(Math.sin(clock * 0.02) * 0.55);
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = T.faint;
     rrect(-11, -3, 22, 6, 3); ctx.fill();
     ctx.restore();
 
@@ -479,14 +482,14 @@ function drawApparatus() {
     const inVessel = titrant === 'base' ? acid : base;
     const vesselConc = titrant === 'base' ? concAcid : concBase;
     ctx.textAlign = 'left';
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillStyle = T.faint;
+    ctx.font = T.font(9, '500');
     ctx.fillText('IN THE VESSEL \u2014 25.0 mL', 186, 452);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillStyle = T.ink;
+    ctx.font = T.font(11, '500');
     ctx.fillText(inVessel, 186, 468);
-    ctx.fillStyle = '#64748b';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = T.muted;
+    ctx.font = T.font(10);
     ctx.fillText(vesselConc.toFixed(3) + ' M', 186, 484);
 }
 
@@ -501,39 +504,39 @@ function drawCurve() {
     const Y = p => gy1 - (Math.max(0, Math.min(14, p)) / 14) * gh;
 
     // panel
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#e2e8f0';
+    ctx.fillStyle = T.surface;
+    ctx.strokeStyle = T.grid;
     ctx.lineWidth = 1;
     rrect(px, py, pw, ph, 14);
     ctx.fill();
     ctx.stroke();
 
     // header
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillStyle = T.ink;
+    ctx.font = T.font(13, '500');
     ctx.textAlign = 'left';
     ctx.fillText('pH Curve', px + 22, py + 30);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = T.faint;
+    ctx.font = T.font(10);
     ctx.fillText('shaded band = colour of the mixture', px + 96, py + 30);
 
     // current-colour swatch
     const sw = filled ? liveSwatch() : [226, 232, 240];
     ctx.fillStyle = rgbStr(sw, 1);
     rrect(px + pw - 96, py + 14, 22, 22, 6); ctx.fill();
-    ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = '#64748b';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.strokeStyle = T.gridStrong; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = T.muted;
+    ctx.font = T.font(10);
     ctx.fillText('current', px + pw - 66, py + 29);
 
-    ctx.strokeStyle = '#eef2f6';
+    ctx.strokeStyle = T.surface2;
     ctx.beginPath();
     ctx.moveTo(px + 18, py + 46);
     ctx.lineTo(px + pw - 18, py + 46);
     ctx.stroke();
 
     // plot background
-    ctx.fillStyle = '#fcfdfe';
+    ctx.fillStyle = T.bg;
     ctx.fillRect(gx0, gy0, gw, gh);
 
     // ── shaded band under the curve tinted by the indicator ──
@@ -558,34 +561,34 @@ function drawCurve() {
     }
 
     // grid
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.font = T.font(10);
     ctx.textAlign = 'right';
     for (let p = 0; p <= 14; p += 2) {
         const y = Y(p);
-        ctx.strokeStyle = '#eef2f6';
+        ctx.strokeStyle = T.surface2;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(gx0, y);
         ctx.lineTo(gx1, y);
         ctx.stroke();
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = T.faint;
         ctx.fillText(String(p), gx0 - 9, y + 3);
     }
     ctx.textAlign = 'center';
     for (let v = 0; v <= SCALE_MAX; v += 5) {
         const x = X(v);
-        ctx.strokeStyle = '#eef2f6';
+        ctx.strokeStyle = T.surface2;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, gy0);
         ctx.lineTo(x, gy1);
         ctx.stroke();
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = T.faint;
         ctx.fillText(String(v), x, gy1 + 16);
     }
 
     // axes
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = T.faint;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(gx0, gy0);
@@ -594,8 +597,8 @@ function drawCurve() {
     ctx.stroke();
 
     // titles
-    ctx.fillStyle = '#475569';
-    ctx.font = 'bold 10px system-ui, sans-serif';
+    ctx.fillStyle = T.text;
+    ctx.font = T.font(10, '500');
     ctx.textAlign = 'center';
     ctx.fillText('volume added (mL)', gx0 + gw / 2, gy1 + 40);
     ctx.save();
@@ -607,7 +610,7 @@ function drawCurve() {
     // equivalence marker
     if (showEqCb.checked && filled && eqVol <= SCALE_MAX && volumeAdded >= eqVol + 0.2) {
         const ex = X(eqVol), ey = Y(eqPH);
-        ctx.strokeStyle = '#d97706';
+        ctx.strokeStyle = T.series[2];
         ctx.lineWidth = 1.3;
         ctx.setLineDash([5, 4]);
         ctx.beginPath();
@@ -615,7 +618,7 @@ function drawCurve() {
         ctx.lineTo(ex, ey);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#d97706';
+        ctx.fillStyle = T.series[2];
         ctx.beginPath();
         ctx.moveTo(ex, ey - 5);
         ctx.lineTo(ex + 5, ey);
@@ -623,17 +626,17 @@ function drawCurve() {
         ctx.lineTo(ex - 5, ey);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = T.surface;
         ctx.fillRect(ex - 34, gy0 - 16, 68, 15);
-        ctx.fillStyle = '#b45309';
-        ctx.font = 'bold 10px system-ui, sans-serif';
+        ctx.fillStyle = T.warn;
+        ctx.font = T.font(10, '500');
         ctx.textAlign = 'center';
         ctx.fillText('equivalence', ex, gy0 - 5);
     }
 
     // curve
     if (trace.length > 1) {
-        ctx.strokeStyle = '#0f766e';
+        ctx.strokeStyle = T.accent;
         ctx.lineWidth = 2.6;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
@@ -646,11 +649,11 @@ function drawCurve() {
     // recorded readings
     if (showDataCb.checked) {
         for (const row of logRows) {
-            ctx.fillStyle = '#d97706';
+            ctx.fillStyle = T.series[2];
             ctx.beginPath();
             ctx.arc(X(Math.min(SCALE_MAX, row.v)), Y(row.pH), 3, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#ffffff';
+            ctx.strokeStyle = T.surface;
             ctx.lineWidth = 1.2;
             ctx.stroke();
         }
@@ -659,11 +662,11 @@ function drawCurve() {
     // current point
     if (filled) {
         const cx2 = X(Math.min(SCALE_MAX, volumeAdded)), cy2 = Y(pHat(volumeAdded));
-        ctx.fillStyle = '#0f766e';
+        ctx.fillStyle = T.accent;
         ctx.beginPath();
         ctx.arc(cx2, cy2, 5, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = T.surface;
         ctx.lineWidth = 2.2;
         ctx.stroke();
     }
@@ -671,7 +674,7 @@ function drawCurve() {
 
 function render() {
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = T.bg;
     ctx.fillRect(0, 0, W, H);
     drawApparatus();
     if (realLab) drawObservationPanel();
@@ -681,19 +684,19 @@ function render() {
 function drawObservationPanel() {
     const px = 330, py = 34, pw = 595, ph = 517;
 
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#e2e8f0';
+    ctx.fillStyle = T.surface;
+    ctx.strokeStyle = T.grid;
     ctx.lineWidth = 1;
     rrect(px, py, pw, ph, 14);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillStyle = T.ink;
+    ctx.font = T.font(13, '500');
     ctx.textAlign = 'left';
     ctx.fillText('Observation', px + 22, py + 30);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px system-ui, sans-serif';
+    ctx.fillStyle = T.faint;
+    ctx.font = T.font(10);
     ctx.fillText('everything the bench lets you see', px + 112, py + 30);
 
     // large colour field matching the vessel contents
@@ -702,26 +705,26 @@ function drawObservationPanel() {
     ctx.fillStyle = rgbStr(sw, 1);
     rrect(fx, fy, fw, fh, 14);
     ctx.fill();
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = T.gridStrong;
     ctx.lineWidth = 1;
     ctx.stroke();
     // glass-like highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.strokeStyle = SimLib.Color.alpha(T.surface, 0.7);
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(fx + 18, fy + fh - 24);
     ctx.lineTo(fx + 18, fy + 24);
     ctx.stroke();
 
-    ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillStyle = T.ink;
+    ctx.font = T.font(14, '500');
     ctx.fillText(indicator, fx, fy + fh + 36);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = T.faint;
+    ctx.font = T.font(11);
     ctx.fillText('indicator in the vessel', fx, fy + fh + 54);
 
-    ctx.fillStyle = '#64748b';
-    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillStyle = T.muted;
+    ctx.font = T.font(11);
     ctx.fillText('No meter on this bench \u2014 the colour is your only reading.', fx, py + ph - 28);
     ctx.fillText('Add titrant slowly near the change and watch for the first permanent colour.', fx, py + ph - 11);
 }
@@ -803,7 +806,7 @@ function refreshReadouts() {
         phReadout.textContent = '--';
         eqReadout.textContent = '--';
         dockPH.textContent = '--';
-        dockSwatch.style.background = '#e2e8f0';
+        dockSwatch.style.background = T.grid;
         return;
     }
     burReadout.textContent = (zeroReading + volumeAdded).toFixed(2);

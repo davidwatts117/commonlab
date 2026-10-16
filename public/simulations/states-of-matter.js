@@ -1,21 +1,22 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
+    const T = SimLib.Theme.use('light');
 'use strict';
 
 // ═══════════════════════════════════════
 //  SUBSTANCE DATABASE (PhET-aligned)
 // ═══════════════════════════════════════
 const SUBS = {
-    neon:    { name:'Neon',    mp:17,  bp:24,  minT:5,   maxT:45,  atomR:5.5, color:'#e890a0', mol:'mono',
+    neon:    { name:'Neon',    mp:17,  bp:24,  minT:5,   maxT:45,  atomR:5.5, color:SimLib.Color.lighten(T.accent, 0.3), mol:'mono',
                 seg:[15, 3, 25, 4, 53] },
-    nitrogen:{ name:'Nitrogen',mp:63,  bp:78,  minT:30,  maxT:120, atomR:5.8, color:'#6090d0', mol:'di',
+    nitrogen:{ name:'Nitrogen',mp:63,  bp:78,  minT:30,  maxT:120, atomR:5.8, color:T.secondary, mol:'di',
                 seg:[15, 3, 25, 4, 53] },
-    argon:   { name:'Argon',   mp:84,  bp:87,  minT:50,  maxT:130, atomR:6.5, color:'#60c090', mol:'mono',
+    argon:   { name:'Argon',   mp:84,  bp:87,  minT:50,  maxT:130, atomR:6.5, color:SimLib.Color.lighten(T.success, 0.3), mol:'mono',
                 seg:[15, 3, 25, 4, 53] },
-    oxygen:  { name:'Oxygen',  mp:54,  bp:90,  minT:30,  maxT:140, atomR:4.5, color:'#e05050', mol:'di',
+    oxygen:  { name:'Oxygen',  mp:54,  bp:90,  minT:30,  maxT:140, atomR:4.5, color:T.accent, mol:'di',
                 seg:[15, 3, 25, 4, 53] },
-    water:   { name:'Water',   mp:273, bp:373, minT:200, maxT:450, atomR:4.5, color:'#e05050', mol:'tri',
+    water:   { name:'Water',   mp:273, bp:373, minT:200, maxT:450, atomR:4.5, color:T.accent, mol:'tri',
                 seg:[12, 7, 35, 7, 39] },
 };
 
@@ -30,7 +31,6 @@ let heatFlow = 0; // -100 (max cooling) to +100 (max heating)
 //  CANVAS & CONTAINER
 // ═══════════════════════════════════════
 const C = document.getElementById('matterCanvas');
-const T = SimLib.Theme.use('light');
 const ctx = C.getContext('2d');
 const W = C.width, H = C.height;
 
@@ -355,20 +355,13 @@ const lighten = (color, amt) => SimLib.Color.lighten(color, amt);
 const darken  = (color, amt) => SimLib.Color.darken(color, amt);
 
 function drawGlossySphere(x, y, r, color) {
-    // Main body
-    const g = ctx.createRadialGradient(x - r*0.25, y - r*0.3, r*0.05, x + r*0.2, y + r*0.2, r);
-    g.addColorStop(0, lighten(color, 0.7));
-    g.addColorStop(0.35, color);
-    g.addColorStop(0.7, darken(color, 0.25));
-    g.addColorStop(1, darken(color, 0.5));
-    ctx.fillStyle = g;
+    // Flat, outlined particle in the graph-paper figure style.
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI*2);
     ctx.fill();
-
-    // Subtle outline
-    ctx.strokeStyle = darken(color, 0.35);
-    ctx.lineWidth = 0.6;
+    ctx.strokeStyle = T.ink;
+    ctx.lineWidth = 0.9;
     ctx.stroke();
 }
 
@@ -377,16 +370,8 @@ function drawParticle(p) {
     const energyNorm = clamp(speed / 10, 0, 1);
 
     function energyTint(baseColor) {
-        let r2, g2, b2;
-        if (baseColor.startsWith('#')) {
-            const n = parseInt(baseColor.slice(1), 16);
-            r2 = (n>>16)&255; g2 = (n>>8)&255; b2 = n&255;
-        } else { return baseColor; }
-        // Blend toward warm (orange-red) as energy increases
-        r2 = Math.min(255, Math.round(r2 + (255-r2)*energyNorm*0.6));
-        g2 = Math.max(0, Math.round(g2 * (1 - energyNorm*0.3)));
-        b2 = Math.max(0, Math.round(b2 * (1 - energyNorm*0.5)));
-        return 'rgb('+r2+','+g2+','+b2+')';
+        // Blend toward the accent as energy increases
+        return SimLib.Color.mix(baseColor, T.accent, energyNorm*0.55);
     }
 
     const tintedColor = energyTint(sub.color);
@@ -397,7 +382,7 @@ function drawParticle(p) {
         // Glow for fast particles
         if (speed > 4) {
             const glowAlpha = Math.min((speed-4)/12, 1) * 0.2;
-            ctx.fillStyle = 'rgba(255,180,60,'+glowAlpha+')';
+            ctx.fillStyle = SimLib.Color.alpha(T.glow, glowAlpha);
             ctx.beginPath();
             ctx.arc(p.x, p.y, r+4, 0, Math.PI*2);
             ctx.fill();
@@ -422,7 +407,7 @@ function drawParticle(p) {
         // Glow for fast particles
         if (speed > 4) {
             const ga = Math.min((speed-4)/12, 1) * 0.2;
-            ctx.fillStyle = 'rgba(255,180,60,'+ga+')';
+            ctx.fillStyle = SimLib.Color.alpha(T.glow, ga);
             ctx.beginPath(); ctx.arc(x1, y1, r+4, 0, Math.PI*2); ctx.fill();
             ctx.beginPath(); ctx.arc(x2, y2, r+4, 0, Math.PI*2); ctx.fill();
         }
@@ -458,7 +443,7 @@ function drawParticle(p) {
         // Glow for fast molecules
         if (speed > 4) {
             const ga = Math.min((speed-4)/12, 1) * 0.2;
-            ctx.fillStyle = 'rgba(255,180,60,'+ga+')';
+            ctx.fillStyle = SimLib.Color.alpha(T.glow, ga);
             ctx.beginPath(); ctx.arc(ox, oy, oR+5, 0, Math.PI*2); ctx.fill();
         }
     }
@@ -468,17 +453,16 @@ function draw() {
     ctx.clearRect(0, 0, W, H);
 
     // Background + grid + title (shared theme)
-    SimLib.Draw.background(ctx, W, H, T);
-    SimLib.Draw.grid(ctx, W, H, { step: 30, color: 'rgba(26, 42, 78, 0.04)', lineWidth: 1, theme: T });
+    SimLib.Draw.paper(ctx, W, H, { theme: T });
     SimLib.Draw.title(ctx, 'States of Matter', 14, 20, { size: 13, color: T.muted, theme: T });
 
     // ── Thermometer (left of box) ──
     drawThermometer();
 
     // ── Container shadow ──
-    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.fillStyle = T.ink;
     ctx.beginPath();
-    roundRect(ctx, BOX.x+3, BOX.y+3, BOX.w, BOX.h, 6);
+    roundRect(ctx, BOX.x+4, BOX.y+4, BOX.w, BOX.h, 0);
     ctx.fill();
 
     // ── Container ──
@@ -486,7 +470,7 @@ function draw() {
     ctx.strokeStyle = T.ink;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    roundRect(ctx, BOX.x, BOX.y, BOX.w, BOX.h, 6);
+    roundRect(ctx, BOX.x, BOX.y, BOX.w, BOX.h, 0);
     ctx.fill();
     ctx.stroke();
 
@@ -504,7 +488,7 @@ function draw() {
     ctx.strokeStyle = T.ink;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    roundRect(ctx, BOX.x-1, BOX.y - lidH, BOX.w+2, lidH+2, [4,4,0,0]);
+    roundRect(ctx, BOX.x-1, BOX.y - lidH, BOX.w+2, lidH+2, 0);
     ctx.fill();
     ctx.stroke();
 
@@ -516,7 +500,7 @@ function draw() {
     ctx.strokeStyle = T.ink;
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    roundRect(ctx, BOX.x, BOX.y, BOX.w, BOX.h, 6);
+    roundRect(ctx, BOX.x, BOX.y, BOX.w, BOX.h, 0);
     ctx.stroke();
 
     // ── Phase label inside box ──
@@ -543,15 +527,14 @@ function drawThermometer() {
     const fillH = th * tNorm;
     const fillY = ty + th - fillH;
     if (fillH > 2) {
-        const h = 220 - tNorm*220;
-        ctx.fillStyle = 'hsl('+h+',80%,50%)';
+        ctx.fillStyle = SimLib.Color.heat(tNorm);
         ctx.beginPath();
         roundRect(ctx, tx+2, fillY, tw-4, fillH-2, 5);
         ctx.fill();
     }
 
     // Bulb
-    ctx.fillStyle = 'hsl('+(220-tNorm*220)+',80%,50%)';
+    ctx.fillStyle = SimLib.Color.heat(tNorm);
     ctx.beginPath();
     ctx.arc(tx+tw/2, ty+th+8, 8, 0, Math.PI*2);
     ctx.fill();
@@ -619,19 +602,19 @@ function updateUI() {
     // Heat slider visual
     const hf = heatFlow;
     if (hf > 5) {
-        heatLabel.textContent = 'Heating 🔥';
-        heatLabel.style.color = '#e85d3a';
+        heatLabel.textContent = 'Heating';
+        heatLabel.style.color = T.accentDark;
     } else if (hf < -5) {
-        heatLabel.textContent = 'Cooling 🧊';
-        heatLabel.style.color = '#4a90d9';
+        heatLabel.textContent = 'Cooling';
+        heatLabel.style.color = T.secondary;
     } else {
         heatLabel.textContent = 'Heat / Cool';
         heatLabel.style.color = T.muted;
     }
 
     // Icons
-    tcIcon.textContent = hf < -5 ? '🧊' : '🔄';
-    tcIconR.textContent = hf > 5 ? '🔥' : '🔄';
+    tcIcon.textContent = '−';
+    tcIconR.textContent = '+';
 
     // Phase
     phasePill.textContent = phase.charAt(0).toUpperCase() + phase.slice(1);

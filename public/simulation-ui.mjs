@@ -209,8 +209,10 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     for (const [el, view] of viewMembers) el.classList.toggle('simulation-view-hidden', view !== viewBar.value);
   }
   const firstView = definition.views?.options[0].value;
+  // The stage (scene + graphs) and the controls sit side by side when the viewport fits both.
   const main = node('div', 'sim-main');
-  const wrap = node('div', 'canvas-wrapper'); wrap.append(canvas(definition.canvas)); main.append(wrap);
+  const stage = node('div', 'sim-stage');
+  const wrap = node('div', 'canvas-wrapper'); wrap.append(canvas(definition.canvas)); stage.append(wrap);
   const controls = node('div', 'controls-panel');
   viewMembers.push([wrap, firstView], [controls, firstView]);
   const checkHost = node('div', 'simulation-check');
@@ -221,7 +223,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     const el = component(data);
     if (data.type === 'dock') docks.push(el); else controls.append(el);
   }
-  main.append(controls, ...docks);
+  main.append(stage, controls, ...docks);
   const sidebar = node('aside', 'sim-sidebar'); sidebar.setAttribute('aria-label', 'Science explanations');
   for (const data of definition.cards) {
     const card = node('div', 'equation-card'); card.append(node('h3', '', data.title));
@@ -242,7 +244,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     if (data.controls) {
       const tools = node('div', 'simulation-graph-controls'); data.controls.forEach(data => tools.append(component(data))); graph.append(tools);
     }
-    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); main.append(graph);
+    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); stage.append(graph);
     viewMembers.push([graph, data.view || firstView]);
   }
   if (!definition.cards.length) root.classList.add('simulation-no-sidebar');

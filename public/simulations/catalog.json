@@ -204,19 +204,19 @@
           "legend": [
             {
               "label": "Potential",
-              "color": "#4a6fa5"
+              "color": "#5b6b8c"
             },
             {
               "label": "Kinetic",
-              "color": "#e05252"
+              "color": "#c14953"
             },
             {
               "label": "Thermal",
-              "color": "#d97706"
+              "color": "#b07a1a"
             },
             {
               "label": "Total",
-              "color": "#22c55e"
+              "color": "#2d2d2a"
             }
           ]
         },
@@ -546,11 +546,11 @@
             },
             {
               "value": "battery",
-              "label": "🔋 Battery"
+              "label": "Battery"
             },
             {
               "value": "bulb",
-              "label": "💡 Bulb"
+              "label": "Bulb"
             },
             {
               "value": "resistor",
@@ -1521,11 +1521,11 @@
           "icons": [
             {
               "id": "tcIcon",
-              "text": "🧊"
+              "text": "−"
             },
             {
               "id": "tcIconR",
-              "text": "🔥"
+              "text": "+"
             }
           ]
         },

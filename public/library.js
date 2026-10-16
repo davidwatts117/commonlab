@@ -169,20 +169,23 @@
       ctx.closePath();
     },
 
+    /** Flat, outlined sphere in the graph-paper figure style. */
     drawGlossySphere(ctx, x, y, r, fillStyle) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.closePath();
-      ctx.fillStyle = fillStyle || '#888';
+      ctx.fillStyle = fillStyle || '#8f8d84';
       ctx.fill();
-      const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.6, r * 0.1, x, y, r);
-      g.addColorStop(0, 'rgba(255,255,255,0.9)');
-      g.addColorStop(0.5, 'rgba(255,255,255,0.12)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fill();
+      if (r >= 4) {
+        ctx.lineWidth = Math.max(1, Math.min(2, r / 8));
+        ctx.strokeStyle = '#2d2d2a';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x - r * 0.32, y - r * 0.32, r * 0.27, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(244, 239, 226, 0.5)';
+        ctx.fill();
+      }
       ctx.restore();
     },
   };
@@ -207,6 +210,25 @@
       if (m) return { r: +m[1], g: +m[2], b: +m[3] };
       return { r: 128, g: 128, b: 128 };
     },
+    /** Linear blend between two colours; `t` is 0..1. `alpha` is optional. */
+    mix(a, b, t, alpha) {
+      const ca = SimLib.Color.parse(a), cb = SimLib.Color.parse(b);
+      const k = Math.max(0, Math.min(1, t));
+      const ch = (x, y) => Math.round(x + (y - x) * k);
+      return SimLib.Color.rgb(ch(ca.r, cb.r), ch(ca.g, cb.g), ch(ca.b, cb.b), alpha);
+    },
+    /** The same colour at a given opacity. */
+    alpha(color, a) {
+      const c = SimLib.Color.parse(color);
+      return SimLib.Color.rgb(c.r, c.g, c.b, a);
+    },
+    /** Cold-to-hot scale in the active palette (secondary → series ochre → accent). */
+    heat(t, alpha) {
+      const T = SimLib.Theme.get();
+      const k = Math.max(0, Math.min(1, t));
+      return k < 0.5 ? SimLib.Color.mix(T.secondary, T.series[2], k * 2, alpha)
+        : SimLib.Color.mix(T.series[2], T.accent, (k - 0.5) * 2, alpha);
+    },
     /** Blend toward white. `amt` is a 0..1 fraction (or 0..255). */
     lighten(color, amt) {
       const c = SimLib.Color.parse(color);
@@ -228,24 +250,57 @@
    * so every simulation shares one palette and one type scale.
    */
   SimLib.Theme = (function () {
-    const FAMILY = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    // Canvas labels read like figure annotations (mono); titles use the display face.
+    const FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Consolas, monospace";
+    const DISPLAY = "'Atma', system-ui, sans-serif";
 
     function palette(tokens) {
       tokens.fontFamily = FAMILY;
+      tokens.displayFamily = DISPLAY;
       tokens.font = (size, weight) => `${weight || 'normal'} ${size}px ${FAMILY}`;
+      tokens.displayFont = (size, weight) => `${weight || '700'} ${size}px ${DISPLAY}`;
       return tokens;
     }
 
-    const light = palette({
+    // The light palette's source of truth is the :root custom properties in
+    // main.css. These literals are only a fallback for non-browser test hosts.
+    const CSS_TOKENS = {
+      bg: '--canvas-bg', surface: '--canvas-surface', surface2: '--paper',
+      grid: '--canvas-grid', gridStrong: '--canvas-grid-strong', rule: '--grid',
+      ink: '--ink', text: '--ink-soft', muted: '--muted', faint: '--faint',
+      border: '--canvas-border', borderStrong: '--ink-soft',
+      accent: '--accent', accentDark: '--accent-dark', accentSoft: '--sim-accent-soft',
+      secondary: '--secondary', secondarySoft: '--secondary-soft',
+      danger: '--sim-danger', dangerSoft: '--sim-danger-soft',
+      success: '--sim-success', successSoft: '--sim-success-soft',
+      warn: '--sim-warn', glow: '--glow',
+    };
+    const SERIES_TOKENS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5'];
+
+    function fromCss(tokens) {
+      const doc = global.document;
+      if (!doc || !doc.documentElement || typeof global.getComputedStyle !== 'function') return tokens;
+      const style = global.getComputedStyle(doc.documentElement);
+      const read = (name, fallback) => (style.getPropertyValue(name) || '').trim() || fallback;
+      for (const [key, name] of Object.entries(CSS_TOKENS)) tokens[key] = read(name, tokens[key]);
+      tokens.series = SERIES_TOKENS.map((name, i) => read(name, tokens.series[i]));
+      return tokens;
+    }
+
+    // Graph-paper palette: cream stock, blue-grey rules, ink lines, crimson accent.
+    const light = palette(fromCss({
       name: 'light',
-      bg: '#fafbfc', surface: '#ffffff', surface2: '#f8f9fa',
-      grid: '#e9ecef', gridStrong: '#d1d5db',
-      ink: '#1a1a2e', text: '#495057', muted: '#6c757d', faint: '#adb5bd',
-      border: '#e9ecef', borderStrong: '#d1d5db',
-      accent: '#4a6fa5', accentDark: '#3b5d8f', accentSoft: '#eef3fa',
-      danger: '#dc2626', success: '#2d7d46', warn: '#b45309',
-      glow: '#ffcc00',
-    });
+      bg: '#f4efe2', surface: '#faf7ef', surface2: '#ece5d2',
+      grid: '#dcd9d0', gridStrong: '#c3c5c8', rule: '#848fa5',
+      ink: '#2d2d2a', text: '#4c4c47', muted: '#5e5d57', faint: '#8f8d84',
+      border: '#cfc6ae', borderStrong: '#4c4c47',
+      accent: '#c14953', accentDark: '#892f35', accentSoft: '#f1dcd6',
+      secondary: '#5b6b8c', secondarySoft: '#dfe2e8',
+      danger: '#a3262f', dangerSoft: '#f3d6d2', success: '#2f6b3a', successSoft: '#dde8d2', warn: '#8a5300',
+      glow: '#e8b23a',
+      // Ordered data-series colours; neighbours differ in lightness, not hue alone.
+      series: ['#c14953', '#5b6b8c', '#b07a1a', '#2d2d2a', '#2f6b3a'],
+    }));
 
     const dark = palette({
       name: 'dark',
@@ -254,8 +309,10 @@
       ink: '#e8e8e8', text: '#c9d1d9', muted: '#8b949e', faint: '#484f58',
       border: '#30363d', borderStrong: '#3d444d',
       accent: '#7aa2d6', accentDark: '#5b87bf', accentSoft: '#1b2a3d',
-      danger: '#f87171', success: '#34d399', warn: '#fbbf24',
+      secondary: '#9aa6bf', secondarySoft: '#232b38', rule: '#3d444d',
+      danger: '#f87171', dangerSoft: '#3b1d1d', success: '#34d399', successSoft: '#12302a', warn: '#fbbf24',
       glow: '#ffdd57',
+      series: ['#e07a83', '#9aa6bf', '#e0b35a', '#e8e8e8', '#6fbf7a'],
     });
 
     const palettes = { light, dark };
@@ -263,6 +320,9 @@
 
     return {
       palettes,
+      /** Palette key → :root custom property it is read from (light palette). */
+      cssTokens: CSS_TOKENS,
+      seriesTokens: SERIES_TOKENS,
       /** Select and return the active palette. */
       use(name) { current = palettes[name] || light; return current; },
       /** The active palette. */
@@ -304,6 +364,15 @@
       ctx.restore();
     },
 
+    /** Graph-paper ground: theme background with a minor and a major grid. */
+    paper(ctx, w, h, opts = {}) {
+      const T = opts.theme || SimLib.Theme.get();
+      SimLib.Draw.background(ctx, w, h, T);
+      const minor = opts.minor || 20;
+      SimLib.Draw.grid(ctx, w, h, { step: minor, color: SimLib.Color.alpha(T.rule, 0.16), theme: T });
+      SimLib.Draw.grid(ctx, w, h, { step: minor * (opts.every || 5), color: SimLib.Color.alpha(T.rule, 0.34), theme: T });
+    },
+
     /** Themed text. */
     text(ctx, str, x, y, opts = {}) {
       const T = opts.theme || SimLib.Theme.get();
@@ -319,14 +388,13 @@
     /** Scene title. */
     title(ctx, str, x, y, opts = {}) {
       const T = opts.theme || SimLib.Theme.get();
-      SimLib.Draw.text(ctx, str, x, y, {
-        size: opts.size || 15,
-        weight: opts.weight || 'bold',
-        color: opts.color || T.ink,
-        align: opts.align || 'left',
-        baseline: opts.baseline || 'alphabetic',
-        theme: T,
-      });
+      ctx.save();
+      ctx.fillStyle = opts.color || T.ink;
+      ctx.font = T.displayFont(opts.size || 15, opts.weight || '700');
+      ctx.textAlign = opts.align || 'left';
+      ctx.textBaseline = opts.baseline || 'alphabetic';
+      ctx.fillText(str, x, y);
+      ctx.restore();
     },
 
     /** Axis label. */
@@ -346,9 +414,9 @@
     panel(ctx, x, y, w, h, opts = {}) {
       const T = opts.theme || SimLib.Theme.get();
       ctx.save();
-      SimLib.CanvasUtils.roundRect(ctx, x, y, w, h, opts.radius == null ? 8 : opts.radius);
+      SimLib.CanvasUtils.roundRect(ctx, x, y, w, h, opts.radius == null ? 0 : opts.radius);
       if (opts.fill !== false) { ctx.fillStyle = opts.fill || T.surface; ctx.fill(); }
-      if (opts.stroke !== false) { ctx.strokeStyle = opts.stroke || T.border; ctx.lineWidth = opts.lineWidth || 1; ctx.stroke(); }
+      if (opts.stroke !== false) { ctx.strokeStyle = opts.stroke || T.borderStrong; ctx.lineWidth = opts.lineWidth || 1; ctx.stroke(); }
       ctx.restore();
     },
 
@@ -562,6 +630,10 @@
       if (!sim.running) sim.onDraw(sim.ctx);
     }
     global.addEventListener('resize', handleResize);
+    // Canvas text uses web fonts; repaint once they arrive so labels don't keep the fallback face.
+    if (global.document && global.document.fonts && global.document.fonts.ready) {
+      global.document.fonts.ready.then(handleResize).catch(() => {});
+    }
 
     try { sim.onInit(); } catch (e) { console.error('Sim init error', e); }
     try { sim.onDraw(sim.ctx); } catch (e) { console.error('Sim draw error', e); }

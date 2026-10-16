@@ -1,6 +1,7 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
+    const T = SimLib.Theme.use('light');
 
 
 // ═══════════════════════════════════════════════
@@ -389,12 +390,8 @@ function roundRect(x, y, w, h, r) {
 }
 
 function drawGrid() {
-    ctx.save();
-    ctx.strokeStyle = '#eef1f6';
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= W; x += 20) { ctx.beginPath(); ctx.moveTo(x + 0.5, 0); ctx.lineTo(x + 0.5, H); ctx.stroke(); }
-    for (let y = 0; y <= H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke(); }
-    ctx.restore();
+    // Graph paper on the 20px snap grid, every fifth rule stronger.
+    SimLib.Draw.paper(ctx, W, H, { theme: T, minor: 20 });
 }
 
 function elementCurrent(c) {
@@ -410,7 +407,7 @@ function drawComp(c, preview) {
     const M = cMid(c);
     const ux = u.x, uy = u.y, px = -uy, py = ux;
     const danger = !!(net && net.short && net.shortParts && net.shortParts.has(c));
-    const col = danger ? '#dc2626' : '#2b2d42';
+    const col = danger ? T.danger : T.ink;
 
     ctx.save();
     if (preview) ctx.globalAlpha = 0.55;
@@ -418,8 +415,8 @@ function drawComp(c, preview) {
     ctx.lineJoin = 'round';
 
     if (c.type === 'wire') {
-        ctx.strokeStyle = danger ? '#f5b5b5' : '#b9c0d4'; ctx.lineWidth = 5; line(A, B);
-        ctx.strokeStyle = danger ? '#dc2626' : '#5a6280'; ctx.lineWidth = 2.5; line(A, B);
+        ctx.strokeStyle = danger ? T.dangerSoft : T.border; ctx.lineWidth = 5; line(A, B);
+        ctx.strokeStyle = danger ? T.danger : T.ink; ctx.lineWidth = 2.5; line(A, B);
     } else if (c.type === 'resistor') {
         const bh = Math.min(L * 0.42, 22);
         const s = { x: M.x - ux * bh, y: M.y - uy * bh };
@@ -446,7 +443,7 @@ function drawComp(c, preview) {
         line({ x: p1.x - px * 10, y: p1.y - py * 10 }, { x: p1.x + px * 10, y: p1.y + py * 10 });
         line({ x: p2.x - px * 5, y: p2.y - py * 5 }, { x: p2.x + px * 5, y: p2.y + py * 5 });
         ctx.fillStyle = col;
-        ctx.font = 'bold 12px system-ui, sans-serif';
+        ctx.font = T.font(12, '500');
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('+', p1.x + ux * 13 + px * 12, p1.y + uy * 13 + py * 12);
         ctx.fillText('\u2212', p2.x - ux * 13 + px * 12, p2.y - uy * 13 + py * 12);
@@ -461,16 +458,16 @@ function drawComp(c, preview) {
         const bright = Math.min(1, p / 0.9);
         if (i > 0.002) {
             const g = ctx.createRadialGradient(M.x, M.y, 2, M.x, M.y, rad * 3.2);
-            g.addColorStop(0, 'rgba(255,224,120,' + (0.9 * bright) + ')');
-            g.addColorStop(1, 'rgba(255,224,120,0)');
+            g.addColorStop(0, SimLib.Color.alpha(T.glow, 0.75 * bright));
+            g.addColorStop(1, SimLib.Color.alpha(T.glow, 0));
             ctx.fillStyle = g;
             ctx.beginPath(); ctx.arc(M.x, M.y, rad * 3.2, 0, Math.PI * 2); ctx.fill();
         }
         ctx.beginPath(); ctx.arc(M.x, M.y, rad, 0, Math.PI * 2);
-        ctx.fillStyle = i > 0.002 ? 'rgba(255,241,175,' + (0.45 + 0.55 * bright) + ')' : '#fdfdfd';
+        ctx.fillStyle = i > 0.002 ? SimLib.Color.alpha(SimLib.Color.lighten(T.glow, 0.45), 0.45 + 0.55 * bright) : T.surface;
         ctx.fill();
         ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.strokeStyle = i > 0.002 ? '#e8a13a' : '#b0b4c0';
+        ctx.strokeStyle = i > 0.002 ? T.series[2] : T.faint;
         ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(M.x - ux * rad * 0.5, M.y - uy * rad * 0.5);
@@ -486,7 +483,7 @@ function drawComp(c, preview) {
         ctx.fillStyle = col;
         ctx.beginPath(); ctx.arc(s.x, s.y, 3.2, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(e.x, e.y, 3.2, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = danger ? '#dc2626' : (c.closed ? '#2f9e44' : col);
+        ctx.strokeStyle = danger ? T.danger : (c.closed ? T.success : col);
         ctx.lineWidth = 3;
         const lever = c.closed ? e : { x: s.x + ux * gap * 1.5 - px * gap, y: s.y + uy * gap * 1.5 - py * gap };
         line(s, lever);
@@ -497,7 +494,7 @@ function drawComp(c, preview) {
 
 function drawValues() {
     if (!showValues || !net) return;
-    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.font = T.font(11, '500');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     for (const c of comps) {
@@ -514,10 +511,10 @@ function drawValues() {
         if (!txt) continue;
         const lx = M.x + px * 22, ly = M.y + py * 22;
         const w = ctx.measureText(txt).width + 10;
-        ctx.fillStyle = 'rgba(255,255,255,0.88)';
-        roundRect(lx - w / 2, ly - 9, w, 18, 5);
+        ctx.fillStyle = SimLib.Color.alpha(T.surface, 0.94);
+        roundRect(lx - w / 2, ly - 9, w, 18, 0);
         ctx.fill();
-        ctx.fillStyle = '#4a6fa5';
+        ctx.fillStyle = T.accentDark;
         ctx.fillText(txt, lx, ly);
     }
 }
@@ -528,7 +525,7 @@ function drawDots() {
         const I = elementCurrent(c);
         const mag = Math.abs(I);
         if (mag < 0.004) continue;
-        ctx.fillStyle = (net.short && net.shortParts && net.shortParts.has(c)) ? '#dc2626' : '#4a6fa5';
+        ctx.fillStyle = (net.short && net.shortParts && net.shortParts.has(c)) ? T.danger : T.accent;
         const L = cLen(c);
         if (L < 6) continue;
         const dir = I > 0 ? 1 : -1;
@@ -556,7 +553,7 @@ function drawJunctions() {
             else groups.push({ x: p.x, y: p.y, n: 1 });
         }
     }
-    ctx.fillStyle = '#2b2d42';
+    ctx.fillStyle = T.ink;
     for (const g of groups) {
         if (g.n >= 3) {
             ctx.beginPath();
@@ -573,15 +570,15 @@ function drawSelection(c) {
     const w = Math.abs(c.a.x - c.b.x) + pad * 2;
     const h = Math.abs(c.a.y - c.b.y) + pad * 2;
     ctx.save();
-    ctx.fillStyle = 'rgba(74,111,165,0.07)';
-    ctx.strokeStyle = '#4a6fa5';
+    ctx.fillStyle = SimLib.Color.alpha(T.accent, 0.08);
+    ctx.strokeStyle = T.accent;
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
-    roundRect(x, y, w, h, 9);
+    roundRect(x, y, w, h, 0);
     ctx.fill();
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#4a6fa5';
+    ctx.fillStyle = T.accent;
     for (const end of ['a', 'b']) {
         ctx.beginPath(); ctx.arc(c[end].x, c[end].y, 4, 0, Math.PI * 2); ctx.fill();
     }
@@ -592,7 +589,7 @@ function drawHover() {
     if (!hoverEp) return;
     const p = hoverEp.comp[hoverEp.end];
     ctx.save();
-    ctx.strokeStyle = '#4a6fa5';
+    ctx.strokeStyle = T.accent;
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 3]);
     ctx.beginPath(); ctx.arc(p.x, p.y, HANDLE, 0, Math.PI * 2); ctx.stroke();
@@ -615,7 +612,7 @@ function buildDragComp() {
 
 function draw() {
     // Paint the board colour so the faint grid reads on any page background.
-    ctx.fillStyle = '#fbfcfe';
+    ctx.fillStyle = T.bg;
     ctx.fillRect(0, 0, W, H);
     drawGrid();
 

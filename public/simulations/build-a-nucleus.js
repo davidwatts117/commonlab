@@ -1,6 +1,7 @@
 // Physics, canvas drawing, and control bindings only. Page structure is owned by the shell.
 export function mount(ui) {
     const document = ui;
+    const T = SimLib.Theme.use('light');
 
 // ═══════════════════════════════════════
 //  ELEMENTS
@@ -341,24 +342,20 @@ function rebuildAll() {
 //  DRAWING (3D close-packed sphere)
 // ═══════════════════════════════════════
 function shadeColor(hex, f) {
-    const n = parseInt(hex.slice(1),16);
-    const r = Math.min(255, Math.round(((n>>16)&255) * f));
-    const g = Math.min(255, Math.round(((n>>8)&255) * f));
-    const b = Math.min(255, Math.round((n&255) * f));
-    return 'rgb('+r+','+g+','+b+')';
+    const c = SimLib.Color.parse(hex);
+    const k = v => Math.min(255, Math.round(v * f));
+    return SimLib.Color.rgb(k(c.r), k(c.g), k(c.b));
 }
 
 function draw() {
     ctx.clearRect(0,0,W,H);
-    const grad = ctx.createRadialGradient(CX,CY,30,CX,CY,350);
-    grad.addColorStop(0,'#1a1a2e'); grad.addColorStop(1,'#0d1117');
-    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+    SimLib.Draw.paper(ctx, W, H, { theme: T });
 
     if (Z+N>0) {
         const stab = getStability(Z,N);
-        const gc = stab.level==='stable'?'16,185,129':stab.level==='unstable'?'245,158,11':stab.level==='impossible'?'156,163,175':'239,68,68';
+        const gc = SimLib.Theme.status(stab.level);
         const gg = ctx.createRadialGradient(CX,CY,20,CX,CY,270);
-        gg.addColorStop(0,'rgba('+gc+',0.10)'); gg.addColorStop(1,'transparent');
+        gg.addColorStop(0,SimLib.Color.alpha(gc,0.16)); gg.addColorStop(1,'transparent');
         ctx.fillStyle=gg; ctx.fillRect(0,0,W,H);
 
         // Electron cloud orbits (radius scales with Z)
@@ -375,34 +372,26 @@ function draw() {
                 remaining -= electrons;
             }
             for (const shell of shellRadii) {
-                ctx.strokeStyle = 'rgba(100,160,220,0.25)';
-                ctx.lineWidth = 1;
+                ctx.strokeStyle = SimLib.Color.alpha(T.secondary, 0.6);
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([2, 6]);
                 ctx.beginPath();
                 ctx.arc(CX, CY, shell.r, 0, Math.PI*2);
                 ctx.stroke();
+                ctx.setLineDash([]);
                 // Draw electrons as dots on each shell
                 const dotSize = shell.count > 12 ? 2.2 : shell.count > 8 ? 2.6 : 3;
                 for (let e=0; e<shell.count; e++) {
                     const angle = (e/shell.count)*Math.PI*2 + Date.now()*0.0003;
                     const ex = CX+shell.r*Math.cos(angle);
                     const ey = CY+shell.r*Math.sin(angle);
-                    ctx.fillStyle = 'rgba(100,180,255,0.7)';
+                    ctx.fillStyle = T.secondary;
                     ctx.beginPath();
                     ctx.arc(ex, ey, dotSize, 0, Math.PI*2);
                     ctx.fill();
                 }
             }
         }
-    }
-
-    // Soft atmosphere that sells the spherical volume of the nucleus.
-    if (particles.length) {
-        const atm = ctx.createRadialGradient(CX,CY,sphereRadius*0.45, CX,CY,sphereRadius*1.28);
-        atm.addColorStop(0,'rgba(90,120,200,0.00)');
-        atm.addColorStop(0.7,'rgba(90,120,200,0.05)');
-        atm.addColorStop(1,'rgba(90,120,200,0.12)');
-        ctx.fillStyle=atm;
-        ctx.beginPath(); ctx.arc(CX,CY,sphereRadius*1.3,0,Math.PI*2); ctx.fill();
     }
 
     // Project the 3D cluster and paint it back-to-front so it reads as a ball.
@@ -425,30 +414,14 @@ function draw() {
         const r = particleR * persp;
         const shade = 0.62 + 0.38 * ((zFrac + 1) / 2); // nearer nucleons look brighter
 
-        // Dark rim for depth
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.arc(p.x+1.5, p.y+1.5, r, 0, Math.PI*2); ctx.fill();
-
-        const g = ctx.createRadialGradient(p.x-r*0.35, p.y-r*0.38, r*0.05, p.x, p.y, r);
-        if (p.isProton) {
-            g.addColorStop(0, shadeColor('#ffb3b3', shade));
-            g.addColorStop(0.5, shadeColor('#dc2626', shade));
-            g.addColorStop(1, shadeColor('#7f1d1d', shade));
-        } else {
-            g.addColorStop(0, shadeColor('#ffffff', shade));
-            g.addColorStop(0.5, shadeColor('#9ca3af', shade));
-            g.addColorStop(1, shadeColor('#374151', shade));
-        }
-        ctx.fillStyle=g;
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
-
-        // Specular highlight
-        ctx.fillStyle = 'rgba(255,255,255,' + (0.22*shade).toFixed(2) + ')';
-        ctx.beginPath(); ctx.arc(p.x-r*0.28, p.y-r*0.34, r*0.26, 0, Math.PI*2); ctx.fill();
+        // Flat, ink-outlined nucleons; nearer ones print slightly brighter.
+        ctx.fillStyle = shadeColor(p.isProton ? T.accent : T.surface2, shade);
+        ctx.strokeStyle = T.ink; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
     }
 
     if (Z+N===0) {
-        ctx.fillStyle='#555'; ctx.font='18px system-ui,sans-serif'; ctx.textAlign='center';
+        ctx.fillStyle=T.muted; ctx.font=T.font(16); ctx.textAlign='center';
         ctx.fillText('Add protons & neutrons',CX,CY);
     }
 
@@ -514,18 +487,9 @@ function updateEmissions(dt) {
 
 function drawNucleonAt(x, y, r, role, alpha) {
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath(); ctx.arc(x+1.5, y+1.5, r, 0, Math.PI*2); ctx.fill();
-    const g = ctx.createRadialGradient(x-r*0.35, y-r*0.38, r*0.05, x, y, r);
-    if (role === 'proton') {
-        g.addColorStop(0, '#ffb3b3'); g.addColorStop(0.5, '#dc2626'); g.addColorStop(1, '#7f1d1d');
-    } else {
-        g.addColorStop(0, '#ffffff'); g.addColorStop(0.5, '#9ca3af'); g.addColorStop(1, '#374151');
-    }
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.beginPath(); ctx.arc(x-r*0.28, y-r*0.34, r*0.26, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = role === 'proton' ? T.accent : T.surface2;
+    ctx.strokeStyle = T.ink; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill(); ctx.stroke();
 }
 
 function drawEmissions() {
@@ -540,18 +504,18 @@ function drawEmissions() {
             const px = em.x + rx, py = em.y + ry;
             if (part.role === 'electron' || part.role === 'positron') {
                 const isE = part.role === 'electron';
-                const col = isE ? '90,170,255' : '255,140,90';
+                const col = isE ? T.secondary : T.accent;
                 const glow = ctx.createRadialGradient(px, py, 0, px, py, part.r*2.6);
-                glow.addColorStop(0, 'rgba('+col+',0.9)');
-                glow.addColorStop(0.5, 'rgba('+col+',0.35)');
-                glow.addColorStop(1, 'rgba('+col+',0)');
+                glow.addColorStop(0, SimLib.Color.alpha(col, 0.9));
+                glow.addColorStop(0.5, SimLib.Color.alpha(col, 0.35));
+                glow.addColorStop(1, SimLib.Color.alpha(col, 0));
                 ctx.globalAlpha = alpha;
                 ctx.fillStyle = glow;
                 ctx.beginPath(); ctx.arc(px, py, part.r*2.6, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = isE ? '#eaf4ff' : '#fff0e6';
+                ctx.fillStyle = T.surface;
                 ctx.beginPath(); ctx.arc(px, py, part.r*0.85, 0, Math.PI*2); ctx.fill();
-                ctx.fillStyle = isE ? '#1d4ed8' : '#c2410c';
-                ctx.font = 'bold ' + Math.round(part.r*1.1) + 'px system-ui, sans-serif';
+                ctx.fillStyle = isE ? T.secondary : T.accentDark;
+                ctx.font = T.font(Math.round(part.r*1.1), '500');
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(isE ? '\u2212' : '+', px, py + 0.5);
                 ctx.textBaseline = 'alphabetic';
@@ -570,6 +534,7 @@ const chartC = document.getElementById('chartCanvas');
 const chartCtx = chartC.getContext('2d');
 
 // ── Decay-mode colours (data from PhET Build a Nucleus, IAEA/NDS) ──
+// theme-exempt-start: standard chart-of-nuclides decay-mode encoding, not page styling
 const DECAY_INFO = {
     S:{name:'Stable', color:'#1b1464'},
     A:{name:'\u03b1 decay', color:'#28d756'},
@@ -581,6 +546,7 @@ const DECAY_INFO = {
     I:{name:'Isomeric transition', color:'#cfd6dd'},
     U:{name:'Unknown', color:'#d1d5db'}
 };
+// theme-exempt-end
 
 let chartMode = 'half';
 let ALL_NUCLIDES = [];
@@ -589,12 +555,14 @@ let STABLE_BAND = null;
 // Half-life colour bands (thresholds in seconds) and their labels.
 const HL_BANDS=[1e-9,1e-6,1e-3,1,3600,3.156e7,3.156e10,3.156e14,Infinity];
 const HL_HUES=[250,230,210,180,140,80,40,20,0];
+// Half-life bands use a 9-step hue ramp so neighbouring decades stay distinguishable.
+const hlColor = hue => 'hsl('+hue+',80%,40%)'; // theme-exempt: sequential data encoding for the half-life chart
 const HL_LABELS=['< 1 ns','1 ns \u2013 1 \u03bcs','1 \u03bcs \u2013 1 ms','1 ms \u2013 1 s','1 s \u2013 1 h','1 h \u2013 1 yr','1 yr \u2013 1,000 yr','1,000 \u2013 100,000 yr','> 100,000 yr'];
 
 function updateChartLegend() {
     const items = chartMode === 'decay'
         ? Object.keys(DECAY_INFO).map(k => ({ key: DECAY_INFO[k].color, text: DECAY_INFO[k].name }))
-        : [{ key: '#1a1a2e', text: 'Stable' }, ...HL_BANDS.map((_, i) => ({ key: 'hsl('+HL_HUES[i]+',80%,40%)', text: HL_LABELS[i] }))];
+        : [{ key: T.ink, text: 'Stable' }, ...HL_BANDS.map((_, i) => ({ key: hlColor(HL_HUES[i]), text: HL_LABELS[i] }))];
     ui.setContent('chartLegend', items);
 }
 
@@ -650,7 +618,7 @@ function decayCode(z,n) {
 function drawChart() {
     const cw=chartC.width, ch=chartC.height;
     chartCtx.clearRect(0,0,cw,ch);
-    chartCtx.fillStyle='#fafbfc'; chartCtx.fillRect(0,0,cw,ch);
+    chartCtx.fillStyle=T.bg; chartCtx.fillRect(0,0,cw,ch);
     const pad={l:46,r:10,t:12,b:26}, pw=cw-pad.l-pad.r, ph=ch-pad.t-pad.b;
     const maxZ=119, maxN=180;
     const cellW=pw/maxZ, cellH=ph/maxN;
@@ -659,12 +627,12 @@ function drawChart() {
     // Colour bands by half-life range. Each band = a distinct hue.
     const halfColor = (z,n) => {
         const key=z*1000+n;
-        if (STABLE.has(key)) return '#1a1a2e';
+        if (STABLE.has(key)) return T.ink;
         const hl=HALF_LIVES[key];
         if (hl===undefined) return null;
         let hue=250;
         for (let i=0;i<HL_BANDS.length;i++) { if (hl<HL_BANDS[i]) { hue=HL_HUES[i]; break; } }
-        return 'hsl('+hue+',80%,40%)';
+        return hlColor(hue);
     };
     const decayColor = (z,n) => {
         const info=DECAY_INFO[decayCode(z,n)];
@@ -673,7 +641,7 @@ function drawChart() {
     const colorFor = chartMode==='decay' ? decayColor : halfColor;
 
     // Faint grid every 20 units to help read the chart.
-    chartCtx.strokeStyle='rgba(0,0,0,0.05)';
+    chartCtx.strokeStyle=SimLib.Color.alpha(T.rule, 0.3);
     chartCtx.lineWidth=1;
     for (let gz=20; gz<maxZ; gz+=20) {
         const x=pad.l+gz*cellW;
@@ -698,13 +666,13 @@ function drawChart() {
     // Current selection
     if (Z>0 && Z<=118 && N<=179) {
         const x=pad.l+Z*cellW, y=pad.t+(maxN-N)*cellH;
-        chartCtx.strokeStyle=chartMode==='decay'?'#111':'#fff';
+        chartCtx.strokeStyle=chartMode==='decay'?T.ink:T.surface;
         chartCtx.lineWidth=2;
         chartCtx.strokeRect(x-1,y-1,w+2,h+2);
     }
 
     // Axis labels
-    chartCtx.fillStyle='#6c757d'; chartCtx.font='9px system-ui,sans-serif';
+    chartCtx.fillStyle=T.muted; chartCtx.font=T.font(9);
     chartCtx.textAlign='center';
     chartCtx.fillText('Protons (Z) \u2192', pad.l+pw/2, ch-3);
     for (let gz=20; gz<maxZ; gz+=20) chartCtx.fillText(gz, pad.l+gz*cellW, pad.t-3);
@@ -781,9 +749,9 @@ function updateUI() {
     document.getElementById('hlVal').textContent=fmtHalfLife(hl);
 
     const hlBar = document.getElementById('hlBar');
-    if (hl==='stable') { hlBar.style.width='100%'; hlBar.style.background='#10b981'; }
-    else if (hl===0||hl<1e-12) { hlBar.style.width='2%'; hlBar.style.background='#ef4444'; }
-    else { const pct=Math.max(2,Math.min(100,Math.log10(hl)*5+10)); hlBar.style.width=pct+'%'; hlBar.style.background=pct>50?'#f59e0b':'#ef4444'; }
+    if (hl==='stable') { hlBar.style.width='100%'; hlBar.style.background=T.success; }
+    else if (hl===0||hl<1e-12) { hlBar.style.width='2%'; hlBar.style.background=T.danger; }
+    else { const pct=Math.max(2,Math.min(100,Math.log10(hl)*5+10)); hlBar.style.width=pct+'%'; hlBar.style.background=pct>50?T.series[2]:T.danger; }
 
     // Decay mode panel
     const dcode=decayCode(Z,N);
@@ -791,7 +759,7 @@ function updateUI() {
     const prod=decayProduct(dcode);
     if (decayModeEl) {
         decayModeEl.textContent = (Z>0 && dinfo) ? dinfo.name : '\u2014';
-        decayModeEl.style.color = (dinfo && dcode!=='S') ? dinfo.color : '#1a1a2e';
+        decayModeEl.style.color = (dinfo && dcode!=='S') ? dinfo.color : T.ink;
     }
     if (decayBtn) decayBtn.disabled = !prod || Z===0;
     if (decayEq) {
@@ -799,9 +767,9 @@ function updateUI() {
             const nz=Z+prod.dZ, nn=N+prod.dN;
             ui.setContent('decayEq', [...isotopeParts(Z,N), ' \u2192 ', ...isotopeParts(nz,nn), ' + ' + prod.symbol]);
         } else if (dcode==='S') {
-            ui.setContent('decayEq', [...isotopeParts(Z,N,'#10b981'), { text:' is stable \u2014 it does not decay.', color:'#10b981' }]);
+            ui.setContent('decayEq', [...isotopeParts(Z,N,T.success), { text:' is stable \u2014 it does not decay.', color:T.success }]);
         } else {
-            ui.setContent('decayEq', { text:'No single-step decay available.', color:'#9ca3af' });
+            ui.setContent('decayEq', { text:'No single-step decay available.', color:T.muted });
         }
     }
 

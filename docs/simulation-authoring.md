@@ -106,6 +106,28 @@ export function mount(ui) {
 
 Modules are trusted application code, **not a security sandbox**. They own simulation state, input bindings, physics, and canvas drawing. The shell owns page chrome, controls, explanations, graphs' containers, error states, fullscreen, learning UI, and page lifecycle. Avoid module-level side effects; initialize only inside `mount(ui)`.
 
+## Drawing and theme
+
+Every scene draws from one shared canvas theme, so all labs read as figures on the same sheet of graph paper. Call `const T = SimLib.Theme.use('light');` once at the top of `mount(ui)` and take every colour and font from it:
+
+| Need | Use |
+| --- | --- |
+| Background | `SimLib.Draw.paper(ctx, w, h, { theme: T })` (cream stock, 20px minor and 100px major rules; pass `minor` to match a snap grid) |
+| Lines and text | `T.ink`, `T.text`, `T.muted`, `T.faint` |
+| Surfaces and rules | `T.bg`, `T.surface`, `T.surface2`, `T.border`, `T.borderStrong`, `T.grid`, `T.gridStrong`, `T.rule` |
+| Emphasis | `T.accent`, `T.accentDark`, `T.accentSoft`, `T.secondary`, `T.secondarySoft`, `T.glow` |
+| Status | `T.success`, `T.warn`, `T.danger` (+ `successSoft`, `dangerSoft`), or `SimLib.Theme.status(level)` |
+| Data series | `T.series[0…4]`, in order; built-in graph `legend` colours in `catalog.json` must be the same `--series-*` values |
+| Translucency, blends, scales | `SimLib.Color.alpha(c, a)`, `SimLib.Color.mix(a, b, t)`, `lighten`/`darken`, and `SimLib.Color.heat(t)` for cold-to-hot |
+| Type | `T.font(size, weight)` for labels and numbers (IBM Plex Mono); `SimLib.Draw.title(…)` for scene titles (Atma) |
+| Bodies (bobs, particles) | `SimLib.CanvasUtils.drawGlossySphere(ctx, x, y, r, fill)`: flat fill, ink outline, small highlight |
+
+House style: square corners, ink outlines rather than soft shadows, and no gradient washes or emoji.
+
+The palette's source of truth is the `:root` block of `public/main.css`. `SimLib.Theme` reads those custom properties when the page loads (`SimLib.Theme.cssTokens` lists which property feeds which token), so changing a colour there restyles the page chrome and every canvas together. The literals in `library.js` are only a fallback for non-browser test hosts.
+
+`tests/simulation-theme.test.mjs` enforces this. It fails on hex colours, `rgb()`/`hsl()` literals and font strings in `public/simulations/*.js`. It also fails if a module never calls `SimLib.Theme.use()`, if the `library.js` fallbacks drift from `main.css`, or if a built-in legend uses an off-palette colour. When a colour is data rather than styling (indicator dye colours, a standard chart encoding), mark it with `// theme-exempt: <reason>` on the line, or wrap a table in `// theme-exempt-start: <reason>` … `// theme-exempt-end`. A reason is required. Reviewers should run the same test against submitted engine source before publishing it.
+
 ## Lessons and checks
 
 Add `assessment: {id,version,questions}` to the definition using the [CFU schema](guided-experiments-authoring.md#9-shared-check-understanding-cfu-questions). Pendulum's bank ID remains `pendulum-period`, version 1, preserving saved attempts. Projectile's four former page-specific questions now use the same shared CFU flow.

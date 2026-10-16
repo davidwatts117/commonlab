@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Simulation — CommonLab</title>
   <meta name="description" content="Interactive CommonLab science simulation.">
-  <link rel="stylesheet" href="/main.css?v=4">
-  <link rel="stylesheet" href="/simulation.css?v=2">
-  <link rel="stylesheet" href="/guided.css?v=5">
-  <link rel="stylesheet" href="/cfu.css?v=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atma:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+  <link rel="stylesheet" href="/main.css?v=6">
+  <link rel="stylesheet" href="/simulation.css?v=4">
+  <link rel="stylesheet" href="/guided.css?v=7">
+  <link rel="stylesheet" href="/cfu.css?v=2">
 </head>
-<body>
+<body class="paper">
   <header class="site-header">
     <div class="container nav-container">
-      <a href="/" class="logo" aria-label="CommonLab Home"><span class="logo-icon">◆</span><span class="logo-text">CommonLab</span></a>
+      <a href="/" class="logo" aria-label="CommonLab Home"><svg class="logo-mark" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><path d="M15 2 L28 15 L15 28 Z" fill="#892f35"/><path d="M15 2 L2 15 L15 28 Z" fill="#c14953"/></svg><span class="logo-text">CommonLab</span></a>
       <nav class="primary-nav" aria-label="Main navigation"><ul>
-        <li><a href="/#simulations">Simulations</a></li>
-        <li><a href="/#about">About</a></li>
-        <li><a href="/#contact">Contact</a></li>
+        <li><a href="/#simulations" class="sim-back-link">← All simulations</a></li>
       </ul></nav>
     </div>
   </header>
@@ -30,13 +31,12 @@
     <section class="sim-canvas-area">
       <p id="simulation-status" class="container" role="status">Loading…</p>
       <div id="simulation-root" class="container sim-layout" hidden></div>
-      <div class="container simulation-back"><a href="/#simulations" class="sim-back-link">← Back to Simulations</a></div>
     </section>
     <noscript><p class="container">Enable JavaScript to use this simulation.</p></noscript>
   </main>
   <footer class="site-footer"><div class="container footer-container"><p>© 2026 CommonLab. Free science simulations for everyone.</p></div></footer>
-  <script src="/index.js?v=4"></script>
-  <script src="/library.js?v=5"></script>
+  <script src="/index.js?v=5"></script>
+  <script src="/library.js?v=6"></script>
   <script src="/cfu.js?v=1"></script>
   <script src="/guided.js?v=6"></script>
   <script type="module" src="/simulation-page.mjs"></script>
