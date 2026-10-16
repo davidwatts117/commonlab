@@ -11,8 +11,25 @@ mod database_tests;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+// Print errors with Display: startup failures carry operator instructions, not debug output.
+fn main() -> std::process::ExitCode {
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    match runtime.block_on(run()) {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("Error: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
@@ -20,9 +37,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .init();
 
-    let addr: SocketAddr = env::var("BIND_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:8000".into())
-        .parse()?;
     let public_dir = PathBuf::from(env::var("PUBLIC_DIR").unwrap_or_else(|_| "public".into()));
     // Fail early rather than silently serving 404s when deployed without assets.
     if !public_dir.join("index.html").is_file() {
@@ -40,6 +54,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ),
     )?;
     let store = commonlab::Store::open(&database)?;
+    let args: Vec<String> = env::args().skip(1).collect();
+    match args.as_slice() {
+        [] => {}
+        // Recovery when a published submission prevents startup (see docs/submissions.md).
+        [command, id, note] if command == "withdraw" => {
+            let id: i64 = id.parse().map_err(|_| "Submission ID must be a number")?;
+            let status = store.withdraw(id, note)?;
+            println!(
+                "Withdrew the published revision of submission #{id}; status is now {status}."
+            );
+            return Ok(());
+        }
+        _ => return Err("Usage: commonlab [withdraw <submission-id> <note>]".into()),
+    }
+    let addr: SocketAddr = env::var("BIND_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:8000".into())
+        .parse()?;
     let secure_cookies = env::var("COOKIE_SECURE")
         .ok()
         .map(|value| value.parse::<bool>())
@@ -49,12 +80,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .ok()
         .map(commonlab::GenerationConfig::new)
         .transpose()?;
-    let app = commonlab::app_with_generation(
+    let app = commonlab::app_with_config(
         &public_dir,
-        store,
-        env::var("ADMIN_TOKEN").ok(),
-        secure_cookies,
-        generation,
+        commonlab::AppConfig {
+            admin_token: env::var("ADMIN_TOKEN").ok(),
+            secure_cookies,
+            generation,
+            ..commonlab::AppConfig::new(store)
+        },
     )?;
     let listener = TcpListener::bind(addr).await?;
     tracing::info!(address = %listener.local_addr()?, assets = %public_dir.display(), "CommonLab listening");

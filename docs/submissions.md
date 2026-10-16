@@ -50,13 +50,13 @@ Bundle files and definition-editor/import text are bounded to 1 MiB; compact ser
 
 ## Review workflow
 
-1. Open `/review.html`, authenticate with the token, and select a pending submission. The queue is paginated and can also show published, rejected, or withdrawn records.
+1. Open `/review.html`, authenticate with the token, and select a pending submission. The queue is paginated and can also show published, rejected, or withdrawn records. **Live now** lists every publicly served simulation regardless of its newest revision's status; a live entry whose latest revision is pending or rejected does not appear under Published.
 2. Inspect the definition, source text, and installed-engine binding requirements. The optional layout preview is inert with respect to submitted engine code. Source is placed in readonly textareas, never inserted as HTML, evaluated, or dynamically imported.
 3. Review scientific accuracy, accessibility, performance, slot bindings, lesson adapter names, assessment keys, and the module contract. Inspect **every import and dependency** as well as network/storage access and DOM manipulation.
 4. Test new engines only in an isolated disposable environment with no real credentials, production data, or access to the reviewer browser. This application does not provide a code sandbox or automatic security review.
 5. Publish or reject. Publishing uploaded code requires an explicit checkbox confirming personal code/dependency review; the API also enforces this confirmation. Rejection requires a note.
 6. Published definitions immediately join the homepage/catalog and receive `/simulations/<id>`, `.html`, and `.js` routes. No restart or repository edit is required. Reused engines get a generated module re-exporting the installed `mount` function.
-7. To remove a publication, select it in the published queue and withdraw it with a note. Subsequent catalog/module/page requests no longer expose it. Already loaded/downloaded code, existing browser state, and code side effects cannot be revoked.
+7. To remove a publication, select it in the **Live now** queue and withdraw it with a note. Subsequent catalog/module/page requests no longer expose it. Already loaded/downloaded code, existing browser state, and code side effects cannot be revoked.
 8. Lock the queue when finished. The UI clears its token, private source, and definition. Leaving the page also locks it. The token is kept in tab memory only, not localStorage/sessionStorage or cookies.
 
 Each revision transitions `pending → published/rejected`. Owner edits create a new pending revision. A separate approved snapshot remains public while newer revisions are pending/rejected; approval replaces it atomically. Withdrawal removes that snapshot, including while another revision is pending/rejected. Review requests include the inspected revision; stale decisions return `409`. Review notes/timestamps and transition history are visible to the owner, so never put administrative secrets in notes. This is a shared-token maintainer workflow, not individual administrator accounts or a tamper-proof review audit trail.
@@ -87,16 +87,22 @@ sqlite3 data/commonlab.sqlite3 ".backup '/secure/backups/commonlab.sqlite3'"
 
 Do not copy only the main database while it is actively writing: the WAL may contain committed data. Protect backups because they include private drafts and source. No deletion/retention UI is provided in this initial version.
 
-When changing built-in definitions/engines, preserve the slot and choice-value contracts used by published variants. Startup fails if a built-in simulation/bank ID conflicts with a pending/published submission or a published variant references a removed/incompatible engine. Resolve collisions or withdraw affected publications using the old deployment before upgrading. New engine code is stored in SQLite, not written into `public/` or the Git repository.
+When changing built-in definitions/engines, preserve the slot and choice-value contracts used by published variants. Startup fails if a built-in simulation/bank ID conflicts with a pending/published submission or a published variant references a removed/incompatible engine. Resolve collisions or withdraw affected publications using the old deployment before upgrading. The startup error names the blocking submission. If the new deployment is already in place, rename a conflicting built-in, or withdraw an incompatible publication offline with the server stopped:
+
+```sh
+DATABASE_PATH=data/commonlab.sqlite3 commonlab withdraw <submission-id> "Installed engine changed"
+```
+
+This records an `operator` withdraw event visible in the owner's history, exactly like a maintainer withdrawal. Back up the database first. New engine code is stored in SQLite, not written into `public/` or the Git repository.
 
 ## APIs and verification
 
 - `GET /api/submissions/config`, `GET /api/submissions/engines`: availability, limits, installed engine IDs.
 - `POST /api/submissions` (contributor cookie and `X-CommonLab-Request: 1` required): `{ definition, submittedBy?, engineId? | moduleCode? }`; returns `{ id, status: "pending" }`.
-- `GET /api/admin/submissions?status=pending&before=<id>`: authenticated summary pages (20 records, `hasMore`).
+- `GET /api/admin/submissions?status=pending&before=<id>`: authenticated summary pages (20 records, `hasMore`). `status` is `pending`, `published`, `rejected`, `withdrawn`, or `live` (anything currently public); each item includes `live` and `publishedRevision`.
 - `GET /api/admin/submissions/<id>`: authenticated definition/source detail.
 - `POST /api/admin/submissions/<id>/review`: authenticated `{ decision: "publish" | "reject" | "withdraw", revision, codeReviewed?, note? }`.
-- `GET /api/contributor/submissions?status=all&before=<id>`: owner-only summary pages of 20, with `hasMore`.
+- `GET /api/contributor/submissions?status=all&before=<id>`: owner-only summary pages of 20, with `hasMore`. Also accepts `status=live`.
 - `GET /api/contributor/submissions/<id>` and `/history`: owner-only private draft and metadata history.
 - `PUT /api/contributor/submissions/<id>`: normal submission payload plus current `revision`; saves/resubmits atomically.
 - `GET /simulations/catalog.json`: built-ins plus published definitions, never private queue metadata/source.

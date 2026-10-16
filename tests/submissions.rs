@@ -5,7 +5,21 @@ use axum::{
     http::{Method, Request, StatusCode, header},
     response::Response,
 };
-use commonlab::{Store, app_with_submissions};
+use commonlab::{AppConfig, Store, app_with_config};
+
+fn app_with_submissions(
+    public_dir: impl AsRef<std::path::Path>,
+    store: Store,
+    admin_token: Option<String>,
+) -> std::io::Result<axum::Router> {
+    app_with_config(
+        public_dir,
+        AppConfig {
+            admin_token,
+            ..AppConfig::new(store)
+        },
+    )
+}
 use serde_json::{Value, json};
 use std::{
     path::{Path, PathBuf},

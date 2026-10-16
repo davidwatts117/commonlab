@@ -19,37 +19,41 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
+/// Server settings beyond the asset directory. Start from [`AppConfig::new`] and override fields.
+pub struct AppConfig {
+    /// Private database for submissions, accounts and generation jobs.
+    pub store: Store,
+    /// Bearer token for maintainers; submissions stay disabled without one.
+    pub admin_token: Option<String>,
+    /// Secure, `__Host-` session cookies. Required for public HTTPS deployments.
+    pub secure_cookies: bool,
+    /// Opt-in AI generation queue; its worker token must differ from `admin_token`.
+    pub generation: Option<GenerationConfig>,
+}
+impl AppConfig {
+    pub fn new(store: Store) -> Self {
+        Self {
+            store,
+            admin_token: None,
+            secure_cookies: false,
+            generation: None,
+        }
+    }
+}
+
 /// Route catalog entries into one fixed shell. Modules are code; page definitions are data.
 /// UI/schema validation also runs in the browser and the Node catalog tests.
 pub fn app(public_dir: impl AsRef<Path>) -> io::Result<Router> {
-    app_with_submissions(public_dir, Store::memory()?, None)
+    app_with_config(public_dir, AppConfig::new(Store::memory()?))
 }
 
-/// Persist public submissions separately from publicly served assets.
-pub fn app_with_submissions(
-    public_dir: impl AsRef<Path>,
-    store: Store,
-    admin_token: Option<String>,
-) -> io::Result<Router> {
-    app_with_cookie_security(public_dir, store, admin_token, false)
-}
-
-pub fn app_with_cookie_security(
-    public_dir: impl AsRef<Path>,
-    store: Store,
-    admin_token: Option<String>,
-    secure_cookies: bool,
-) -> io::Result<Router> {
-    app_with_generation(public_dir, store, admin_token, secure_cookies, None)
-}
-
-pub fn app_with_generation(
-    public_dir: impl AsRef<Path>,
-    store: Store,
-    admin_token: Option<String>,
-    secure_cookies: bool,
-    generation: Option<GenerationConfig>,
-) -> io::Result<Router> {
+pub fn app_with_config(public_dir: impl AsRef<Path>, config: AppConfig) -> io::Result<Router> {
+    let AppConfig {
+        store,
+        admin_token,
+        secure_cookies,
+        generation,
+    } = config;
     if generation
         .as_ref()
         .is_some_and(|config| !config.differs_from(admin_token.as_deref()))
@@ -76,6 +80,7 @@ pub fn app_with_generation(
         catalog.clone(),
         std::fs::read_to_string(&shell_path)?,
         admin_token,
+        secure_cookies,
     )?;
     submission_state.generation = generation.map(std::sync::Arc::new);
     let mut router = Router::new().route("/healthz", get(|| async { "ok\n" }));
@@ -112,7 +117,7 @@ pub fn app_with_generation(
     }
     // The submission router owns the fallback and serves only published entries.
     Ok(router
-        .merge(submissions::router(submission_state, secure_cookies))
+        .merge(submissions::router(submission_state))
         .fallback_service(ServeDir::new(public_dir).append_index_html_on_directories(true))
         .layer(TraceLayer::new_for_http()))
 }

@@ -5,7 +5,19 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LIMITS } from './policy.mjs';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-export async function runChild(job, stillActive, { runtimeMs = LIMITS.runtimeMs } = {}) {
+/** Poll the lease; stop on an explicit `false`, or after `maxFailures` consecutive check errors
+ *  so one network blip does not waste a contributor's quota. Returns a function that cancels polling. */
+export function watchLease(stillActive, stop, { pollMs = 5000, maxFailures = 3 } = {}) {
+  let checking = false, failures = 0;
+  const poll = setInterval(async () => {
+    if (checking) return; checking = true;
+    try { const active = await stillActive(); failures = 0; if (!active) stop(); }
+    catch { if (++failures >= maxFailures) stop(); }
+    finally { checking = false; }
+  }, pollMs);
+  return () => clearInterval(poll);
+}
+export async function runChild(job, stillActive, { runtimeMs = LIMITS.runtimeMs, signal, ...watch } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'commonlab-worker-'));
   try {
     return await new Promise((resolve, reject) => {
@@ -17,13 +29,10 @@ export async function runChild(job, stillActive, { runtimeMs = LIMITS.runtimeMs 
       let output = '', stopped = false;
       const stop = () => { stopped = true; child.kill('SIGKILL'); };
       const deadline = setTimeout(stop, runtimeMs);
-      let checking = false;
-      const poll = setInterval(async () => {
-        if (checking) return; checking = true;
-        try { if (!await stillActive()) stop(); } catch { stop(); }
-        finally { checking = false; }
-      }, 5000);
-      const clean = () => { clearTimeout(deadline); clearInterval(poll); };
+      const unwatch = watchLease(stillActive, stop, watch);
+      signal?.addEventListener('abort', stop, { once: true });
+      if (signal?.aborted) stop();
+      const clean = () => { clearTimeout(deadline); unwatch(); signal?.removeEventListener('abort', stop); };
       child.on('error', () => { clean(); reject(new Error('Worker process failed.')); });
       child.stdin.on('error', () => {});
       child.stdout.setEncoding('utf8');
@@ -51,18 +60,28 @@ async function main() {
     if (!response.ok) throw new Error('Worker API request failed.');
     return response.json();
   }
-  let stopping = false;
-  process.on('SIGTERM', () => { stopping = true; }); process.on('SIGINT', () => { stopping = true; });
-  while (!stopping) {
+  const shutdown = new AbortController();
+  process.on('SIGTERM', () => shutdown.abort()); process.on('SIGINT', () => shutdown.abort());
+  while (!shutdown.signal.aborted) {
     try {
       const job = await api('/api/worker/generation/claim');
       if (!job) { await sleep(2000); continue; }
       if (job.protocolVersion !== 1) throw new Error('Unsupported worker protocol.');
       let result = { artifact: null, model: `${process.env.CL_MODEL_PROVIDER}/${process.env.CL_MODEL_ID}` };
-      try { result = await runChild(job, async () => !stopping && (await api(`/api/worker/generation/${job.id}/check`, { lease: job.lease })).active); }
-      catch { console.error('Generation failed or hit a limit; no artifact published.'); }
+      try { result = await runChild(job, async () => (await api(`/api/worker/generation/${job.id}/check`, { lease: job.lease })).active, { signal: shutdown.signal }); }
+      catch {
+        if (shutdown.signal.aborted) {
+          // A redeploy is not the contributor's failure: requeue instead of using up their quota.
+          await api(`/api/worker/generation/${job.id}/release`, { lease: job.lease });
+          break;
+        }
+        console.error('Generation failed or hit a limit; no artifact published.');
+      }
       await api(`/api/worker/generation/${job.id}/complete`, { lease: job.lease, ...result });
-    } catch { console.error('Generation worker unavailable; retrying connection.'); await sleep(2000); }
+    } catch {
+      if (shutdown.signal.aborted) break;
+      console.error('Generation worker unavailable; retrying connection.'); await sleep(2000);
+    }
   }
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

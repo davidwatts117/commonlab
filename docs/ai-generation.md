@@ -17,7 +17,8 @@ AI generation is **off by default**. Registration does not grant generation acce
 - Prompt: 8,000 UTF-8 bytes; provider-processing consent required on every request.
 - Three attempts per contributor per rolling 24 hours; 20 globally; one queued/running request per contributor, ten active globally, one running globally, 500 retained jobs. Failures/cancellations consume quota. The UI shows the latest 50 owned requests; older IDs remain accessible to their owner.
 - Six provider requests per job, at most 8,192 output tokens per request, and 128 KiB serialized provider context. Compaction, cache warming and automatic retries are disabled. No further provider call is allowed after finalization.
-- Supervisor kills the child after five minutes, on excessive output (220 KiB), or when cancellation/revocation/server reachability checks fail (checked every five seconds). A worker lease expires after six minutes; expired jobs fail on the next queue/status access. They are never automatically regenerated. A stopped/crashed worker cannot silently resume a job and incur another model run.
+- Supervisor kills the child after five minutes, on excessive output (220 KiB), when a lease check reports cancellation/revocation, or after three consecutive failed lease checks (checked every five seconds, so one network blip does not abort a job). A worker lease expires after six minutes; expired jobs fail on the next queue/status access and are never automatically regenerated.
+- A worker stopped with SIGTERM/SIGINT kills its child immediately and releases the job back to the queue. The job runs again from the start when a worker next claims it, which **incurs another model run** but does not use another of the contributor's attempts. A crashed or killed worker cannot release its job; that lease expires and the job fails as above.
 - Definition/code limits remain 64/128 KiB. Axum independently revalidates completed data; only the owner can retrieve the artifact. The artifact uses the existing inert complete-bundle format.
 - Cancellation/revocation prevents result acceptance immediately, but stopping an in-flight provider request is best effort and cannot refund incurred charges. Existing completed drafts remain accessible to their owner after permission revocation.
 
@@ -64,7 +65,7 @@ Contributor cookie required; mutations also require `X-CommonLab-Request: 1`:
 
 Maintainer bearer required: `POST /api/admin/generation/access` with `{ username, allowed }`. New contributor accounts start disallowed. Contributor sessions and worker tokens never grant administrator privileges.
 
-Worker bearer required: `POST /api/worker/generation/claim` returns a protocol-1 job/lease or null; `POST /api/worker/generation/<id>/check` with `{ lease }` returns whether it is still active; `POST /api/worker/generation/<id>/complete` with `{ lease, model, artifact }`, where artifact is `{ definition, moduleCode }` or null on failure. Expired, revoked, cancelled and duplicate completions return 409. Leases are random and stored only as digests.
+Worker bearer required: `POST /api/worker/generation/claim` returns a protocol-1 job/lease or null; `POST /api/worker/generation/<id>/check` with `{ lease }` returns whether it is still active; `POST /api/worker/generation/<id>/complete` with `{ lease, model, artifact }`, where artifact is `{ definition, moduleCode }` or null on failure. `POST /api/worker/generation/<id>/release` with `{ lease }` returns a running job to the queue without charging the contributor; the supervisor uses it when stopped (SIGTERM/SIGINT). Expired, revoked, cancelled, released and duplicate completions return 409. Leases are random and stored only as digests.
 
 ## Verification
 

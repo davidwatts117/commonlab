@@ -10,7 +10,7 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(std::io::Error::other)?;
-    if version > 4 {
+    if version > 5 {
         return Err(std::io::Error::other(
             "Unsupported submission database version",
         ));
@@ -68,6 +68,12 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
             CREATE INDEX generation_created ON generation_jobs(created_at);
             CREATE TABLE generation_access_events(id INTEGER PRIMARY KEY,contributor_id INTEGER NOT NULL REFERENCES contributors(id),allowed INTEGER NOT NULL,created_at INTEGER NOT NULL DEFAULT (unixepoch()));
             PRAGMA user_version=4;").map_err(std::io::Error::other)?;
+    }
+    if version < 5 {
+        // submission_banks (version 3) owns bank IDs permanently; this older index is redundant.
+        transaction
+            .execute_batch("DROP INDEX IF EXISTS submission_bank; PRAGMA user_version=5;")
+            .map_err(std::io::Error::other)?;
     }
     transaction.commit().map_err(std::io::Error::other)
 }

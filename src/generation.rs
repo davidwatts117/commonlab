@@ -1,4 +1,5 @@
 //! Durable, opt-in generation queue. Workers never receive database or contributor credentials.
+use crate::auth::{digest, random_hex};
 use crate::submissions::{ApiError, Submission, SubmissionState, error, internal, no_cache};
 use axum::{
     Json, Router,
@@ -6,11 +7,9 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     routing::{get, post},
 };
-use rand_core::{OsRng, RngCore};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 #[derive(Clone)]
@@ -44,10 +43,15 @@ pub fn router(state: SubmissionState) -> Router {
         .route("/api/worker/generation/claim", post(claim))
         .route("/api/worker/generation/{id}/check", post(check))
         .route("/api/worker/generation/{id}/complete", post(complete))
+        .route("/api/worker/generation/{id}/release", post(release))
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(axum::middleware::map_response(no_cache))
         .with_state(state)
 }
+/// A job may only be touched by the worker holding its current lease.
+const CURRENT_LEASE: &str = "SELECT j.simulation_id FROM generation_jobs j \
+     JOIN contributors c ON c.id = j.contributor_id \
+     WHERE j.id = ?1 AND j.status = 'running' AND j.lease_hash = ?2 AND c.generation_allowed = 1";
 fn disabled() -> ApiError {
     error(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -72,17 +76,22 @@ fn worker(state: &SubmissionState, headers: &HeaderMap) -> Result<(), ApiError> 
     }
     Ok(())
 }
-fn random() -> Result<String, ApiError> {
-    let mut b = [0u8; 32];
-    OsRng.try_fill_bytes(&mut b).map_err(internal)?;
-    Ok(b.iter().map(|b| format!("{b:02x}")).collect())
-}
-fn digest(s: &str) -> String {
-    format!("{:x}", Sha256::digest(s.as_bytes()))
-}
 fn expire(c: &Connection) -> Result<(), ApiError> {
-    c.execute("UPDATE generation_jobs SET status='failed',error='Worker timed out; start a new request to retry.',finished_at=unixepoch(),lease_hash=NULL WHERE status='running' AND lease_expires<=unixepoch()",[]).map_err(internal)?;
+    c.execute(
+        "UPDATE generation_jobs SET status = 'failed', \
+         error = 'Worker timed out; start a new request to retry.', \
+         finished_at = unixepoch(), lease_hash = NULL \
+         WHERE status = 'running' AND lease_expires <= unixepoch()",
+        [],
+    )
+    .map_err(internal)?;
     Ok(())
+}
+fn lease_conflict() -> ApiError {
+    error(
+        StatusCode::CONFLICT,
+        "Worker lease is expired, cancelled or no longer current",
+    )
 }
 async fn config(
     State(s): State<SubmissionState>,
@@ -127,16 +136,54 @@ async fn create(
             "Provide a prompt of 1–8000 UTF-8 bytes and consent to provider processing",
         ));
     }
-    let slug = format!("ai-{}", &random()?[..24]);
-    let id=s.store.run(move|c| {
-        let tx=c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;expire(&tx)?;
-        let allowed:bool=tx.query_row("SELECT generation_allowed FROM contributors WHERE id=?1",[user.id],|r|r.get(0)).map_err(internal)?;
-        if !allowed {return Err(error(StatusCode::FORBIDDEN,"A maintainer must grant AI generation access to this account"));}
-        let (total,day,personal,active,queue):(i64,i64,i64,i64,i64)=tx.query_row("SELECT COUNT(*),COALESCE(SUM(created_at>=unixepoch()-86400),0),COALESCE(SUM(contributor_id=?1 AND created_at>=unixepoch()-86400),0),COALESCE(SUM(contributor_id=?1 AND status IN ('queued','running')),0),COALESCE(SUM(status IN ('queued','running')),0) FROM generation_jobs",[user.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).map_err(internal)?;
-        if total>=500||day>=20||personal>=3||active>0||queue>=10 {return Err(error(StatusCode::TOO_MANY_REQUESTS,"Generation capacity or quota reached; only one active request per contributor is allowed"));}
-        tx.execute("INSERT INTO generation_jobs(contributor_id,prompt,simulation_id) VALUES (?1,?2,?3)",params![user.id,input.prompt.trim(),slug]).map_err(internal)?;
-        let id=tx.last_insert_rowid();tx.commit().map_err(internal)?;Ok(id)
-    }).await?;
+    let slug = format!("ai-{}", &random_hex()?[..24]);
+    let id = s
+        .store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            expire(&tx)?;
+            let allowed: bool = tx
+                .query_row(
+                    "SELECT generation_allowed FROM contributors WHERE id = ?1",
+                    [user.id],
+                    |r| r.get(0),
+                )
+                .map_err(internal)?;
+            if !allowed {
+                return Err(error(
+                    StatusCode::FORBIDDEN,
+                    "A maintainer must grant AI generation access to this account",
+                ));
+            }
+            let (total, day, personal, active, queue): (i64, i64, i64, i64, i64) = tx
+                .query_row(
+                    "SELECT COUNT(*), \
+                     COALESCE(SUM(created_at >= unixepoch() - 86400), 0), \
+                     COALESCE(SUM(contributor_id = ?1 AND created_at >= unixepoch() - 86400), 0), \
+                     COALESCE(SUM(contributor_id = ?1 AND status IN ('queued','running')), 0), \
+                     COALESCE(SUM(status IN ('queued','running')), 0) FROM generation_jobs",
+                    [user.id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                )
+                .map_err(internal)?;
+            if total >= 500 || day >= 20 || personal >= 3 || active > 0 || queue >= 10 {
+                return Err(error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Generation capacity or quota reached; only one active request per contributor is allowed",
+                ));
+            }
+            tx.execute(
+                "INSERT INTO generation_jobs(contributor_id, prompt, simulation_id) VALUES (?1, ?2, ?3)",
+                params![user.id, input.prompt.trim(), slug],
+            )
+            .map_err(internal)?;
+            let id = tx.last_insert_rowid();
+            tx.commit().map_err(internal)?;
+            Ok(id)
+        })
+        .await?;
     Ok((
         StatusCode::ACCEPTED,
         Json(json!({"id":id,"status":"queued"})),
@@ -147,9 +194,31 @@ async fn list(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let user = crate::auth::account(&s.store, &headers, s.secure_cookies).await?;
-    let items=s.store.run(move|c| {expire(c)?;let mut q=c.prepare("SELECT id,status,created_at,finished_at,error,model FROM generation_jobs WHERE contributor_id=?1 ORDER BY id DESC LIMIT 50").map_err(internal)?;
-        q.query_map([user.id],|r|Ok(json!({"id":r.get::<_,i64>(0)?,"status":r.get::<_,String>(1)?,"createdAt":r.get::<_,i64>(2)?,"finishedAt":r.get::<_,Option<i64>>(3)?,"error":r.get::<_,String>(4)?,"model":r.get::<_,String>(5)?}))).map_err(internal)?.collect::<Result<Vec<_>,_>>().map_err(internal)
-    }).await?;
+    let items = s
+        .store
+        .run(move |c| {
+            expire(c)?;
+            let mut q = c
+                .prepare(
+                    "SELECT id, status, created_at, finished_at, error, model FROM generation_jobs \
+                     WHERE contributor_id = ?1 ORDER BY id DESC LIMIT 50",
+                )
+                .map_err(internal)?;
+            q.query_map([user.id], |r| {
+                Ok(json!({
+                    "id": r.get::<_, i64>(0)?,
+                    "status": r.get::<_, String>(1)?,
+                    "createdAt": r.get::<_, i64>(2)?,
+                    "finishedAt": r.get::<_, Option<i64>>(3)?,
+                    "error": r.get::<_, String>(4)?,
+                    "model": r.get::<_, String>(5)?,
+                }))
+            })
+            .map_err(internal)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(internal)
+        })
+        .await?;
     Ok(Json(json!({"items":items})))
 }
 async fn detail(
@@ -158,7 +227,31 @@ async fn detail(
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, ApiError> {
     let user = crate::auth::account(&s.store, &headers, s.secure_cookies).await?;
-    let mut item=s.store.run(move|c| {expire(c)?;c.query_row("SELECT prompt,simulation_id,status,artifact,error,model FROM generation_jobs WHERE id=?1 AND contributor_id=?2",params![id,user.id],|r|Ok(json!({"id":id,"prompt":r.get::<_,String>(0)?,"simulationId":r.get::<_,String>(1)?,"status":r.get::<_,String>(2)?,"artifact":r.get::<_,Option<String>>(3)?,"error":r.get::<_,String>(4)?,"model":r.get::<_,String>(5)?}))).optional().map_err(internal)?.ok_or_else(not_found)}).await?;
+    let mut item = s
+        .store
+        .run(move |c| {
+            expire(c)?;
+            c.query_row(
+                "SELECT prompt, simulation_id, status, artifact, error, model FROM generation_jobs \
+                 WHERE id = ?1 AND contributor_id = ?2",
+                params![id, user.id],
+                |r| {
+                    Ok(json!({
+                        "id": id,
+                        "prompt": r.get::<_, String>(0)?,
+                        "simulationId": r.get::<_, String>(1)?,
+                        "status": r.get::<_, String>(2)?,
+                        "artifact": r.get::<_, Option<String>>(3)?,
+                        "error": r.get::<_, String>(4)?,
+                        "model": r.get::<_, String>(5)?,
+                    }))
+                },
+            )
+            .optional()
+            .map_err(internal)?
+            .ok_or_else(not_found)
+        })
+        .await?;
     if let Some(text) = item["artifact"].as_str() {
         item["artifact"] = serde_json::from_str(text).map_err(internal)?;
     }
@@ -174,12 +267,35 @@ async fn cancel(
 ) -> Result<Json<Value>, ApiError> {
     crate::auth::csrf(&headers)?;
     let user = crate::auth::account(&s.store, &headers, s.secure_cookies).await?;
-    s.store.run(move|c| {
-        let tx=c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        let status:String=tx.query_row("SELECT status FROM generation_jobs WHERE id=?1 AND contributor_id=?2",params![id,user.id],|r|r.get(0)).optional().map_err(internal)?.ok_or_else(not_found)?;
-        if !["queued","running"].contains(&status.as_str()) {return Err(error(StatusCode::CONFLICT,"This request is already finished"));}
-        tx.execute("UPDATE generation_jobs SET status='cancelled',finished_at=unixepoch(),lease_hash=NULL WHERE id=?1",[id]).map_err(internal)?;tx.commit().map_err(internal)
-    }).await?;
+    s.store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            let status: String = tx
+                .query_row(
+                    "SELECT status FROM generation_jobs WHERE id = ?1 AND contributor_id = ?2",
+                    params![id, user.id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(internal)?
+                .ok_or_else(not_found)?;
+            if !["queued", "running"].contains(&status.as_str()) {
+                return Err(error(
+                    StatusCode::CONFLICT,
+                    "This request is already finished",
+                ));
+            }
+            tx.execute(
+                "UPDATE generation_jobs SET status = 'cancelled', finished_at = unixepoch(), \
+                 lease_hash = NULL WHERE id = ?1",
+                [id],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)
+        })
+        .await?;
     Ok(Json(json!({"id":id,"status":"cancelled"})))
 }
 #[derive(Deserialize)]
@@ -195,14 +311,43 @@ async fn access(
 ) -> Result<Json<Value>, ApiError> {
     s.authorize(&headers)?;
     let username = input.username.trim().to_ascii_lowercase();
-    let value=s.store.run(move|c| {
-        let tx=c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        let id:i64=tx.query_row("SELECT id FROM contributors WHERE username=?1",[&username],|r|r.get(0)).optional().map_err(internal)?.ok_or_else(||error(StatusCode::NOT_FOUND,"Contributor not found"))?;
-        tx.execute("UPDATE contributors SET generation_allowed=?1 WHERE id=?2",params![input.allowed,id]).map_err(internal)?;
-        tx.execute("INSERT INTO generation_access_events(contributor_id,allowed) VALUES (?1,?2)",params![id,input.allowed]).map_err(internal)?;
-        if !input.allowed {tx.execute("UPDATE generation_jobs SET status='cancelled',finished_at=unixepoch(),lease_hash=NULL WHERE contributor_id=?1 AND status IN ('queued','running')",[id]).map_err(internal)?;}
-        tx.commit().map_err(internal)?;Ok(json!({"username":username,"allowed":input.allowed}))
-    }).await?;
+    let value = s
+        .store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            let id: i64 = tx
+                .query_row(
+                    "SELECT id FROM contributors WHERE username = ?1",
+                    [&username],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(internal)?
+                .ok_or_else(|| error(StatusCode::NOT_FOUND, "Contributor not found"))?;
+            tx.execute(
+                "UPDATE contributors SET generation_allowed = ?1 WHERE id = ?2",
+                params![input.allowed, id],
+            )
+            .map_err(internal)?;
+            tx.execute(
+                "INSERT INTO generation_access_events(contributor_id, allowed) VALUES (?1, ?2)",
+                params![id, input.allowed],
+            )
+            .map_err(internal)?;
+            if !input.allowed {
+                tx.execute(
+                    "UPDATE generation_jobs SET status = 'cancelled', finished_at = unixepoch(), \
+                     lease_hash = NULL WHERE contributor_id = ?1 AND status IN ('queued','running')",
+                    [id],
+                )
+                .map_err(internal)?;
+            }
+            tx.commit().map_err(internal)?;
+            Ok(json!({"username":username,"allowed":input.allowed}))
+        })
+        .await?;
     Ok(Json(value))
 }
 async fn claim(
@@ -210,17 +355,49 @@ async fn claim(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
-    let raw = random()?;
+    let raw = random_hex()?;
     let hash = digest(&raw);
-    let result=s.store.run(move|c| {
-        let tx=c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;expire(&tx)?;
-        let running:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM generation_jobs WHERE status='running')",[],|r|r.get(0)).map_err(internal)?;
-        if running {tx.commit().map_err(internal)?;return Ok(Value::Null);}
-        let next:Option<(i64,String,String)>=tx.query_row("SELECT j.id,j.prompt,j.simulation_id FROM generation_jobs j JOIN contributors c ON c.id=j.contributor_id WHERE j.status='queued' AND c.generation_allowed=1 ORDER BY j.id LIMIT 1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(internal)?;
-        let Some((id,prompt,slug))=next else{tx.commit().map_err(internal)?;return Ok(Value::Null)};
-        tx.execute("UPDATE generation_jobs SET status='running',started_at=unixepoch(),lease_hash=?1,lease_expires=unixepoch()+360 WHERE id=?2",params![hash,id]).map_err(internal)?;
-        tx.commit().map_err(internal)?;Ok(json!({"protocolVersion":1,"id":id,"prompt":prompt,"simulationId":slug,"lease":raw}))
-    }).await?;
+    let result = s
+        .store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            expire(&tx)?;
+            let running: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM generation_jobs WHERE status = 'running')",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(internal)?;
+            let next: Option<(i64, String, String)> = if running {
+                None
+            } else {
+                tx.query_row(
+                    "SELECT j.id, j.prompt, j.simulation_id FROM generation_jobs j \
+                     JOIN contributors c ON c.id = j.contributor_id \
+                     WHERE j.status = 'queued' AND c.generation_allowed = 1 ORDER BY j.id LIMIT 1",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()
+                .map_err(internal)?
+            };
+            let Some((id, prompt, slug)) = next else {
+                tx.commit().map_err(internal)?;
+                return Ok(Value::Null);
+            };
+            tx.execute(
+                "UPDATE generation_jobs SET status = 'running', started_at = unixepoch(), \
+                 lease_hash = ?1, lease_expires = unixepoch() + 360 WHERE id = ?2",
+                params![hash, id],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)?;
+            Ok(json!({"protocolVersion":1,"id":id,"prompt":prompt,"simulationId":slug,"lease":raw}))
+        })
+        .await?;
     Ok(Json(result))
 }
 #[derive(Deserialize)]
@@ -236,8 +413,47 @@ async fn check(
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
     let hash = digest(&input.lease);
-    let active=s.store.run(move|c|{expire(c)?;c.query_row("SELECT EXISTS(SELECT 1 FROM generation_jobs j JOIN contributors c ON c.id=j.contributor_id WHERE j.id=?1 AND j.status='running' AND j.lease_hash=?2 AND c.generation_allowed=1)",params![id,hash],|r|r.get::<_,bool>(0)).map_err(internal)}).await?;
+    let active = s
+        .store
+        .run(move |c| {
+            expire(c)?;
+            c.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(()))
+                .optional()
+                .map(|row| row.is_some())
+                .map_err(internal)
+        })
+        .await?;
     Ok(Json(json!({"active":active})))
+}
+/// A stopping worker hands its job back to the queue, so a redeploy costs no one their quota.
+async fn release(
+    State(s): State<SubmissionState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(input): Json<Lease>,
+) -> Result<Json<Value>, ApiError> {
+    worker(&s, &headers)?;
+    let hash = digest(&input.lease);
+    s.store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            expire(&tx)?;
+            tx.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(()))
+                .optional()
+                .map_err(internal)?
+                .ok_or_else(lease_conflict)?;
+            tx.execute(
+                "UPDATE generation_jobs SET status = 'queued', started_at = NULL, \
+                 lease_hash = NULL, lease_expires = NULL WHERE id = ?1",
+                [id],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)
+        })
+        .await?;
+    Ok(Json(json!({"id":id,"status":"queued"})))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -277,15 +493,50 @@ async fn complete(
         )?;
     }
     let hash = digest(&input.lease);
-    s.store.run(move|c| {
-        let tx=c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;expire(&tx)?;
-        let slug:String=tx.query_row("SELECT j.simulation_id FROM generation_jobs j JOIN contributors c ON c.id=j.contributor_id WHERE j.id=?1 AND j.status='running' AND j.lease_hash=?2 AND c.generation_allowed=1",params![id,hash],|r|r.get(0)).optional().map_err(internal)?.ok_or_else(||error(StatusCode::CONFLICT,"Worker lease is expired, cancelled or no longer current"))?;
-        let (status,artifact,message)=if let Some(a)=input.artifact {
-            if a.definition["id"]!=slug || a.definition["assessment"]["id"].as_str().is_some_and(|id|id!=slug) {return Err(error(StatusCode::UNPROCESSABLE_ENTITY,"Generated simulation and bank must use the assigned ID"));}
-            ("succeeded",Some(json!({"bundleVersion":1,"definition":a.definition,"submittedBy":"","source":{"kind":"javascript","moduleCode":a.module_code}}).to_string()),"")
-        } else {("failed",None,"Generation failed or hit a worker limit; start a new request to retry.")};
-        tx.execute("UPDATE generation_jobs SET status=?1,artifact=?2,error=?3,model=?4,finished_at=unixepoch(),lease_hash=NULL WHERE id=?5",params![status,artifact,message,input.model,id]).map_err(internal)?;
-        tx.commit().map_err(internal)
-    }).await?;
+    s.store
+        .run(move |c| {
+            let tx = c
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            expire(&tx)?;
+            let slug: String = tx
+                .query_row(CURRENT_LEASE, params![id, hash], |r| r.get(0))
+                .optional()
+                .map_err(internal)?
+                .ok_or_else(lease_conflict)?;
+            let (status, artifact, message) = if let Some(a) = input.artifact {
+                if a.definition["id"] != slug
+                    || a.definition["assessment"]["id"]
+                        .as_str()
+                        .is_some_and(|id| id != slug)
+                {
+                    return Err(error(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "Generated simulation and bank must use the assigned ID",
+                    ));
+                }
+                let bundle = json!({
+                    "bundleVersion": 1,
+                    "definition": a.definition,
+                    "submittedBy": "",
+                    "source": {"kind": "javascript", "moduleCode": a.module_code},
+                });
+                ("succeeded", Some(bundle.to_string()), "")
+            } else {
+                (
+                    "failed",
+                    None,
+                    "Generation failed or hit a worker limit; start a new request to retry.",
+                )
+            };
+            tx.execute(
+                "UPDATE generation_jobs SET status = ?1, artifact = ?2, error = ?3, model = ?4, \
+                 finished_at = unixepoch(), lease_hash = NULL WHERE id = ?5",
+                params![status, artifact, message, input.model, id],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)
+        })
+        .await?;
     Ok(Json(json!({"id":id,"recorded":true})))
 }

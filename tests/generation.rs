@@ -4,7 +4,7 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use commonlab::{GenerationConfig, Store, app_with_generation};
+use commonlab::{AppConfig, GenerationConfig, Store, app_with_config};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 const ADMIN: &str = "generation-test-admin-token-000000000";
@@ -90,12 +90,13 @@ fn def(id: &Value) -> Value {
 }
 #[tokio::test]
 async fn opt_in_worker_leases_private_artifacts_revocation_and_quotas() {
-    let app = app_with_generation(
+    let app = app_with_config(
         "public",
-        Store::memory().unwrap(),
-        Some(ADMIN.into()),
-        false,
-        Some(GenerationConfig::new(WORKER.into()).unwrap()),
+        AppConfig {
+            admin_token: Some(ADMIN.into()),
+            generation: Some(GenerationConfig::new(WORKER.into()).unwrap()),
+            ..AppConfig::new(Store::memory().unwrap())
+        },
     )
     .unwrap();
     let alice = register(&app, "alice").await;
@@ -400,12 +401,13 @@ async fn permissions_and_leases_survive_restart_and_expired_work_cannot_complete
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("jobs.sqlite3");
     let make = || {
-        app_with_generation(
+        app_with_config(
             "public",
-            Store::open(&db).unwrap(),
-            Some(ADMIN.into()),
-            false,
-            Some(GenerationConfig::new(WORKER.into()).unwrap()),
+            AppConfig {
+                admin_token: Some(ADMIN.into()),
+                generation: Some(GenerationConfig::new(WORKER.into()).unwrap()),
+                ..AppConfig::new(Store::open(&db).unwrap())
+            },
         )
         .unwrap()
     };
@@ -491,12 +493,13 @@ async fn permissions_and_leases_survive_restart_and_expired_work_cannot_complete
 }
 #[tokio::test]
 async fn generation_defaults_off_and_tokens_are_separate() {
-    let app = app_with_generation(
+    let app = app_with_config(
         "public",
-        Store::memory().unwrap(),
-        Some(ADMIN.into()),
-        false,
-        None,
+        AppConfig {
+            admin_token: Some(ADMIN.into()),
+            generation: None,
+            ..AppConfig::new(Store::memory().unwrap())
+        },
     )
     .unwrap();
     let cookie = register(&app, "alice").await;
@@ -519,13 +522,89 @@ async fn generation_defaults_off_and_tokens_are_separate() {
     assert_eq!(config["allowed"], false);
     assert!(GenerationConfig::new("weak".into()).is_err());
     assert!(
-        app_with_generation(
+        app_with_config(
             "public",
-            Store::memory().unwrap(),
-            Some(ADMIN.into()),
-            false,
-            Some(GenerationConfig::new(ADMIN.into()).unwrap())
+            AppConfig {
+                admin_token: Some(ADMIN.into()),
+                generation: Some(GenerationConfig::new(ADMIN.into()).unwrap()),
+                ..AppConfig::new(Store::memory().unwrap())
+            },
         )
         .is_err()
     );
+}
+
+#[tokio::test]
+async fn a_stopping_worker_returns_its_job_to_the_queue() {
+    let app = app_with_config(
+        "public",
+        AppConfig {
+            admin_token: Some(ADMIN.into()),
+            generation: Some(GenerationConfig::new(WORKER.into()).unwrap()),
+            ..AppConfig::new(Store::memory().unwrap())
+        },
+    )
+    .unwrap();
+    let alice = register(&app, "alice").await;
+    assert_eq!(grant(&app, "alice", true).await.status(), StatusCode::OK);
+    let id = val(create(&app, &alice).await).await["id"]
+        .as_i64()
+        .unwrap();
+    let claim = || {
+        req(
+            &app,
+            "/api/worker/generation/claim",
+            "POST",
+            None,
+            None,
+            Some(WORKER),
+            false,
+        )
+    };
+    let job = val(claim().await).await;
+    assert_eq!(job["id"], id);
+    let release_path = format!("/api/worker/generation/{id}/release");
+    let release = |lease: &Value, bearer| {
+        req(
+            &app,
+            &release_path,
+            "POST",
+            Some(json!({"lease": lease})),
+            None,
+            Some(bearer),
+            false,
+        )
+    };
+    assert_eq!(
+        release(&job["lease"], ADMIN).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        release(&json!("not-the-lease"), WORKER).await.status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        release(&job["lease"], WORKER).await.status(),
+        StatusCode::OK
+    );
+    let detail = val(req(
+        &app,
+        &format!("/api/generation/jobs/{id}"),
+        "GET",
+        None,
+        Some(&alice),
+        None,
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(detail["status"], "queued");
+    // The old lease is dead; the next claim gets the same job with a fresh lease.
+    assert_eq!(
+        release(&job["lease"], WORKER).await.status(),
+        StatusCode::CONFLICT
+    );
+    let again = val(claim().await).await;
+    assert_eq!(again["id"], id);
+    assert_ne!(again["lease"], job["lease"]);
 }

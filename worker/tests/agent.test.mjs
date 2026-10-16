@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { generate } from '../runner.mjs';
-import { runChild } from '../supervisor.mjs';
+import { runChild, watchLease } from '../supervisor.mjs';
 import { validateDraft, boundedStream } from '../policy.mjs';
 const simulationId = 'ai-012345678901234567890123';
 const definition = { id: simulationId, title: 'Generated test', subject: 'physics', summary: 'A test definition.', canvas: { id: 'scene', label: 'Scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
@@ -44,4 +44,23 @@ test('real pi SDK runs only dedicated tools and finalizes without a network mode
     },
   });
   assert.equal(calls, 1); assert.equal(result.artifact.definition.id, simulationId); assert.equal(result.model, 'openai/gpt-4.1');
+});
+test('lease polling survives brief check failures but stops on revocation or persistent errors', async () => {
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const watch = async (answers, maxFailures) => {
+    let stops = 0, calls = 0;
+    const cancel = watchLease(async () => { const answer = answers[Math.min(calls++, answers.length - 1)]; if (answer instanceof Error) throw answer; return answer; }, () => stops++, { pollMs: 2, maxFailures });
+    await wait(60); cancel(); return { stops, calls };
+  };
+  const blip = new Error('network blip');
+  assert.equal((await watch([blip, blip, true], 3)).stops, 0);
+  assert.ok((await watch([blip, true, blip, true], 2)).calls > 4);
+  assert.ok((await watch([blip], 3)).stops > 0);
+  assert.ok((await watch([true, false], 3)).stops > 0);
+});
+test('shutdown stops a running child immediately', async () => {
+  const shutdown = new AbortController(); shutdown.abort();
+  const started = Date.now();
+  await assert.rejects(runChild({ prompt: 'test', simulationId }, async () => true, { signal: shutdown.signal }), /failed|limits/);
+  assert.ok(Date.now() - started < 5000);
 });

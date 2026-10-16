@@ -4,10 +4,16 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use commonlab::{Store, app_with_submissions};
+use commonlab::{AppConfig, Store, app_with_config};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 const TOKEN: &str = "test-only-administrator-token-00000000";
+fn reviewed(store: Store) -> AppConfig {
+    AppConfig {
+        admin_token: Some(TOKEN.into()),
+        ..AppConfig::new(store)
+    }
+}
 async fn req(
     app: &Router,
     method: &str,
@@ -106,7 +112,7 @@ async fn module(app: &Router) -> String {
 }
 #[tokio::test]
 async fn contributor_dashboard_paginates_only_owned_records() {
-    let app = app_with_submissions("public", Store::memory().unwrap(), Some(TOKEN.into())).unwrap();
+    let app = app_with_config("public", reviewed(Store::memory().unwrap())).unwrap();
     let alice = register(&app, "alice").await;
     let bob = register(&app, "bob").await;
     let mut def = definition();
@@ -201,8 +207,7 @@ async fn owner_revisions_are_private_stale_safe_and_do_not_modify_approved_snaps
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("private.sqlite3");
-    let make_app =
-        || app_with_submissions("public", Store::open(&db).unwrap(), Some(TOKEN.into())).unwrap();
+    let make_app = || app_with_config("public", reviewed(Store::open(&db).unwrap())).unwrap();
     let mut app = make_app();
     let alice = register(&app, "alice").await;
     let bob = register(&app, "bob").await;
@@ -550,5 +555,124 @@ async fn owner_revisions_are_private_stale_safe_and_do_not_modify_approved_snaps
         .status(),
         StatusCode::UNPROCESSABLE_ENTITY
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn live_entries_stay_findable_and_operators_can_withdraw_offline() {
+    let dir = std::env::temp_dir().join(format!(
+        "commonlab-live-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("private.sqlite3");
+    let app = app_with_config("public", reviewed(Store::open(&db).unwrap())).unwrap();
+    let alice = register(&app, "alice").await;
+    let mut def = definition();
+    let submitted = req(
+        &app,
+        "POST",
+        "/api/submissions",
+        Some(json!({"definition":def,"moduleCode":"live source"})),
+        Some(&alice),
+        false,
+        true,
+    )
+    .await;
+    let id = value(submitted).await["id"].as_i64().unwrap();
+    assert_eq!(
+        review(&app, id, 1, "publish").await.status(),
+        StatusCode::OK
+    );
+    def["title"] = json!("Revised lab");
+    let path = format!("/api/contributor/submissions/{id}");
+    let edited = req(
+        &app,
+        "PUT",
+        &path,
+        Some(payload(&def, 1, "revised source")),
+        Some(&alice),
+        false,
+        true,
+    )
+    .await;
+    assert_eq!(edited.status(), StatusCode::OK);
+    let rejected = value(review(&app, id, 2, "reject").await).await;
+    assert_eq!(rejected["status"], "rejected");
+    assert_eq!(rejected["hasPublication"], true);
+    let admin_list = |status: &'static str| {
+        let app = app.clone();
+        async move {
+            let uri = format!("/api/admin/submissions?status={status}");
+            value(req(&app, "GET", &uri, None, None, true, false).await).await["items"]
+                .as_array()
+                .unwrap()
+                .clone()
+        }
+    };
+    // The newest revision was rejected, but revision 1 is still public.
+    assert!(admin_list("published").await.is_empty());
+    let live = admin_list("live").await;
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0]["status"], "rejected");
+    assert_eq!(live[0]["live"], true);
+    assert_eq!(live[0]["publishedRevision"], 1);
+    assert_eq!(admin_list("rejected").await[0]["live"], true);
+    let mine = value(
+        req(
+            &app,
+            "GET",
+            "/api/contributor/submissions?status=live",
+            None,
+            Some(&alice),
+            false,
+            false,
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(mine["items"][0]["live"], true);
+    assert_eq!(module(&app).await, "live source");
+
+    // Operator recovery shares the maintainer's withdraw semantics without a running server.
+    let store = Store::open(&db).unwrap();
+    assert!(store.withdraw(id, "  ").is_err());
+    assert!(store.withdraw(id + 100, "Missing").is_err());
+    assert_eq!(
+        store.withdraw(id, "Installed engine changed").unwrap(),
+        "rejected"
+    );
+    assert!(store.withdraw(id, "Already withdrawn").is_err());
+    assert!(admin_list("live").await.is_empty());
+    assert_eq!(
+        req(
+            &app,
+            "GET",
+            "/simulations/versioned-lab.js",
+            None,
+            None,
+            false,
+            false
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    let history_path = format!("{path}/history");
+    let history =
+        value(req(&app, "GET", &history_path, None, Some(&alice), false, false).await).await;
+    let last = history["events"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap()
+        .clone();
+    assert_eq!(last["action"], "withdraw");
+    assert_eq!(last["actor"], "operator");
+    assert_eq!(last["note"], "Installed engine changed");
     std::fs::remove_dir_all(dir).unwrap();
 }

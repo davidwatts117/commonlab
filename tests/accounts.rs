@@ -4,7 +4,7 @@ use axum::{
     http::{Request, StatusCode, header},
     response::Response,
 };
-use commonlab::{Store, app_with_cookie_security};
+use commonlab::{AppConfig, Store, app_with_config};
 use serde_json::{Value, json};
 use std::{
     path::PathBuf,
@@ -29,11 +29,13 @@ impl Fixture {
         self.0.join("private.sqlite3")
     }
     fn app(&self, secure: bool) -> Router {
-        app_with_cookie_security(
+        app_with_config(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("public"),
-            Store::open(self.db()).unwrap(),
-            Some("test-only-administrator-token-00000000".into()),
-            secure,
+            AppConfig {
+                admin_token: Some("test-only-administrator-token-00000000".into()),
+                secure_cookies: secure,
+                ..AppConfig::new(Store::open(self.db()).unwrap())
+            },
         )
         .unwrap()
     }
@@ -360,7 +362,7 @@ fn migrates_version_one_without_claiming_or_losing_legacy_submissions() {
         connection
             .pragma_query_value::<u32, _>(None, "user_version", |row| row.get(0))
             .unwrap(),
-        4
+        5
     );
     drop(_store);
     Store::open(fixture.db()).unwrap();

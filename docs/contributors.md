@@ -37,9 +37,9 @@ Bank IDs remain reserved to their submission even after removal/renaming. Change
 
 ## Status, feedback and history
 
-Open **`/contributions.html`** from the homepage, account page, or authoring interface. The private dashboard lists only your submissions, with all/pending/published/rejected/withdrawn revision filters and pages of 20. Select an item for feedback, creation/update dates, chronological transition history, an edit link, and a link to its live simulation when one exists. A rejected revision can coexist with an older published revision; the dashboard labels both explicitly.
+Open **`/contributions.html`** from the homepage, account page, or authoring interface. The private dashboard lists only your submissions, with all/pending/published/rejected/withdrawn revision filters plus a **Live now** filter for anything currently public and pages of 20. Select an item for feedback, creation/update dates, chronological transition history, an edit link, and a link to its live simulation when one exists. A rejected revision can coexist with an older published revision; the dashboard labels both explicitly.
 
-- `GET /api/contributor/submissions?status=all&before=<id>` returns `{ items, hasMore }` summaries without definitions or engine source.
+- `GET /api/contributor/submissions?status=all&before=<id>` returns `{ items, hasMore }` summaries without definitions or engine source. `status` may also be `live`; each item includes `live` and `publishedRevision`.
 - `GET /api/contributor/submissions/<id>/history` returns `{ id, events }` with revision, action, resulting status, actor role, note, and timestamp. Other contributors receive 404; anonymous requests receive 401.
 - Status refreshes on opening/focusing the dashboard, changing filters, or clicking **Refresh status**. There is no email notification or live push service.
 - Notes/titles are rendered literally, never as HTML. Private dashboard content clears on page exit and is reauthenticated on return. Nothing is persisted in browser storage.

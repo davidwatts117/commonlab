@@ -1,5 +1,5 @@
 //! Passwords are Argon2id hashes. Only digests of random, expiring session tokens enter SQLite.
-use crate::submissions::{ApiError, Store, error, internal, no_cache};
+use crate::submissions::{ApiError, Store, conflict_or_internal, error, internal, no_cache};
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
@@ -91,10 +91,12 @@ fn token(headers: &HeaderMap, secure: bool) -> Option<String> {
     }
     found
 }
-fn digest(token: &str) -> String {
+/// Tokens are stored and compared only as SHA-256 digests.
+pub(crate) fn digest(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
-fn random_hex() -> Result<String, ApiError> {
+/// 256 bits from the operating system RNG, hex-encoded.
+pub(crate) fn random_hex() -> Result<String, ApiError> {
     let mut bytes = [0u8; 32];
     OsRng
         .try_fill_bytes(&mut bytes)
@@ -137,14 +139,39 @@ fn normalize(input: Credentials) -> Result<Credentials, ApiError> {
     })
 }
 async fn throttle(store: &Store, username: String) -> Result<(), ApiError> {
-    store.run(move |connection| {
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        tx.execute("DELETE FROM auth_attempts WHERE created_at < unixepoch()-3600", []).map_err(internal)?;
-        let (global, user): (i64,i64) = tx.query_row("SELECT COUNT(*),COALESCE(SUM(username=?1 AND created_at>=unixepoch()-600),0) FROM auth_attempts", [&username], |row| Ok((row.get(0)?,row.get(1)?))).map_err(internal)?;
-        if global >= 500 || user >= 20 { return Err(error(StatusCode::TOO_MANY_REQUESTS, "Too many authentication attempts; try again later")); }
-        tx.execute("INSERT INTO auth_attempts(username) VALUES (?1)", [&username]).map_err(internal)?;
-        tx.commit().map_err(internal)
-    }).await
+    store
+        .run(move |connection| {
+            let tx = connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            tx.execute(
+                "DELETE FROM auth_attempts WHERE created_at < unixepoch() - 3600",
+                [],
+            )
+            .map_err(internal)?;
+            let (global, user): (i64, i64) = tx
+                .query_row(
+                    "SELECT COUNT(*), \
+                     COALESCE(SUM(username = ?1 AND created_at >= unixepoch() - 600), 0) \
+                     FROM auth_attempts",
+                    [&username],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(internal)?;
+            if global >= 500 || user >= 20 {
+                return Err(error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Too many authentication attempts; try again later",
+                ));
+            }
+            tx.execute(
+                "INSERT INTO auth_attempts(username) VALUES (?1)",
+                [&username],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)
+        })
+        .await
 }
 pub(crate) async fn account(
     store: &Store,
@@ -153,7 +180,26 @@ pub(crate) async fn account(
 ) -> Result<Account, ApiError> {
     let raw = token(headers, secure).ok_or_else(unauthorized)?;
     let hash = digest(&raw);
-    store.run(move |connection| connection.query_row("SELECT c.id,c.username FROM contributors c JOIN contributor_sessions s ON s.contributor_id=c.id WHERE s.token_hash=?1 AND s.expires_at>unixepoch()", [hash], |row| Ok(Account { id: row.get(0)?, username: row.get(1)? })).optional().map_err(internal)?.ok_or_else(unauthorized)).await
+    store
+        .run(move |connection| {
+            connection
+                .query_row(
+                    "SELECT c.id, c.username FROM contributors c \
+                     JOIN contributor_sessions s ON s.contributor_id = c.id \
+                     WHERE s.token_hash = ?1 AND s.expires_at > unixepoch()",
+                    [hash],
+                    |row| {
+                        Ok(Account {
+                            id: row.get(0)?,
+                            username: row.get(1)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(internal)?
+                .ok_or_else(unauthorized)
+        })
+        .await
 }
 fn unauthorized() -> ApiError {
     error(
@@ -170,14 +216,41 @@ async fn session(
     let raw = random_hex()?;
     let hash = digest(&raw);
     let id = account.id;
-    state.store.run(move |connection| {
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        tx.execute("DELETE FROM contributor_sessions WHERE expires_at<=unixepoch()", []).map_err(internal)?;
-        if let Some(old) = old { tx.execute("DELETE FROM contributor_sessions WHERE token_hash=?1", [digest(&old)]).map_err(internal)?; }
-        tx.execute("DELETE FROM contributor_sessions WHERE contributor_id=?1 AND token_hash NOT IN (SELECT token_hash FROM contributor_sessions WHERE contributor_id=?1 ORDER BY created_at DESC,rowid DESC LIMIT 7)", [id]).map_err(internal)?;
-        tx.execute("INSERT INTO contributor_sessions(token_hash,contributor_id,expires_at) VALUES (?1,?2,unixepoch()+?3)", params![hash,id,SESSION_SECONDS]).map_err(internal)?;
-        tx.commit().map_err(internal)
-    }).await?;
+    state
+        .store
+        .run(move |connection| {
+            let tx = connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            tx.execute(
+                "DELETE FROM contributor_sessions WHERE expires_at <= unixepoch()",
+                [],
+            )
+            .map_err(internal)?;
+            if let Some(old) = old {
+                tx.execute(
+                    "DELETE FROM contributor_sessions WHERE token_hash = ?1",
+                    [digest(&old)],
+                )
+                .map_err(internal)?;
+            }
+            // Keep the seven newest sessions, so with the new one an account has at most eight.
+            tx.execute(
+                "DELETE FROM contributor_sessions WHERE contributor_id = ?1 AND token_hash NOT IN \
+                 (SELECT token_hash FROM contributor_sessions WHERE contributor_id = ?1 \
+                  ORDER BY created_at DESC, rowid DESC LIMIT 7)",
+                [id],
+            )
+            .map_err(internal)?;
+            tx.execute(
+                "INSERT INTO contributor_sessions(token_hash, contributor_id, expires_at) \
+                 VALUES (?1, ?2, unixepoch() + ?3)",
+                params![hash, id, SESSION_SECONDS],
+            )
+            .map_err(internal)?;
+            tx.commit().map_err(internal)
+        })
+        .await?;
     let cookie = format!(
         "{}={raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_SECONDS}{}",
         cookie_name(state.secure),
@@ -206,13 +279,31 @@ async fn register(
     })
     .await
     .map_err(internal)??;
-    let account = state.store.run(move |connection| {
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(internal)?;
-        let total: i64 = tx.query_row("SELECT COUNT(*) FROM contributors", [], |row| row.get(0)).map_err(internal)?;
-        if total >= 10000 { return Err(error(StatusCode::TOO_MANY_REQUESTS,"Registration capacity reached")); }
-        tx.execute("INSERT INTO contributors(username,password_hash) VALUES (?1,?2)", params![username,hash]).map_err(|err| if matches!(err, rusqlite::Error::SqliteFailure(ref code,_) if code.code==rusqlite::ErrorCode::ConstraintViolation) { error(StatusCode::CONFLICT,"Username is already in use") } else { internal(err) })?;
-        let id = tx.last_insert_rowid(); tx.commit().map_err(internal)?; Ok(Account { id, username })
-    }).await?;
+    let account = state
+        .store
+        .run(move |connection| {
+            let tx = connection
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            let total: i64 = tx
+                .query_row("SELECT COUNT(*) FROM contributors", [], |row| row.get(0))
+                .map_err(internal)?;
+            if total >= 10000 {
+                return Err(error(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    "Registration capacity reached",
+                ));
+            }
+            tx.execute(
+                "INSERT INTO contributors(username, password_hash) VALUES (?1, ?2)",
+                params![username, hash],
+            )
+            .map_err(|err| conflict_or_internal(err, "Username is already in use"))?;
+            let id = tx.last_insert_rowid();
+            tx.commit().map_err(internal)?;
+            Ok(Account { id, username })
+        })
+        .await?;
     session(
         &state,
         account,
