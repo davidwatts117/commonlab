@@ -14,6 +14,8 @@ Visit `http://localhost:8000`. Simulation routes such as `/simulations/pendulum`
 
 ### Configuration and deployment
 
+For the complete Docker setup—including HTTPS, persistent storage, the optional AI worker, backups, updates, and troubleshooting—see the [deployment guide](docs/deployment.md).
+
 - `BIND_ADDR`: socket address, default `127.0.0.1:8000`. Use `0.0.0.0:8000` to listen on all IPv4 interfaces.
 - `PUBLIC_DIR`: asset directory, default `public`, relative to the process working directory. It must contain `index.html`; startup fails otherwise.
 - `RUST_LOG`: tracing filter. Use `commonlab=info,tower_http=debug` for request logs.
@@ -27,6 +29,27 @@ BIND_ADDR=0.0.0.0:8000 PUBLIC_DIR=/path/to/commonlab/public ./target/release/com
 ```
 
 Deploy the executable **and** the `public/` directory. Assets are read from disk, not embedded. The server handles Ctrl-C and SIGTERM with graceful shutdown. Use a reverse proxy for HTTPS when exposing it publicly.
+
+### Docker
+
+The root `Dockerfile` builds a two-stage image: it compiles the release binary on `rust:1.97-slim-trixie`, then copies the binary and `public/` into `debian:trixie-slim`. The image runs as UID 10001, keeps assets root-owned and read-only, and stores SQLite in the `/data` volume (`DATABASE_PATH=/data/commonlab.sqlite3`). It listens on `0.0.0.0:8000` and has a health check that probes `/healthz`. The build context is allowlisted in `.dockerignore` (`Cargo.*`, `src/`, `schema/`, `public/`), so local databases, `.git`, `target/` and secrets never reach it.
+
+```sh
+docker compose up --build -d          # http://localhost:8000, data in the commonlab-data volume
+docker compose logs -f app
+docker compose down                   # add -v only if you mean to delete the database
+```
+
+`compose.yaml` publishes on loopback only (`COMMONLAB_PORT` changes the host port). It runs with a read-only root filesystem, dropped capabilities and no-new-privileges. `ADMIN_TOKEN`, `GENERATION_WORKER_TOKEN`, `COOKIE_SECURE` and `RUST_LOG` pass through only when they're set in your shell or a root `.env` file (ignored by Git). Leave unused ones unset rather than empty, because an empty token fails startup validation. Because the container binds a non-loopback address, session cookies default to Secure. Chrome and Firefox accept that on `http://localhost`. For plain-HTTP access from another host, or in Safari, set `COOKIE_SECURE=false` for testing only.
+
+Run the offline recovery command against the same volume with the server stopped:
+
+```sh
+docker compose stop app
+docker compose run --rm app withdraw <submission-id> "<note>"
+```
+
+Without compose, the equivalent is `docker build -t commonlab .` and then `docker run -p 127.0.0.1:8000:8000 -v commonlab-data:/data commonlab`. `.github/workflows/docker.yml` builds the image on every push and pull request to `main`. It starts the image with the same hardening, waits for the health check, and smoke-tests the homepage, catalog, a simulation route, account registration, and that the database is never served. It also checks that the generation worker image (`worker/Dockerfile`, see [AI generation](docs/ai-generation.md)) still builds. Images are built and tested in CI but not published to a registry.
 
 ### Layout
 

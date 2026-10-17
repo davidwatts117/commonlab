@@ -1,0 +1,81 @@
+name: Docker images
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Build and smoke-test the app image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: commonlab:ci
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
+
+      - name: Start container (same hardening as compose.yaml)
+        run: |
+          docker run -d --name commonlab -p 127.0.0.1:8000:8000 \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            commonlab:ci
+
+      - name: Wait for the health check
+        run: |
+          for i in $(seq 1 30); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' commonlab)
+            [ "$status" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs commonlab
+          echo "Container never became healthy (last status: $status)" >&2
+          exit 1
+
+      - name: Smoke test
+        run: |
+          set -eu
+          curl -fsS http://127.0.0.1:8000/healthz | grep -qx ok
+          curl -fsS http://127.0.0.1:8000/ | grep -q '<title>CommonLab'
+          curl -fsS http://127.0.0.1:8000/simulations/catalog.json | grep -q '"schemaVersion"'
+          curl -fsS -o /dev/null http://127.0.0.1:8000/simulations/pendulum
+          # The database lives in /data and must never be served as an asset.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/commonlab.sqlite3)" = 404
+          # Accounts write to SQLite through the volume.
+          curl -fsS -X POST http://127.0.0.1:8000/api/auth/register \
+            -H 'content-type: application/json' -H 'X-CommonLab-Request: 1' \
+            -d '{"username":"ci-smoke","password":"ci smoke test password"}' | grep -q '"ci-smoke"'
+
+      - name: Container logs
+        if: always()
+        run: docker logs commonlab || true
+
+  worker:
+    name: Build the generation worker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: worker/Dockerfile
+          tags: commonlab-worker:ci
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker

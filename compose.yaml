@@ -1,0 +1,32 @@
+# Run the CommonLab server locally or on a single host:
+#   docker compose up --build -d
+# Then open http://localhost:8000. Data persists in the commonlab-data volume.
+# Secrets are passed through only when set in your shell or an (ignored) .env file.
+name: commonlab
+
+services:
+  app:
+    build:
+      context: .
+    image: commonlab:local
+    ports:
+      # Loopback only; put an HTTPS reverse proxy in front for public access.
+      - "127.0.0.1:${COMMONLAB_PORT:-8000}:8000"
+    environment:
+      - ADMIN_TOKEN
+      - GENERATION_WORKER_TOKEN
+      - COOKIE_SECURE
+      - RUST_LOG
+    volumes:
+      - commonlab-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=67108864,mode=1777
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    restart: unless-stopped
+
+volumes:
+  commonlab-data:

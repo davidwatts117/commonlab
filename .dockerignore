@@ -1,0 +1,9 @@
+# Allowlist: only what the application image needs. Keeps the database,
+# .git, target/, node_modules/ and any local secrets out of the build context.
+# (worker/Dockerfile.dockerignore governs the worker image separately.)
+**
+!Cargo.toml
+!Cargo.lock
+!src/
+!schema/
+!public/
