@@ -11,7 +11,7 @@ Use authoring_reference to learn the schema and engine contract. Deliver a self-
 Use the assigned simulationId for definition.id, assessment.id (if present), and lesson.sim. An empty lessons array is preferable to inventing unsupported adapter bindings. Include a small scientifically valid question bank if appropriate, with version 1. Validate with validate_draft, fix errors, then call finish_draft exactly once. Definitions are JSON strings; moduleCode is JavaScript text. Do not output artifacts as prose. Never claim that static validation proves safety or scientific correctness.`;
 export async function generate(job, { streamOverride } = {}) {
   const provider = process.env.CL_MODEL_PROVIDER, modelId = process.env.CL_MODEL_ID;
-  if (!['anthropic', 'openai', 'google'].includes(provider) || !modelId || !process.env.CL_MODEL_API_KEY) throw new Error('Explicit supported provider, model and API key required.');
+  if (!['anthropic', 'openai', 'google', 'openrouter'].includes(provider) || !modelId || !process.env.CL_MODEL_API_KEY) throw new Error('Explicit supported provider, model and API key required.');
   if (typeof job.prompt !== 'string' || Buffer.byteLength(job.prompt) > 8000 || !/^ai-[a-f0-9]{24}$/.test(job.simulationId)) throw new Error('Invalid task.');
   const dir = await mkdtemp(join(tmpdir(), 'commonlab-agent-'));
   let session, artifact;

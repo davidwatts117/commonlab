@@ -53,7 +53,7 @@ async function main() {
   catch { throw new Error('Invalid application origin.'); }
   if (base.username || base.password || base.search || base.hash || base.pathname !== '/' || (base.protocol !== 'https:' && !(base.protocol === 'http:' && process.env.CL_WORKER_ALLOW_HTTP === 'true'))) throw new Error('Use an HTTPS application origin (explicit private-network HTTP opt-in for development).');
   const token = process.env.GENERATION_WORKER_TOKEN;
-  if (!token || token.length < 32 || !['anthropic', 'openai', 'google'].includes(process.env.CL_MODEL_PROVIDER) || !process.env.CL_MODEL_ID || !process.env.CL_MODEL_API_KEY) throw new Error('Missing explicit worker/model configuration.');
+  if (!token || token.length < 32 || !['anthropic', 'openai', 'google', 'openrouter'].includes(process.env.CL_MODEL_PROVIDER) || !process.env.CL_MODEL_ID || !process.env.CL_MODEL_API_KEY) throw new Error('Missing explicit worker/model configuration.');
   async function api(path, body) {
     const response = await fetch(new URL(path, base), { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000),
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });

@@ -152,7 +152,7 @@ Skip this entire section if you do not want AI authoring. The ordinary applicati
    CL_WORKER_ALLOW_HTTP=false
    ```
 
-Supported providers are `anthropic`, `openai`, and `google`. Choose a model ID supported by the worker's pinned pi SDK catalog; no default model is chosen. Ambient pi credentials/OAuth, custom endpoints, and contributor-supplied keys are not supported. Use the application **origin**, without a path, for `CL_API_BASE_URL`.
+Supported providers are `anthropic`, `openai`, `google`, and `openrouter`. Choose a model ID supported by the worker's pinned pi SDK catalog; no default model is chosen. Ambient pi credentials/OAuth, custom endpoints, and contributor-supplied keys are not supported. Use the application **origin**, without a path, for `CL_API_BASE_URL`.
 
 Use a dedicated provider project/key with provider-side spending limits and usage monitoring. Application request/token limits are **not a guaranteed dollar cap**. Provider billing and retention policies apply to submitted requirements and generated content.
 
