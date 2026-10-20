@@ -139,7 +139,7 @@ function getHalfLife(z,n) {
 
 function fmtHalfLife(hl) {
     if (hl==='stable') return 'Stable';
-    if (hl===0||hl<1e-100) return '—';
+    if (hl===0||hl<1e-100) return 'n/a';
     const exp = Math.floor(Math.log10(hl));
     const mantissa = hl / Math.pow(10, exp);
     const ss={'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
@@ -148,14 +148,14 @@ function fmtHalfLife(hl) {
 }
 
 function getStability(z,n) {
-    if (z===0) return {level:'impossible',desc:'No protons — not an atom.'};
+    if (z===0) return {level:'impossible',desc:'No protons: not an atom.'};
     if (!dataLoaded) return {level:'unstable',desc:'Loading nuclear data…'};
     const range=N_RANGE[z];
     if (!range||n<range[0]||n>range[1]) return {level:'impossible',desc:'This isotope cannot exist.'};
     const key=z*1000+n;
     if (STABLE.has(key)) {
         const abund=ABUNDANCES[key];
-        const extra=abund?` (${abund.toFixed(1)}% natural abundance)`:' — does not decay.';
+        const extra=abund?` (${abund.toFixed(1)}% natural abundance)`:'; it does not decay.';
         return {level:'stable',desc:'Stable'+extra};
     }
     const code=decayCode(z,n);
@@ -165,10 +165,10 @@ function getStability(z,n) {
         return {level: heavy?'radioactive':'unstable', desc:'Decays by '+info.name+'.'};
     }
     const ratio=n/Math.max(1,z);
-    if (z<=20&&Math.abs(ratio-1)<0.25) return {level:'unstable',desc:'Near stability band — may be long-lived.'};
-    if (z>20&&ratio>=1.0&&ratio<=1.5) return {level:'unstable',desc:'Within band of stability — likely slow decay.'};
-    if (z>83&&n>126) return {level:'radioactive',desc:'Heavy — likely α decay or spontaneous fission.'};
-    return {level:'radioactive',desc:'Far from stability — rapid decay expected.'};
+    if (z<=20&&Math.abs(ratio-1)<0.25) return {level:'unstable',desc:'Near stability band; may be long-lived.'};
+    if (z>20&&ratio>=1.0&&ratio<=1.5) return {level:'unstable',desc:'Within band of stability; likely slow decay.'};
+    if (z>83&&n>126) return {level:'radioactive',desc:'Heavy: likely α decay or spontaneous fission.'};
+    return {level:'radioactive',desc:'Far from stability; rapid decay expected.'};
 }
 
 function canExist(z,n) {
@@ -729,7 +729,7 @@ function applyDecay(){
 }
 
 function updateUI() {
-    const a=Z+N, ratio=Z>0?(N/Z).toFixed(2):'—';
+    const a=Z+N, ratio=Z>0?(N/Z).toFixed(2):'n/a';
     const sym=EL_SYMS[Z]||'?', name=EL_NAMES[Z]||'Unknown';
     const stab=getStability(Z,N);
     const hl=getHalfLife(Z,N);
@@ -741,7 +741,7 @@ function updateUI() {
     document.getElementById('aVal').textContent=a;
     document.getElementById('ratioVal').textContent=ratio;
     document.getElementById('elementName').textContent=name;
-    document.getElementById('isotopeNotation').textContent=a>0?a+sym:'—';
+    document.getElementById('isotopeNotation').textContent=a>0?a+sym:'n/a';
     const badge = document.getElementById('stabilityBadge');
     badge.textContent = stab.level.charAt(0).toUpperCase()+stab.level.slice(1);
     badge.className = 'sim-badge sim-badge--' + stab.level;

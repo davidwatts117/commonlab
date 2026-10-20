@@ -36,7 +36,7 @@ export function runIsolatedPreview(container, { definition, moduleCode, engineId
         break;
       case 'commonlab:running':
         clearTimeout(timer); finished = true;
-        status('Engine running in an isolated frame — it cannot reach your account, storage or the network.');
+        status('Engine running in an isolated frame; it cannot reach your account, storage or the network.');
         break;
       case 'commonlab:error':
         settle(`Isolated run: ${String(message.message || 'engine error').slice(0, 600)}`, true);

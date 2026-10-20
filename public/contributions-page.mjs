@@ -37,7 +37,7 @@ async function showDetail(item) {
     if (generation !== version || selected !== item.id) return;
     const events = result.events.map(event => {
       const li = document.createElement('li');
-      li.textContent = `${event.createdAt} · revision ${event.revision} · ${event.actor}: ${event.action} → ${event.status}${event.note ? ` — ${event.note}` : ''}`;
+      li.textContent = `${event.createdAt} · revision ${event.revision} · ${event.actor}: ${event.action} → ${event.status}${event.note ? ` (${event.note})` : ''}`;
       return li;
     });
     $('contribution-history').replaceChildren(...events);

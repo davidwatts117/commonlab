@@ -54,7 +54,7 @@
         },
         {
           "type": "text",
-          "text": "Drag coefficient — 0.00 is an ideal pendulum, 0.47 is a real sphere in air, 0.94 is double air drag."
+          "text": "Drag coefficient: 0.00 is an ideal pendulum, 0.47 is a real sphere in air, 0.94 is double air drag."
         },
         {
           "type": "slider",
@@ -71,7 +71,7 @@
         },
         {
           "type": "text",
-          "text": "Linear damping — extra friction proportional to speed. Leave at 0.00 for pure air drag."
+          "text": "Linear damping: extra friction proportional to speed. Leave at 0.00 for pure air drag."
         },
         {
           "type": "slider",
@@ -165,7 +165,7 @@
             "T = 2π√(L/g)"
           ],
           "paragraphs": [
-            "For small angles (< 15°), the period depends only on length and gravity — not on mass or amplitude. This is isochronism ."
+            "For small angles (< 15°), the period depends only on length and gravity, not on mass or amplitude. This is isochronism ."
           ]
         },
         {
@@ -190,7 +190,7 @@
           "title": "Explore",
           "formulas": [],
           "paragraphs": [
-            "Try this: Set the drag coefficient to C _d = 0.00 for an ideal, non-damped pendulum and watch K and P swap forever with a flat Total line. Raise it to 0.47 (a real sphere in air) or 0.94 (twice normal air drag) to watch Thermal climb while Total stays flat — energy is conserved, just converted.",
+            "Try this: Set the drag coefficient to C _d = 0.00 for an ideal, non-damped pendulum and watch K and P swap forever with a flat Total line. Raise it to 0.47 (a real sphere in air) or 0.94 (twice normal air drag) to watch Thermal climb while Total stays flat; energy is conserved, just converted.",
             "Drag the bob to change the angle. Change gravity to see how a pendulum would swing on the Moon (1.6 m/s²) or Jupiter (24.8 m/s²)."
           ]
         }
@@ -279,7 +279,7 @@
                 }
               ],
               "feedback": {
-                "correct": "Good — we will test that. The theory says T ≈ 2π√(L/g).",
+                "correct": "Good, we will test that. The theory says T ≈ 2π√(L/g).",
                 "any": "Keep your prediction in mind; you will measure it in a moment."
               }
             },
@@ -355,7 +355,7 @@
               "id": "conclude",
               "type": "conclusion",
               "title": "You tested it",
-              "body": "With drag removed, L = 1.00 m gives a period near **2.0 s**, while L = 2.00 m gives near **2.8 s**.\n\nThe period grows with the **square root** of the length — and, as you can check by changing mass, it does not depend on the bob’s mass."
+              "body": "With drag removed, L = 1.00 m gives a period near **2.0 s**, while L = 2.00 m gives near **2.8 s**.\n\nThe period grows with the **square root** of the length, and, as you can check by changing mass, it does not depend on the bob’s mass."
             }
           ]
         }
@@ -717,7 +717,7 @@
           "title": "How To Use",
           "formulas": [],
           "paragraphs": [
-            "Drag a part from the toolbox onto the board, or pick a tool and drag on the board to draw the part. Join two parts by dragging one end dot onto the other — a grey dot appears where they connect. Click a part to select it, then type an exact voltage or resistance in the box below the board (or double-click the part as a shortcut). Right-click, or use Erase, to remove a part."
+            "Drag a part from the toolbox onto the board, or pick a tool and drag on the board to draw the part. Join two parts by dragging one end dot onto the other; a grey dot appears where they connect. Click a part to select it, then type an exact voltage or resistance in the box below the board (or double-click the part as a shortcut). Right-click, or use Erase, to remove a part."
           ]
         }
       ],
@@ -901,7 +901,7 @@
             "correct": [
               "b"
             ],
-            "explanation": "30° — Correct! Complementary angles (summing to 90°) produce the same range on level ground. 60° + 30° = 90°, so they have equal range."
+            "explanation": "30°: Correct! Complementary angles (summing to 90°) produce the same range on level ground. 60° + 30° = 90°, so they have equal range."
           },
           {
             "id": "scaling",
@@ -929,7 +929,7 @@
             "correct": [
               "b"
             ],
-            "explanation": "Quadruple — Correct! Range ∝ v² (R = v² sin(2θ) / g). Doubling v makes R four times larger."
+            "explanation": "Quadruple: Correct! Range ∝ v² (R = v² sin(2θ) / g). Doubling v makes R four times larger."
           },
           {
             "id": "height",
@@ -957,7 +957,7 @@
             "correct": [
               "a"
             ],
-            "explanation": "It increases — Correct! A higher launch point means the projectile has farther to fall to reach the ground, so it stays in the air longer."
+            "explanation": "It increases: Correct! A higher launch point means the projectile has farther to fall to reach the ground, so it stays in the air longer."
           },
           {
             "id": "components",
@@ -985,7 +985,7 @@
             "correct": [
               "b"
             ],
-            "explanation": "45° — Correct! At 45°, cos(45°) = sin(45°) = √2/2, so v _x = v cos(θ) = v sin(θ) = v _y ."
+            "explanation": "45°: Correct! At 45°, cos(45°) = sin(45°) = √2/2, so v _x = v cos(θ) = v sin(θ) = v _y ."
           }
         ]
       }
@@ -1010,23 +1010,23 @@
           "options": [
             {
               "value": "Hydrochloric acid",
-              "label": "Hydrochloric acid — strong"
+              "label": "Hydrochloric acid (strong)"
             },
             {
               "value": "Acetic acid",
-              "label": "Acetic acid — Ka 1.8e-5"
+              "label": "Acetic acid (Ka 1.8e-5)"
             },
             {
               "value": "Chlorous acid",
-              "label": "Chlorous acid — Ka 1.2e-2"
+              "label": "Chlorous acid (Ka 1.2e-2)"
             },
             {
               "value": "Hypochlorous acid",
-              "label": "Hypochlorous acid — Ka 3.5e-8"
+              "label": "Hypochlorous acid (Ka 3.5e-8)"
             },
             {
               "value": "Hydrocyanic acid",
-              "label": "Hydrocyanic acid — Ka 6.2e-10"
+              "label": "Hydrocyanic acid (Ka 6.2e-10)"
             }
           ]
         },
@@ -1052,27 +1052,27 @@
           "options": [
             {
               "value": "Sodium hydroxide",
-              "label": "Sodium hydroxide — strong"
+              "label": "Sodium hydroxide (strong)"
             },
             {
               "value": "Ammonia",
-              "label": "Ammonia — Kb 1.8e-5"
+              "label": "Ammonia (Kb 1.8e-5)"
             },
             {
               "value": "Methylamine",
-              "label": "Methylamine — Kb 4.4e-4"
+              "label": "Methylamine (Kb 4.4e-4)"
             },
             {
               "value": "Ethylamine",
-              "label": "Ethylamine — Kb 5.7e-4"
+              "label": "Ethylamine (Kb 5.7e-4)"
             },
             {
               "value": "Aniline",
-              "label": "Aniline — Kb 3.8e-10"
+              "label": "Aniline (Kb 3.8e-10)"
             },
             {
               "value": "Pyridine",
-              "label": "Pyridine — Kb 1.7e-9"
+              "label": "Pyridine (Kb 1.7e-9)"
             }
           ]
         },
@@ -1296,7 +1296,7 @@
           "title": "About the Numbers",
           "formulas": [],
           "paragraphs": [
-            "The pH is found by solving the full equilibrium relations — a quadratic away from the jump and a cubic across it — so dilute and very weak acids stay accurate instead of relying on the usual short-cut. Pairing a weak acid with a weak base is left out because it needs a quartic."
+            "The pH is found by solving the full equilibrium relations: a quadratic away from the jump and a cubic across it, so dilute and very weak acids stay accurate instead of relying on the usual short-cut. Pairing a weak acid with a weak base is left out because it needs a quartic."
           ]
         }
       ],
@@ -1592,7 +1592,7 @@
           "title": "About Phase Changes",
           "formulas": [],
           "paragraphs": [
-            "During a phase change, temperature stays constant while energy is absorbed or released — this is latent heat , the energy needed to overcome or form intermolecular bonds."
+            "During a phase change, temperature stays constant while energy is absorbed or released; this is latent heat, the energy needed to overcome or form intermolecular bonds."
           ]
         }
       ],
@@ -1659,7 +1659,7 @@
             {
               "id": "decayMode",
               "label": "Most likely decay",
-              "value": "—",
+              "value": "n/a",
               "tone": "highlight"
             }
           ]

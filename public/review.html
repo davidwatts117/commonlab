@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'">
-  <title>Review submissions — CommonLab</title>
+  <title>Review submissions: CommonLab</title>
   <link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/simulation.css"><link rel="stylesheet" href="/authoring.css">
 </head>
 <body>
@@ -50,12 +50,12 @@
         <p id="review-engine"></p>
         <button id="review-preview-button" type="button" class="sim-btn sim-btn--soft">Preview definition layout only</button>
         <button id="review-run-button" type="button" class="sim-btn sim-btn--soft">Run submitted engine (isolated)</button>
-        <section id="review-preview-section" hidden><h3>Layout preview — no engine running</h3><div id="review-preview"></div></section>
+        <section id="review-preview-section" hidden><h3>Layout preview: no engine running</h3><div id="review-preview"></div></section>
         <section id="review-run-section" hidden><h3>Isolated run</h3><p class="authoring-hint">Sandboxed without same-origin access: the engine cannot read this page, the administrator token, browser storage or the network. It can still consume CPU. This run is not a security or scientific audit.</p><p id="review-run-status" role="status"></p><div id="review-run-host"></div></section>
         <form id="review-form">
           <p class="authoring-warning">Publishing new JavaScript grants it the same privileges as CommonLab's own code. Check every import and dependency, network/storage access, UI manipulation, scientific accuracy, slot bindings, and the mount contract. An isolated run cannot prove safety: it sees no real credentials or production data, but approved code later runs with full page privileges. Clicking approval is not a security audit.</p>
           <label id="code-review-label"><input id="code-reviewed" type="checkbox"> I have personally reviewed this new engine and all its dependencies, and approve it as trusted same-origin application code.</label>
-          <label>Review note — visible to the contributor (required for rejection or withdrawal)<textarea id="review-note" maxlength="1000" rows="3"></textarea></label>
+          <label>Review note (visible to the contributor) (required for rejection or withdrawal)<textarea id="review-note" maxlength="1000" rows="3"></textarea></label>
           <div class="authoring-actions">
             <button id="publish-submission" type="submit" value="publish" class="sim-btn sim-btn--primary">Publish simulation</button>
             <button id="reject-submission" type="submit" value="reject" class="sim-btn sim-btn--soft">Reject submission</button>
