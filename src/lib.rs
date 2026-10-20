@@ -1,6 +1,7 @@
 mod auth;
 mod contributions;
 mod generation;
+mod limits;
 pub use generation::GenerationConfig;
 mod migrations;
 mod submissions;
@@ -9,9 +10,15 @@ pub use submissions::Store;
 
 use std::{collections::HashSet, io, path::Path};
 
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    http::{HeaderValue, header},
+    routing::get,
+};
+use tower::Layer;
 use tower_http::{
     services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 
@@ -104,21 +111,36 @@ pub fn app_with_config(public_dir: impl AsRef<Path>, config: AppConfig) -> io::R
         if !module_path.is_file() {
             return Err(invalid(format!("Missing simulation module: {id}.js")));
         }
+        let public_cors = || {
+            SetResponseHeaderLayer::overriding(
+                header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                HeaderValue::from_static("*"),
+            )
+        };
         router = router
             .route_service(&format!("/simulations/{id}"), ServeFile::new(&shell_path))
             .route_service(
                 &format!("/simulations/{id}.html"),
                 ServeFile::new(&shell_path),
             )
+            // The isolated preview imports installed engines from an opaque origin.
             .route_service(
                 &format!("/simulations/{id}.js"),
-                ServeFile::new(module_path),
+                public_cors().layer(ServeFile::new(module_path)),
             );
     }
     // The submission router owns the fallback and serves only published entries.
+    // Public assets get a wildcard CORS header so the sandboxed (opaque-origin)
+    // preview can load ES modules. They are unauthenticated public files; API
+    // responses and private submission routes are unaffected.
+    let assets = SetResponseHeaderLayer::overriding(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    )
+    .layer(ServeDir::new(public_dir).append_index_html_on_directories(true));
     Ok(router
         .merge(submissions::router(submission_state))
-        .fallback_service(ServeDir::new(public_dir).append_index_html_on_directories(true))
+        .fallback_service(assets)
         .layer(TraceLayer::new_for_http()))
 }
 
@@ -143,6 +165,35 @@ mod tests {
             )
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn serves_public_assets_with_cors_but_not_api_responses() {
+        // The sandboxed preview has an opaque origin, so module imports need CORS.
+        for uri in [
+            "/sandbox.html",
+            "/sandbox-runner.mjs",
+            "/simulations/pendulum.js",
+        ] {
+            let response = request(Method::GET, uri).await;
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_eq!(
+                response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+                "*",
+                "{uri}"
+            );
+        }
+        // Private and authenticated responses must stay unreadable cross-origin.
+        for uri in ["/api/submissions/config", "/api/generation/jobs"] {
+            let response = request(Method::GET, uri).await;
+            assert!(
+                response
+                    .headers()
+                    .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                    .is_none(),
+                "{uri}"
+            );
+        }
     }
 
     #[tokio::test]

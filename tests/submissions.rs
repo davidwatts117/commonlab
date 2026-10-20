@@ -641,3 +641,80 @@ async fn review_configuration_is_fail_closed() {
         StatusCode::SERVICE_UNAVAILABLE
     );
 }
+
+#[tokio::test]
+async fn operator_limits_are_authenticated_validated_and_enforced() {
+    let router = router().await;
+    for method in [Method::GET, Method::PUT] {
+        let response = request(
+            &router,
+            method,
+            "/api/admin/limits",
+            Some(json!({"limits":{"submissionsPerHour":1}})),
+            None,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+    for invalid in [
+        json!({"limits":{"submissionsPerHour":0}}),
+        json!({"limits":{"submissionsPerHour":"5"}}),
+        json!({"limits":{"notALimit":5}}),
+        json!({"limits":{}}),
+        json!({"value":5}),
+    ] {
+        assert_eq!(
+            request(
+                &router,
+                Method::PUT,
+                "/api/admin/limits",
+                Some(invalid),
+                Some(TOKEN)
+            )
+            .await
+            .status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+    let saved = request(
+        &router,
+        Method::PUT,
+        "/api/admin/limits",
+        Some(json!({"limits":{"submissionsPerHour":1,"generationPerDay":0}})),
+        Some(TOKEN),
+    )
+    .await;
+    assert_eq!(saved.status(), StatusCode::OK);
+    let saved = body(saved).await;
+    assert_eq!(saved["limits"]["submissionsPerHour"], 1);
+    assert_eq!(saved["limits"]["pendingSubmissions"], 500);
+    assert_eq!(saved["defaults"]["submissionsPerHour"]["default"], 100);
+
+    assert_eq!(
+        request(
+            &router,
+            Method::POST,
+            "/api/submissions",
+            Some(submission("limit-first")),
+            None
+        )
+        .await
+        .status(),
+        StatusCode::CREATED
+    );
+    assert_eq!(
+        request(
+            &router,
+            Method::POST,
+            "/api/submissions",
+            Some(submission("limit-second")),
+            None
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let refreshed =
+        body(request(&router, Method::GET, "/api/admin/limits", None, Some(TOKEN)).await).await;
+    assert_eq!(refreshed["limits"]["generationPerDay"], 0);
+}

@@ -11,7 +11,21 @@
 .simulation-readouts { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
 .simulation-note { font-size: .78rem; line-height: 1.5; color: var(--sim-muted, #6c757d); margin: .5rem 0; overflow-wrap: anywhere; }
 .simulation-note p { margin: .3rem 0; }
-.control-row .control-label { min-width: 2rem; flex-shrink: 0; }
+/* Long labels and info links must wrap inside the controls column instead of
+   overflowing it; the stage column intentionally gets the remaining width. */
+/* Long labels must never overflow the controls column. When that column is
+   narrow (the stage owns most of the row), each label takes its own line above
+   the slider; wider columns keep the original inline label. */
+.controls-panel { container-type: inline-size; }
+.control-row { flex-wrap: wrap; row-gap: .35rem; }
+.control-row .control-label { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; }
+.control-row input[type="range"] { flex: 1 1 80px; min-width: 60px; }
+.control-row .control-value { flex: 0 0 auto; }
+.control-row .simulation-info { flex: 0 0 auto; }
+@container (max-width: 380px) {
+  .control-row .control-label { flex: 1 0 100%; }
+  .control-row .simulation-info { margin-left: auto; }
+}
 .simulation-info { border: 0; background: none; color: var(--sim-accent); font: inherit; font-size: .7rem; cursor: pointer; text-decoration: underline; }
 .simulation-graph { margin-top: 1rem; padding: .75rem; background: var(--sim-surface, #fff); border: 1px solid var(--sim-border-strong); border-radius: 0; }
 .simulation-graph h3 { font-size: .9rem; margin: 0 0 .5rem; }
@@ -73,6 +87,6 @@
 .fs-active .simulation-graph:not(.simulation-view-hidden) canvas { max-height: calc(100vh - 15rem); width: auto; max-width: 96vw; margin: 0 auto; }
 @media (max-width: 600px) {
   .control-row { flex-wrap: wrap; }
-  .simulation-info { width: 100%; text-align: left; }
+  .simulation-info { width: 100%; text-align: left; margin-left: 0; }
   .sim-stepper { flex-wrap: wrap; }
 }

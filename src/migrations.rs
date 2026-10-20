@@ -10,7 +10,7 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(std::io::Error::other)?;
-    if version > 5 {
+    if version > 8 {
         return Err(std::io::Error::other(
             "Unsupported submission database version",
         ));
@@ -74,6 +74,24 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
         transaction
             .execute_batch("DROP INDEX IF EXISTS submission_bank; PRAGMA user_version=5;")
             .map_err(std::io::Error::other)?;
+    }
+    if version < 6 {
+        transaction.execute_batch("CREATE TABLE generation_events(id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL REFERENCES generation_jobs(id) ON DELETE CASCADE, code TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()));
+            CREATE INDEX generation_events_job ON generation_events(job_id,id);
+            PRAGMA user_version=6;").map_err(std::io::Error::other)?;
+    }
+    if version < 7 {
+        transaction
+            .execute_batch(
+                "ALTER TABLE generation_events ADD COLUMN details TEXT NOT NULL DEFAULT '{}';
+            ALTER TABLE generation_jobs ADD COLUMN diagnostics TEXT NOT NULL DEFAULT '{}';
+            PRAGMA user_version=7;",
+            )
+            .map_err(std::io::Error::other)?;
+    }
+    if version < 8 {
+        transaction.execute_batch("CREATE TABLE settings(key TEXT PRIMARY KEY, value INTEGER NOT NULL, updated_at INTEGER NOT NULL DEFAULT (unixepoch()));
+            PRAGMA user_version=8;").map_err(std::io::Error::other)?;
     }
     transaction.commit().map_err(std::io::Error::other)
 }

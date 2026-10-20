@@ -15,9 +15,9 @@ argon2 = "0.5.3"
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
-tower-http = { version = "0.6.8", features = ["fs", "trace"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6.8", features = ["fs", "trace", "set-header"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-tower = { version = "0.5", features = ["util"] }

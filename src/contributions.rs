@@ -193,7 +193,11 @@ pub(crate) fn check_capacity(
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .map_err(internal)?;
-    if (new_record && total >= 2000) || recent >= 100 || (adds_pending && pending >= 500) {
+    let limits = crate::limits::Limits::load(tx).map_err(internal)?;
+    if (new_record && total >= limits.retained_submissions)
+        || recent >= limits.submissions_per_hour
+        || (adds_pending && pending >= limits.pending_submissions)
+    {
         return Err(error(
             StatusCode::TOO_MANY_REQUESTS,
             "Submission queue is full; please try again later",

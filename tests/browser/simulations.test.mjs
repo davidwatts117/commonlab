@@ -200,6 +200,37 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       await page.waitForSelector('#simulation-status[role="alert"]');
       assert.match(await page.locator('#simulation-status').innerText(), /schema version/); await page.close();
     });
+    await t.test('long slider labels and info links stay inside a narrow controls column', async () => {
+      const definition = {
+        id: 'narrow-controls', title: 'Long labels', subject: 'physics', summary: 'Checks the shared controls column at every width.',
+        canvas: { id: 'scene', label: 'Scene', width: 700, height: 440 },
+        controls: [{
+          type: 'slider', id: 'eSlider', label: 'Coefficient of restitution for two unequal blocks e', min: 0, max: 1, step: 0.05, value: 1,
+          output: { id: 'eValue', text: '1.00' }, info: 'restitution',
+        }], cards: [], graphs: [], lessons: [],
+        info: { restitution: { title: 'Coefficient of restitution', formula: 'e = |v2\' - v1\'| / |v1 - v2|', explanation: 'Relative separation over approach speed.', detail: 'Values near one are bouncy.' } },
+      };
+      for (const width of [1280, 900, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        const errors = []; page.on('pageerror', error => errors.push(error.message));
+        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: { schemaVersion: 1, simulations: [definition] } }));
+        await page.route('**/simulations/narrow-controls.js', route => route.fulfill({ contentType: 'text/javascript', body: 'export function mount(ui) { return { app: { sim: { start(){}, stop(){} } } }; }' }));
+        await page.goto(`${base}/simulation.html?id=narrow-controls`);
+        await page.waitForSelector('#simulation-root[data-ready="true"]');
+        const layout = await page.evaluate(() => {
+          const panel = document.querySelector('.controls-panel').getBoundingClientRect();
+          const info = document.querySelector('.simulation-info').getBoundingClientRect();
+          const row = document.querySelector('.control-row');
+          return { page: document.documentElement.scrollWidth, inner: innerWidth, panel: panel.right, info: info.right,
+            rowOverflow: row.scrollWidth - row.clientWidth, label: document.querySelector('.control-label').getBoundingClientRect().right };
+        });
+        assert.ok(layout.page <= layout.inner + 2, `Page overflows at ${width}px`);
+        assert.ok(layout.info <= layout.panel + 1 && layout.label <= layout.panel + 1, `Controls overflow their panel at ${width}px`);
+        assert.ok(layout.rowOverflow <= 1, `Control row overflows at ${width}px`);
+        assert.equal(await page.getByRole('button', { name: 'About Coefficient of restitution', exact: true }).count(), 1);
+        assert.deepEqual(errors, []); await page.close();
+      }
+    });
   } finally {
     await browser?.close(); server.kill('SIGTERM'); await exited;
     rmSync(storage, { recursive: true, force: true });

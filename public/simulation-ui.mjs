@@ -62,7 +62,11 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
         if (data.output) row.append(node('span', 'control-value', data.output.text, data.output.id));
         if (data.icons) row.append(node('span', 'control-icon', data.icons[1].text, data.icons[1].id));
         if (data.info) {
-          const help = node('button', 'simulation-info', `About ${definition.info[data.info].title}`); help.type = 'button';
+          const title = definition.info[data.info].title;
+          const help = node('button', 'simulation-info', 'About'); help.type = 'button';
+          // Keep the full accessible name and tooltip while the visible link stays short
+          // enough for a narrow controls column.
+          help.setAttribute('aria-label', `About ${title}`); help.title = `About ${title}`;
           help.addEventListener('click', () => showInfo(data.info, help)); row.append(help);
         }
         return row;

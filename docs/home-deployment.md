@@ -32,6 +32,30 @@ does not grant AI access: approve the contributor in the review UI, then
 request a generation at `/generate.html`. This incurs provider charges.
 Generated engines remain private until explicitly submitted and reviewed.
 
+## Optional local agent traces
+
+To capture operator-only development transcripts, add this non-secret setting to the host `.env`:
+
+```dotenv
+CL_AGENT_TRACE_DIR=/var/lib/commonlab/agent-traces
+CL_AGENT_TRACE_MAX_FILES=50
+CL_AGENT_TRACE_MAX_BYTES=8388608
+CL_AGENT_TRACE_MAX_DAYS=7
+```
+
+Recreate the worker using the same profile launch command. The Compose file provides a worker-only named volume (`commonlab_generation-traces`); the app and tunnel cannot serve it. Files are mode `0600` under a `0700` directory. Traces include prompts, intermediate source and tool results, exclude private reasoning, and redact known credentials. Do not paste them into public logs. Leaving `CL_AGENT_TRACE_DIR` empty disables tracing.
+
+List or copy files locally as the operator, for example:
+
+```sh
+cd ~/apps/commonlab
+docker compose -f compose.home.yaml exec -T generation-worker ls /var/lib/commonlab/agent-traces
+# Inspect a particular named file privately; never serve this directory over HTTP.
+docker cp commonlab-generation-worker-1:/var/lib/commonlab/agent-traces/generation-<job>-<time>-<uuid>.jsonl /secure/local/path/
+```
+
+Retention is independent of SQLite and runs at the start of each traced job. See [AI generation](ai-generation.md#optional-operator-only-agent-traces) for size caps, redaction and interrupted-run limitations.
+
 ## Operations
 
 Builds use host networking to work around this host's BuildKit DNS failure.

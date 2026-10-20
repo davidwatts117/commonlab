@@ -7,3 +7,9 @@
 *.sqlite3-wal
 *.sqlite3-shm
 /.env
+# Operator-only agent trace output (prompts and private source).
+**/agent-traces/
+generation-*-*-*.jsonl
+
+# Local agent state (memory notes, not project code).
+/.pi/

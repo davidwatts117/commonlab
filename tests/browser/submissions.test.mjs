@@ -70,6 +70,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       const literal = '<img src=x onerror="window.dataExecuted=true">';
       def.cards[0].paragraphs = [literal];
       def.controls.push({ type: 'text', id: 'code-reviewed', text: 'Draft slot that must not shadow the review checkbox.' });
+      await author.getByText('Advanced definition JSON:', { exact: false }).click();
       await author.locator('#definition-json').fill(JSON.stringify(def));
       const starter = await author.locator('#module-code').inputValue();
       const code = `globalThis.draftExecuted = true;\n// </textarea><img src=x onerror=alert(1)>\n${starter}`
@@ -102,6 +103,16 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal(await reviewer.locator('#review-workspace').isVisible(), false);
       await reviewer.locator('#admin-token').fill(token);
       await reviewer.locator('#review-login button').click();
+      await reviewer.waitForFunction(() => document.getElementById('limit-submissionsPerHour').value === '100');
+      assert.equal(await reviewer.locator('#limit-generationPerDay').inputValue(), '3');
+      assert.equal(await reviewer.locator('#limit-generationMaxPromptBytes').inputValue(), '8000');
+      await reviewer.getByText('Manage request limits', { exact: true }).click();
+      await reviewer.locator('#limit-generationPerDay').fill('2');
+      await reviewer.locator('#limits-form button').click();
+      await reviewer.waitForFunction(() => document.getElementById('limits-status').textContent.includes('now enforced'));
+      await reviewer.locator('#limit-generationPerDay').fill('3');
+      await reviewer.locator('#limits-form button').click();
+      await reviewer.waitForFunction(() => document.getElementById('limits-status').textContent.includes('now enforced'));
       await reviewer.locator('#review-queue button').filter({ hasText: 'Browser uploaded lab' }).click();
       await reviewer.locator('#review-definition').waitFor();
       assert.ok((await reviewer.locator('#review-module').inputValue()).includes('draftExecuted'));
@@ -113,6 +124,14 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal(await reviewer.locator('#review-preview-code-reviewed').count(), 1);
       assert.equal(await reviewer.evaluate(() => window.draftExecuted), undefined);
       assert.deepEqual(moduleRequests, []);
+      // Reviewers can run the submitted engine only inside the isolated frame.
+      await reviewer.locator('#review-run-button').click();
+      await reviewer.waitForFunction(() => document.getElementById('review-run-status').textContent.includes('Engine running'), { timeout: 20_000 });
+      assert.equal(await reviewer.evaluate(() => window.draftExecuted), undefined);
+      const reviewFrame = reviewer.frames().find(candidate => candidate.url().includes('/sandbox.html'));
+      assert.ok(reviewFrame, 'submitted engine runs in the sandboxed frame');
+      await reviewFrame.waitForFunction(() => globalThis.draftExecuted === true, null, { timeout: 10_000 });
+      assert.equal(await reviewFrame.evaluate(() => { try { return Boolean(parent.document); } catch (error) { return error.name; } }), 'SecurityError');
       const denied = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { decision: 'publish', codeReviewed: false } });
       assert.equal(denied.status(), 422);
       await reviewer.locator('#code-reviewed').check();
@@ -221,21 +240,33 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await reviewer.locator('#generation-username').fill('browser-author');
       await reviewer.locator('#generation-access-form button').click();
       await reviewer.waitForFunction(() => document.getElementById('review-status').textContent.includes('granted to'));
-      await author.locator('#generation-refresh').click();
+      await author.goto(base);
+      await author.locator('#generation-nav:not([hidden]) a').waitFor();
+      await author.locator('#generation-nav a').click();
       await author.waitForFunction(() => !document.getElementById('generation-fields').disabled);
+      assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
       await author.locator('#generation-prompt').fill('A spring lab with mass and stiffness controls.');
       await author.locator('#generation-consent').check();
       await author.locator('#generation-form button').click();
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
       const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } });
       assert.equal(claimed.status(), 200); const job = await claimed.json();
+      const progress = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/progress`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, code: 'validating', details: { turn: 1, attempt: 1 } } });
+      assert.equal(progress.status(), 200);
+      // No refresh click: activity arrives through automatic polling.
+      await author.waitForFunction(() => document.getElementById('generation-events').textContent.includes('Checking the current development stage'), { timeout: 10_000 });
+      const rejected = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/progress`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, code: 'validation_failed', details: { turn: 1, phase: 'definition', tool: 'define_simulation', toolStatus: 'error', issues: [{ path: '/controls/0/value', rule: 'required' }] } } });
+      assert.equal(rejected.status(), 200);
+      await author.waitForFunction(() => document.getElementById('generation-events').textContent.includes('/controls/0/value — Required field is missing.'), { timeout: 10_000 });
+      assert.ok((await author.locator('#generation-events').innerText()).includes('Stage: Controls and definition'));
+      assert.ok((await author.locator('#generation-events').innerText()).includes('Tool: define_simulation (error)'));
       const definition = { id: job.simulationId, title: 'AI spring draft', subject: 'physics', summary: 'A private generated draft.', canvas: { id: 'scene', label: 'Spring scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
       const moduleCode = 'export function mount(ui) { globalThis.generatedExecuted = true; return { app: {} }; }';
       const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', artifact: { definition, moduleCode } } });
       assert.equal(completed.status(), 200);
       await author.locator('#generation-refresh').click();
       await author.getByRole('link', { name: 'Open private draft in editor' }).click();
-      await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      await author.waitForFunction(() => { const fields = document.getElementById('submission-fields'); return fields && !fields.disabled; });
       assert.equal(await author.locator('#definition-title').inputValue(), 'AI spring draft');
       assert.equal(await author.locator('#module-code').inputValue(), moduleCode);
       assert.equal(await author.evaluate(() => window.generatedExecuted), undefined);
@@ -245,11 +276,65 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       const submitted = author.waitForResponse(response => response.url().endsWith('/api/submissions') && response.request().method() === 'POST');
       await author.locator('#submit-draft').click(); assert.equal((await submitted).status(), 201);
       assert.equal((await author.request.get(`${base}/simulations/${job.simulationId}.js`)).status(), 404);
+      await author.goto(`${base}/generate.html`);
+      await author.waitForFunction(() => !document.getElementById('generation-fields').disabled);
+      await author.locator('#generation-prompt').fill('A request that needs repairs.');
+      await author.locator('#generation-consent').check(); await author.locator('#generation-form button').click();
+      await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
+      const failedJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } })).json();
+      await reviewer.request.post(`${base}/api/worker/generation/${failedJob.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: failedJob.lease, model: 'scripted/test', artifact: null, failure: 'repair_limit', diagnostics: { requests: 4, validations: 4, stopReason: 'toolUse', issues: [{ path: '/moduleCode', rule: 'javascript_syntax', line: 8, column: 3 }] } } });
+      await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('repair limit'), { timeout: 10_000 });
+      await author.waitForFunction(() => document.getElementById('generation-summary').textContent.includes('Requests: 4'), { timeout: 10_000 });
+      assert.ok((await author.locator('#generation-summary').innerText()).includes('/moduleCode (line 8, column 3)'));
+      assert.ok((await author.locator('#generation-events').innerText()).includes('Draft repair budget exhausted'));
+    });
+
+    await t.test('runs an engine only inside an isolated frame with no host or network access', async () => {
+      await author.goto(`${base}/submit.html`);
+      await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      await author.locator('#engine').selectOption('new');
+      const definition = { id: 'isolated-lab', title: 'Isolated probe', subject: 'physics', summary: 'Probes the sandbox boundary.', canvas: { id: 'runCanvas', label: 'Probe scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
+      await author.getByText('Advanced definition JSON:', { exact: false }).click();
+      await author.locator('#definition-json').fill(JSON.stringify(definition));
+      await author.locator('#module-code').fill(`export function mount(ui) {
+  globalThis.sandboxRan = true;
+  globalThis.probe = (async () => {
+    let parentAccess;
+    try { parentAccess = parent.document.body ? 'readable' : 'missing'; } catch (error) { parentAccess = error.name; }
+    let network;
+    try { const response = await fetch('/healthz'); network = 'allowed:' + response.status; } catch (error) { network = 'blocked:' + error.name; }
+    globalThis.result = { parentAccess, network };
+  })();
+  class Probe extends SimLib.Simulation { onInit() {} onTick() {} onDraw() {} }
+  const app = SimLib.attach({ canvas: ui.getElementById('runCanvas'), logicalWidth: 640, logicalHeight: 400, SimulationClass: Probe });
+  app.sim.start();
+  return { app };
+}`);
+      await author.locator('#run-preview').click();
+      await author.waitForFunction(() => document.getElementById('run-status').textContent.includes('Engine running'), { timeout: 20_000 });
+      assert.equal(await author.evaluate(() => window.sandboxRan), undefined);
+      assert.equal(await author.evaluate(() => window.result), undefined);
+      const frame = author.frames().find(candidate => candidate.url().includes('/sandbox.html'));
+      assert.ok(frame, 'the engine runs in the sandboxed frame');
+      await frame.waitForFunction(() => globalThis.result, null, { timeout: 10_000 });
+      const probe = await frame.evaluate(() => globalThis.result);
+      assert.equal(probe.parentAccess, 'SecurityError');
+      assert.match(probe.network, /^blocked:/);
+      assert.equal(await frame.locator('#sandbox-preview-runCanvas').count(), 1);
+      assert.equal(await author.locator('#run-preview-host .isolated-preview').count(), 1);
+      // Nothing from the engine is rendered into the host page's DOM.
+      assert.equal(await author.locator('#runCanvas').count(), 0);
+      // Installed engines take the same isolated path.
+      await author.locator('#engine').selectOption('pendulum');
+      await author.locator('#run-preview').click();
+      await author.waitForFunction(() => document.getElementById('run-status').textContent.includes('Engine running'), { timeout: 20_000 });
+      assert.equal(await author.evaluate(() => window.pendulumRan), undefined);
     });
 
     await t.test('malformed definitions produce visible errors and offline drafting remains available', async () => {
       await author.goto(`${base}/submit.html`);
       await author.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      await author.getByText('Advanced definition JSON:', { exact: false }).click();
       await author.locator('#definition-json').fill('{invalid');
       await author.locator('#validate-preview').click();
       assert.ok((await author.locator('#authoring-status').innerText()).includes('could not be parsed'));
@@ -274,6 +359,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.locator('#submitted-by').fill('Offline author');
       await author.locator('#add-card').click();
       const card = author.locator('[data-editor-type="card"]').first();
+      await card.locator(':scope > summary').click();
       await card.getByLabel('Card title', { exact: true }).fill('A relationship');
       await card.getByLabel('Formulas (one per line)', { exact: true }).fill('F = ma\na = F/m');
       const literal = '<img src=x onerror="window.contentRan=true">';
@@ -282,14 +368,15 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       const question = author.locator('[data-editor-type="question"]').first();
       // Incomplete edits must be recoverable without returning to raw JSON.
       await question.getByLabel('Question prompt', { exact: true }).fill('');
+      await question.getByText('Advanced: question ID and lesson use', { exact: true }).click();
       await question.getByLabel('Question ID', { exact: true }).fill('q');
       await question.getByLabel('Question ID', { exact: true }).fill('relationship');
       await question.getByLabel('Question prompt', { exact: true }).fill('Which relationship is correct?');
-      const answer = question.locator('[data-editor-type="choice"]').first();
-      await answer.getByLabel('Answer ID', { exact: true }).fill('a');
-      await answer.getByLabel('Answer ID', { exact: true }).fill('proportional');
-      await answer.getByLabel('Answer ID', { exact: true }).fill('option-2');
-      assert.equal(await answer.getByLabel('Answer ID', { exact: true }).inputValue(), 'proportional');
+      const answer = question.locator('.answer-row').first();
+      await question.getByLabel('Answer 1 ID', { exact: true }).fill('a');
+      await question.getByLabel('Answer 1 ID', { exact: true }).fill('proportional');
+      await question.getByLabel('Answer 1 ID', { exact: true }).fill('option-2');
+      assert.equal(await question.getByLabel('Answer 1 ID', { exact: true }).inputValue(), 'proportional');
       await answer.getByLabel('Answer label', { exact: true }).fill('Force is proportional to acceleration.');
       await question.getByLabel('Answer type', { exact: true }).focus();
       await question.getByLabel('Answer type', { exact: true }).selectOption('multi');
@@ -302,6 +389,10 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       def = JSON.parse(await author.locator('#definition-json').inputValue());
       assert.deepEqual(def.assessment.questions[0].correct, ['proportional']);
       assert.equal(def.assessment.questions.length, 2);
+      await author.getByRole('button', { name: 'Collapse all questions', exact: true }).click();
+      assert.equal(await question.getByLabel('Question prompt', { exact: true }).isVisible(), false);
+      await author.getByRole('button', { name: 'Expand all questions', exact: true }).click();
+      assert.equal(await question.getByLabel('Question prompt', { exact: true }).isVisible(), true);
       assert.deepEqual(def.cards[0].formulas, ['F = ma', 'a = F/m']);
       const code = `globalThis.bundleRestoreRan = true;\n${await author.locator('#module-code').inputValue()}`;
       await author.locator('#module-code').fill(code);
