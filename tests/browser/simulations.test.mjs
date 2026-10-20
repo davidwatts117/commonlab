@@ -10,6 +10,7 @@ import { chromium } from 'playwright';
 const root = new URL('../../', import.meta.url);
 const catalog = JSON.parse(readFileSync(new URL('public/simulations/catalog.json', root), 'utf8'));
 
+const stripAnsi = text => text.split(String.fromCharCode(27)).map((part, index) => index === 0 ? part : part.replace(/^\[[0-9;]*m/, '')).join('');
 test('shared simulation shell in a real browser', { timeout: 120_000 }, async t => {
   const storage = mkdtempSync(join(tmpdir(), 'commonlab-simulation-browser-'));
   const env = { ...process.env, BIND_ADDR: '127.0.0.1:0', DATABASE_PATH: join(storage, 'submissions.sqlite3'), RUST_LOG: 'commonlab=info', NO_COLOR: '1' };
@@ -28,7 +29,7 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       server.once('exit', code => { clearTimeout(timeout); reject(new Error(`Server exited: ${code}, ${output}`)); });
       server.stderr.on('data', chunk => { output += chunk; });
       server.stdout.on('data', chunk => {
-        output += chunk.toString().replace(/\x1b\[[0-9;]*m/g, '');
+        output += stripAnsi(chunk.toString());
         const address = /address=(127\.0\.0\.1:\d+)/.exec(output);
         if (address) { clearTimeout(timeout); resolve(`http://${address[1]}`); }
       });

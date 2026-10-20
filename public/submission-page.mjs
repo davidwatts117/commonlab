@@ -162,7 +162,7 @@ $('validate-preview').addEventListener('click', () => {
   try {
     const def = readDefinition(); preview?.destroy();
     preview = renderSimulation($('definition-preview'), def, { idPrefix: 'author-preview-' });
-    $('preview-title').textContent = `${def.title} — ${def.summary}`;
+    $('preview-title').textContent = `${def.title}: ${def.summary}`;
     $('preview-section').hidden = false;
     message('Definition validated. The layout is shown below; physics, lessons, and checks are not running.');
   } catch (error) { message(error.message, true); }

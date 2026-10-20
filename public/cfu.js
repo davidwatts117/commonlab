@@ -176,7 +176,7 @@
     function render() {
       panel.replaceChildren();
       const title = node('h3', '', 'Check Understanding'); title.tabIndex = -1;
-      panel.append(title, node('p', '', 'Local self-check — no results are sent. You can keep using the simulation.'));
+      panel.append(title, node('p', '', 'Local self-check: no results are sent. You can keep using the simulation.'));
       if (!session.storageAvailable) panel.append(node('p', '', 'Storage unavailable: progress is kept only for this visit.'));
       panel.append(button('Close', close), button('Restart check', () => { session.restart(); render(); }));
       if (session.latest && session.active) panel.append(node('p', '', 'Latest completed result: ' + session.score() + '/' + session.questions.length));

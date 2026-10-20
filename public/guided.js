@@ -563,7 +563,7 @@
         body.replaceChildren(this._stepContent(step, 'modal'));
         footer.replaceChildren();
         if (step.question) {
-          body.append(el('p', '', 'Practice check — not part of your standalone score.'));
+          body.append(el('p', '', 'Practice check: not part of your standalone score.'));
           SimLib.CFU.renderQuestion(body, step.question, {
             answer: handlers.answer,
             onSubmit: handlers.onSubmit,

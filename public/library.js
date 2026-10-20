@@ -489,7 +489,7 @@
           const lbl = document.createElement('div'); lbl.className = 'sim-panel-readout__label'; lbl.textContent = label;
           const val = document.createElement('div'); val.className = 'sim-panel-readout__value'; val.textContent = '';
           wrap.appendChild(lbl); wrap.appendChild(val); panel.appendChild(wrap);
-          const t = setInterval(() => { try { val.textContent = getter(); } catch (e) { val.textContent = '—'; } }, period);
+          const t = setInterval(() => { try { val.textContent = getter(); } catch (e) { val.textContent = 'n/a'; } }, period);
           const handle = { el: wrap, stop() { clearInterval(t); } };
           SimLib.UI._intervals.add(handle);
           return handle;

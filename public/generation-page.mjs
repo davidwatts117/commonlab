@@ -46,7 +46,7 @@ function diagnostics(parent, details = {}) {
   if (stats.length) parent.append(node('p', stats.join(' · ')));
   if (Array.isArray(details.issues) && details.issues.length) {
     const issues = node('ul', '');
-    for (const issue of details.issues) issues.append(node('li', `${issue.path || '/'}${Number.isInteger(issue.line) ? ` (line ${issue.line}, column ${issue.column || 0})` : ''} — ${rules[issue.rule] || 'Validation failed.'}`));
+    for (const issue of details.issues) issues.append(node('li', `${issue.path || '/'}${Number.isInteger(issue.line) ? ` (line ${issue.line}, column ${issue.column || 0})` : ''}: ${rules[issue.rule] || 'Validation failed.'}`));
     parent.append(issues);
   }
 }
@@ -86,7 +86,7 @@ async function refresh() {
       const events = await contributorRequest(`/api/generation/jobs/${selected}/events`, { signal });
       if (current !== generation) return;
       const job = result.items.find(item => item.id === selected);
-      $('generation-detail-status').textContent = `Request #${selected} · ${job?.status || 'saved'}${job?.error ? ` — ${job.error}` : job?.status === 'queued' ? ' — waiting for a worker; no model activity yet.' : ''}`;
+      $('generation-detail-status').textContent = `Request #${selected} · ${job?.status || 'saved'}${job?.error ? `: ${job.error}` : job?.status === 'queued' ? '. Waiting for a worker; no model activity yet.' : ''}`;
       $('generation-summary').replaceChildren(); diagnostics($('generation-summary'), job?.diagnostics || {});
       $('generation-events').replaceChildren(...events.items.map(event => {
         const li = node('li', `${new Date(event.createdAt * 1000).toLocaleTimeString()} · ${activity[event.code] || 'Working…'}`);

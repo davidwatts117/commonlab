@@ -13,7 +13,7 @@ try {
   const definition = catalog.simulations.find(sim => sim.id === id);
   if (!definition) throw new Error('This simulation is not in the catalog.');
 
-  document.title = `${definition.title} — CommonLab`;
+  document.title = `${definition.title}: CommonLab`;
   document.querySelector('meta[name="description"]').content = definition.summary;
   document.getElementById('simulation-title').textContent = definition.title;
   document.getElementById('simulation-summary').textContent = definition.summary;

@@ -37,7 +37,7 @@ async function loadQueue(append = false) {
   for (const item of result.items) {
     const li = document.createElement('li');
     const button = document.createElement('button'); button.type = 'button'; button.className = 'sim-btn sim-btn--soft';
-    button.textContent = `#${item.id} ${item.title} — ${item.simulationId}`;
+    button.textContent = `#${item.id} ${item.title} (${item.simulationId})`;
     button.addEventListener('click', () => loadDetail(item.id).catch(error => message(error.message, true)));
     const meta = document.createElement('p'); meta.textContent = `${item.status} · ${item.createdAt} · ${item.submittedBy || 'Anonymous'} · ${item.hasCode ? 'New JavaScript' : 'Installed engine'}${item.live ? ` · live revision ${item.publishedRevision}` : ''}`;
     li.append(button, meta); $('review-queue').append(li); before = item.id;

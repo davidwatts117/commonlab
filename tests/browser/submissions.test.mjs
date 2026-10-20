@@ -11,6 +11,7 @@ const root = new URL('../../', import.meta.url);
 const token = 'browser-test-only-administrator-token-00000000';
 const workerToken = 'browser-test-only-worker-token-00000000000';
 
+const stripAnsi = text => text.split(String.fromCharCode(27)).map((part, index) => index === 0 ? part : part.replace(/^\[[0-9;]*m/, '')).join('');
 test('public authoring and private moderation in a real browser', { timeout: 120_000 }, async t => {
   const storage = mkdtempSync(join(tmpdir(), 'commonlab-submission-browser-'));
   const server = spawn(new URL('target/debug/commonlab', root).pathname, [], {
@@ -26,7 +27,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       server.once('exit', code => { clearTimeout(timer); reject(new Error(`Server exited: ${code}, ${output}`)); });
       server.stderr.on('data', chunk => { output += chunk; });
       server.stdout.on('data', chunk => {
-        output += chunk.toString().replace(/\x1b\[[0-9;]*m/g, '');
+        output += stripAnsi(chunk.toString());
         const address = /address=(127\.0\.0\.1:\d+)/.exec(output);
         if (address) { clearTimeout(timer); resolve(`http://${address[1]}`); }
       });
@@ -257,7 +258,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.waitForFunction(() => document.getElementById('generation-events').textContent.includes('Checking the current development stage'), { timeout: 10_000 });
       const rejected = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/progress`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, code: 'validation_failed', details: { turn: 1, phase: 'definition', tool: 'define_simulation', toolStatus: 'error', issues: [{ path: '/controls/0/value', rule: 'required' }] } } });
       assert.equal(rejected.status(), 200);
-      await author.waitForFunction(() => document.getElementById('generation-events').textContent.includes('/controls/0/value — Required field is missing.'), { timeout: 10_000 });
+      await author.waitForFunction(() => document.getElementById('generation-events').textContent.includes('/controls/0/value: Required field is missing.'), { timeout: 10_000 });
       assert.ok((await author.locator('#generation-events').innerText()).includes('Stage: Controls and definition'));
       assert.ok((await author.locator('#generation-events').innerText()).includes('Tool: define_simulation (error)'));
       const definition = { id: job.simulationId, title: 'AI spring draft', subject: 'physics', summary: 'A private generated draft.', canvas: { id: 'scene', label: 'Spring scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
