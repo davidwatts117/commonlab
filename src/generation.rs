@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use subtle::ConstantTimeEq;
 
@@ -39,6 +39,8 @@ pub fn router(state: SubmissionState) -> Router {
         .route("/api/generation/jobs", get(list).post(create))
         .route("/api/generation/jobs/{id}", get(detail))
         .route("/api/generation/jobs/{id}/cancel", post(cancel))
+        .route("/api/generation/jobs/{id}/events", get(events))
+        .route("/api/worker/generation/{id}/progress", post(progress))
         .route("/api/admin/generation/access", post(access))
         .route("/api/worker/generation/claim", post(claim))
         .route("/api/worker/generation/{id}/check", post(check))
@@ -93,6 +95,236 @@ fn lease_conflict() -> ApiError {
         "Worker lease is expired, cancelled or no longer current",
     )
 }
+const ACTIVITY_CODES: &[&str] = &[
+    "model_request",
+    "reference_contract",
+    "reference_schema",
+    "validating",
+    "validation_passed",
+    "validation_failed",
+    "finalized",
+    "provider_error",
+    "request_limit",
+    "context_limit",
+    "not_finalized",
+    "timeout",
+    "output_limit",
+    "worker_error",
+    "model_finished",
+    "duplicate_draft",
+    "tool_batch_rejected",
+    "repairing",
+    "provider_auth",
+    "provider_rate_limit",
+    "provider_unavailable",
+    "output_truncated",
+    "repair_limit",
+    "no_progress",
+    "tool_protocol",
+    "configuration_error",
+    "development_stage",
+    "stage_completed",
+    "tool_result",
+];
+#[derive(Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct Diagnostics {
+    turn: Option<u32>,
+    attempt: Option<u32>,
+    requests: Option<u32>,
+    context_bytes: Option<u32>,
+    input_tokens: Option<u32>,
+    output_tokens: Option<u32>,
+    tool_calls: Option<u32>,
+    validations: Option<u32>,
+    duplicates: Option<u32>,
+    stop_reason: Option<String>,
+    phase: Option<String>,
+    tool: Option<String>,
+    tool_status: Option<String>,
+    issues: Vec<DiagnosticIssue>,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticIssue {
+    path: String,
+    rule: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    column: Option<u32>,
+}
+impl Diagnostics {
+    fn validate(&self) -> Result<(), ApiError> {
+        let bad = || {
+            error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Invalid bounded generation diagnostics",
+            )
+        };
+        if [
+            self.turn,
+            self.attempt,
+            self.requests,
+            self.context_bytes,
+            self.input_tokens,
+            self.output_tokens,
+            self.tool_calls,
+            self.validations,
+            self.duplicates,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|n| n > 10_000_000)
+            || self.stop_reason.as_deref().is_some_and(|s| {
+                ![
+                    "stop", "length", "toolUse", "error", "aborted", "deferred", "unknown",
+                ]
+                .contains(&s)
+            })
+            || self
+                .phase
+                .as_deref()
+                .is_some_and(|s| !["plan", "definition", "implementation"].contains(&s))
+            || self.tool.as_deref().is_some_and(|s| {
+                ![
+                    "plan_simulation",
+                    "define_simulation",
+                    "submit_draft",
+                    "authoring_reference",
+                    "unknown",
+                ]
+                .contains(&s)
+            })
+            || self
+                .tool_status
+                .as_deref()
+                .is_some_and(|s| !["ok", "error", "blocked"].contains(&s))
+            || self.issues.len() > 5
+        {
+            return Err(bad());
+        }
+        static PROPERTIES: std::sync::LazyLock<std::collections::HashSet<String>> =
+            std::sync::LazyLock::new(|| {
+                fn collect(value: &Value, names: &mut std::collections::HashSet<String>) {
+                    match value {
+                        Value::Object(map) => {
+                            if let Some(Value::Object(props)) = map.get("properties") {
+                                names.extend(props.keys().cloned());
+                            }
+                            for child in map.values() {
+                                collect(child, names);
+                            }
+                        }
+                        Value::Array(items) => {
+                            for child in items {
+                                collect(child, names);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let mut names =
+                    std::collections::HashSet::from(["definition".into(), "moduleCode".into()]);
+                let schema: Value =
+                    serde_json::from_str(include_str!("../schema/simulation.schema.json"))
+                        .expect("embedded schema");
+                collect(&schema, &mut names);
+                names
+            });
+        const RULES: &[&str] = &[
+            "required",
+            "type",
+            "additionalProperties",
+            "enum",
+            "const",
+            "minimum",
+            "maximum",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+            "pattern",
+            "oneOf",
+            "anyOf",
+            "schema",
+            "definition_size",
+            "module_size",
+            "assigned_id",
+            "slot_ids",
+            "range",
+            "question_keys",
+            "lesson_references",
+            "cross_field",
+            "javascript_syntax",
+            "module_scope",
+            "imports",
+            "mount",
+        ];
+        for issue in &self.issues {
+            if issue.line.is_some_and(|n| n == 0 || n > 1_000_000)
+                || issue.column.is_some_and(|n| n > 1_000_000)
+                || !RULES.contains(&issue.rule.as_str())
+                || issue.path.len() > 180
+                || !issue.path.starts_with('/')
+                || issue.path.split('/').any(|s| {
+                    !s.is_empty()
+                        && s != "*"
+                        && !PROPERTIES.contains(s)
+                        && !(s.len() <= 5 && s.bytes().all(|c| c.is_ascii_digit()))
+                })
+            {
+                return Err(bad());
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Progress {
+    lease: String,
+    code: String,
+    #[serde(default)]
+    details: Diagnostics,
+}
+async fn progress(
+    State(s): State<SubmissionState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+    Json(input): Json<Progress>,
+) -> Result<Json<Value>, ApiError> {
+    worker(&s, &headers)?;
+    if !ACTIVITY_CODES.contains(&input.code.as_str()) {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Unknown activity code",
+        ));
+    }
+    input.details.validate()?;
+    let hash = digest(&input.lease);
+    s.store.run(move |c| {
+        let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(internal)?;
+        expire(&tx)?;
+        tx.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(())).optional().map_err(internal)?.ok_or_else(lease_conflict)?;
+        tx.execute("INSERT INTO generation_events(job_id,code,details) SELECT ?1,?2,?3 WHERE (SELECT COUNT(*) FROM generation_events WHERE job_id=?1)<100", params![id, input.code, serde_json::to_string(&input.details).map_err(internal)?]).map_err(internal)?;
+        tx.commit().map_err(internal)
+    }).await?;
+    Ok(Json(json!({"recorded":true})))
+}
+async fn events(
+    State(s): State<SubmissionState>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>, ApiError> {
+    let user = crate::auth::account(&s.store, &headers, s.secure_cookies).await?;
+    let items = s.store.run(move |c| {
+        c.query_row("SELECT id FROM generation_jobs WHERE id=?1 AND contributor_id=?2", params![id,user.id], |_| Ok(())).optional().map_err(internal)?.ok_or_else(not_found)?;
+        let mut q = c.prepare("SELECT id,code,created_at,details FROM generation_events WHERE job_id=?1 ORDER BY id LIMIT 100").map_err(internal)?;
+        q.query_map([id], |r| Ok(json!({"id":r.get::<_,i64>(0)?,"code":r.get::<_,String>(1)?,"createdAt":r.get::<_,i64>(2)?,"details":serde_json::from_str::<Value>(&r.get::<_,String>(3)?).unwrap_or_default()}))).map_err(internal)?.collect::<Result<Vec<_>,_>>().map_err(internal)
+    }).await?;
+    Ok(Json(json!({"items":items})))
+}
 async fn config(
     State(s): State<SubmissionState>,
     headers: HeaderMap,
@@ -109,9 +341,17 @@ async fn config(
             .map_err(internal)
         })
         .await?;
-    Ok(Json(
-        json!({"enabled":s.generation.is_some(),"allowed":allowed,"perDay":3,"globalPerDay":20,"maxPromptBytes":8000}),
-    ))
+    let limits = s
+        .store
+        .run(|c| crate::limits::Limits::load(c).map_err(internal))
+        .await?;
+    Ok(Json(json!({
+        "enabled": s.generation.is_some(),
+        "allowed": allowed,
+        "perDay": limits.generation_per_day,
+        "globalPerDay": limits.generation_global_per_day,
+        "maxPromptBytes": limits.generation_max_prompt_bytes,
+    })))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -127,13 +367,21 @@ async fn create(
     require_enabled(&s)?;
     crate::auth::csrf(&headers)?;
     let user = crate::auth::account(&s.store, &headers, s.secure_cookies).await?;
-    if !input.accept_provider_processing
-        || input.prompt.trim().is_empty()
-        || input.prompt.len() > 8000
-    {
+    let limits = s
+        .store
+        .run(|c| crate::limits::Limits::load(c).map_err(internal))
+        .await?;
+    let max_prompt = usize::try_from(limits.generation_max_prompt_bytes).unwrap_or(8000);
+    if !input.accept_provider_processing || input.prompt.trim().is_empty() {
         return Err(error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "Provide a prompt of 1–8000 UTF-8 bytes and consent to provider processing",
+            "Provide a prompt and consent to provider processing",
+        ));
+    }
+    if input.prompt.len() > max_prompt {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("Prompts are limited to {max_prompt} UTF-8 bytes; shorten the request"),
         ));
     }
     let slug = format!("ai-{}", &random_hex()?[..24]);
@@ -168,7 +416,13 @@ async fn create(
                     |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
                 )
                 .map_err(internal)?;
-            if total >= 500 || day >= 20 || personal >= 3 || active > 0 || queue >= 10 {
+            let limits = crate::limits::Limits::load(&tx).map_err(internal)?;
+            if total >= limits.generation_retained_jobs
+                || day >= limits.generation_global_per_day
+                || personal >= limits.generation_per_day
+                || active > 0
+                || queue >= limits.generation_active_global
+            {
                 return Err(error(
                     StatusCode::TOO_MANY_REQUESTS,
                     "Generation capacity or quota reached; only one active request per contributor is allowed",
@@ -200,7 +454,7 @@ async fn list(
             expire(c)?;
             let mut q = c
                 .prepare(
-                    "SELECT id, status, created_at, finished_at, error, model FROM generation_jobs \
+                    "SELECT id, status, created_at, finished_at, error, model, diagnostics FROM generation_jobs \
                      WHERE contributor_id = ?1 ORDER BY id DESC LIMIT 50",
                 )
                 .map_err(internal)?;
@@ -212,6 +466,7 @@ async fn list(
                     "finishedAt": r.get::<_, Option<i64>>(3)?,
                     "error": r.get::<_, String>(4)?,
                     "model": r.get::<_, String>(5)?,
+                    "diagnostics": serde_json::from_str::<Value>(&r.get::<_, String>(6)?).unwrap_or_default(),
                 }))
             })
             .map_err(internal)?
@@ -232,7 +487,7 @@ async fn detail(
         .run(move |c| {
             expire(c)?;
             c.query_row(
-                "SELECT prompt, simulation_id, status, artifact, error, model FROM generation_jobs \
+                "SELECT prompt, simulation_id, status, artifact, error, model, diagnostics FROM generation_jobs \
                  WHERE id = ?1 AND contributor_id = ?2",
                 params![id, user.id],
                 |r| {
@@ -244,6 +499,7 @@ async fn detail(
                         "artifact": r.get::<_, Option<String>>(3)?,
                         "error": r.get::<_, String>(4)?,
                         "model": r.get::<_, String>(5)?,
+                        "diagnostics": serde_json::from_str::<Value>(&r.get::<_, String>(6)?).unwrap_or_default(),
                     }))
                 },
             )
@@ -461,6 +717,10 @@ struct Complete {
     lease: String,
     artifact: Option<Artifact>,
     model: String,
+    #[serde(default)]
+    failure: Option<String>,
+    #[serde(default)]
+    diagnostics: Diagnostics,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -475,6 +735,7 @@ async fn complete(
     Json(input): Json<Complete>,
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
+    input.diagnostics.validate()?;
     if input.model.is_empty() || input.model.len() > 200 {
         return Err(error(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -526,13 +787,34 @@ async fn complete(
                 (
                     "failed",
                     None,
-                    "Generation failed or hit a worker limit; start a new request to retry.",
+                    match input.failure.as_deref() {
+                        Some("timeout") => "The agent exceeded the five-minute time limit. Try a smaller simulation.",
+                        Some("output_limit") => "The generated output exceeded the size limit. Reduce the scope.",
+                        Some("request_limit") => "The agent exhausted its model request budget before completing a valid draft.",
+                        Some("context_limit") => "The agent exceeded its context budget. Try fewer requirements.",
+                        Some("provider_error") => "The AI provider request failed. The operator should check model availability, credentials and billing.",
+                        Some("provider_auth") => "The provider rejected authentication. Ask the operator to check the configured model key and permissions.",
+                        Some("provider_rate_limit") => "The provider reported a rate, quota or billing limit. Ask the operator to check provider usage and credits.",
+                        Some("provider_unavailable") => "The provider was unavailable or timed out. No automatic model retry was made.",
+                        Some("output_truncated") => "The model twice exceeded its response-token limit. No incomplete tool calls were executed; try a smaller simulation.",
+                        Some("repair_limit") => "The agent reached its draft repair limit. See the last validation diagnostics for the unresolved problems.",
+                        Some("no_progress") => "The agent stopped making progress: it repeated an invalid draft or failed to submit usable changes.",
+                        Some("tool_protocol") => "The model repeatedly violated the tool-call protocol. Batched draft submissions were blocked.",
+                        Some("configuration_error") => "The generation model or worker configuration is invalid. Ask the operator to check it.",
+                        Some("not_finalized") => "The agent stopped without finalizing a valid draft. Try a narrower, clearer request.",
+                        _ => "The worker could not complete this request. Ask the operator to check worker health.",
+                    },
                 )
             };
+            let diagnostics = serde_json::to_string(&input.diagnostics).map_err(internal)?;
+            // Reserve terminal visibility even if an older worker filled the activity cap.
+            tx.execute("DELETE FROM generation_events WHERE id=(SELECT MIN(id) FROM generation_events WHERE job_id=?1) AND (SELECT COUNT(*) FROM generation_events WHERE job_id=?1)>=100", [id]).map_err(internal)?;
+            let terminal = if status == "succeeded" { "finalized" } else { input.failure.as_deref().filter(|code| ACTIVITY_CODES.contains(code)).unwrap_or("worker_error") };
+            tx.execute("INSERT INTO generation_events(job_id,code,details) VALUES (?1,?2,?3)", params![id,terminal,diagnostics]).map_err(internal)?;
             tx.execute(
                 "UPDATE generation_jobs SET status = ?1, artifact = ?2, error = ?3, model = ?4, \
-                 finished_at = unixepoch(), lease_hash = NULL WHERE id = ?5",
-                params![status, artifact, message, input.model, id],
+                 finished_at = unixepoch(), lease_hash = NULL, diagnostics = ?6 WHERE id = ?5",
+                params![status, artifact, message, input.model, id, diagnostics],
             )
             .map_err(internal)?;
             tx.commit().map_err(internal)

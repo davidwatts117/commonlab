@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- This document only ever runs inside a sandboxed, opaque-origin frame. It has
+       no network access, no cookies, no storage and no access to the host page. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Isolated simulation run</title>
+  <link rel="stylesheet" href="/main.css">
+  <link rel="stylesheet" href="/simulation.css">
+</head>
+<body class="paper">
+  <p id="sandbox-status" role="status">Waiting for a draft to run…</p>
+  <div id="sandbox-root"></div>
+  <script src="/library.js"></script>
+  <script src="/cfu.js"></script>
+  <script src="/guided.js"></script>
+  <script type="module" src="/sandbox-runner.mjs"></script>
+</body>
+</html>

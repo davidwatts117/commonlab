@@ -4,7 +4,7 @@ All seven simulations use **one page**, `public/simulation.html`, and **one styl
 
 ## Add a simulation
 
-**Through the UI:** open `/submit.html`, select an installed engine or supply new module code, use the visual explanation/question editors (or advanced JSON), and submit a private draft. Complete-bundle download/restore saves both the definition and its engine choice/code without executing the source. A trusted maintainer reviews/publishes it at `/review.html`; SQLite-backed publications appear immediately, without a restart. Layout previews never execute submitted engines and use namespaced DOM IDs so draft slots cannot shadow author/reviewer controls. See [Submission setup and safety](submissions.md).
+**Through the UI:** open `/submit.html`, select an installed engine or supply new module code, use the visual explanation/question editors (or advanced JSON), optionally run the engine in the isolated sandboxed preview, and submit a private draft. Complete-bundle download/restore saves both the definition and its engine choice/code without executing the source. A trusted maintainer reviews/publishes it at `/review.html`; SQLite-backed publications appear immediately, without a restart. Layout previews never execute submitted engines and use namespaced DOM IDs so draft slots cannot shadow author/reviewer controls. See [Submission setup and safety](submissions.md).
 
 **Through the repository:**
 

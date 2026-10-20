@@ -229,6 +229,7 @@ pub fn router(state: SubmissionState) -> Router {
         .route("/api/submissions/engines", get(engines))
         .route("/api/submissions", post(submit))
         .route("/api/admin/submissions", get(list))
+        .route("/api/admin/limits", get(limits_get).put(limits_put))
         .route("/api/admin/submissions/{id}", get(detail))
         .route("/api/admin/submissions/{id}/review", post(review))
         .route("/simulations/catalog.json", get(catalog))
@@ -254,6 +255,43 @@ pub(crate) fn page(mut items: Vec<Value>) -> Json<Value> {
     let has_more = items.len() > PAGE;
     items.truncate(PAGE);
     Json(json!({"items": items, "hasMore": has_more}))
+}
+async fn limits_get(
+    State(state): State<SubmissionState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    state.authorize(&headers)?;
+    let limits = state
+        .store
+        .run(|connection| crate::limits::Limits::load(connection).map_err(internal))
+        .await?;
+    Ok(Json(
+        json!({"limits": limits.json(), "defaults": crate::limits::Limits::defaults_json()}),
+    ))
+}
+async fn limits_put(
+    State(state): State<SubmissionState>,
+    headers: HeaderMap,
+    Json(input): Json<crate::limits::Change>,
+) -> Result<Json<Value>, ApiError> {
+    state.authorize(&headers)?;
+    let limits = state
+        .store
+        .run(move |connection| {
+            let tx = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(internal)?;
+            crate::limits::Limits::default()
+                .save(&tx, &input.limits)
+                .map_err(|message| error(StatusCode::UNPROCESSABLE_ENTITY, message))?;
+            let limits = crate::limits::Limits::load(&tx).map_err(internal)?;
+            tx.commit().map_err(internal)?;
+            Ok(limits)
+        })
+        .await?;
+    Ok(Json(
+        json!({"limits": limits.json(), "defaults": crate::limits::Limits::defaults_json()}),
+    ))
 }
 async fn config(State(state): State<SubmissionState>) -> Json<Value> {
     Json(

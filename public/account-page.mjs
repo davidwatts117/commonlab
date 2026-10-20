@@ -6,6 +6,13 @@ function display(account) {
   $('account-name').textContent = account ? `Signed in as ${account.username}` : '';
   $('account-password').value = ''; $('account-confirm').value = '';
   message(account ? 'Your contributor session is active.' : 'Sign in to submit simulations, or create an account.');
+  const link = document.querySelector('a[href="/generate.html"]');
+  link.hidden = true;
+  if (account) contributorRequest('/api/generation/config').then(config => {
+    if (!$('account-signed-in').hidden && $('account-name').textContent === `Signed in as ${account.username}`) {
+      link.hidden = !config.allowed; link.textContent = 'Generate a simulation with AI →';
+    }
+  }).catch(() => {});
 }
 $('account-action').addEventListener('change', () => {
   const registration = $('account-action').value === 'register';

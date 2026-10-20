@@ -3,16 +3,22 @@ import { renderSimulation } from './simulation-ui.mjs';
 import { contributorRequest, currentContributor } from './contributor-api.mjs';
 import { contentEditor } from './content-editor.mjs';
 import { createBundle, parseBundle, submissionRequest, MAX_BUNDLE_BYTES } from './submission-bundle.mjs';
+import { runIsolatedPreview } from './simulation-run-preview.mjs';
 
 const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, enabled = false, installedIds = [], signedIn = false, editing = null, generated = false;
+let catalog, preview, running, enabled = false, installedIds = [], signedIn = false, editing = null, generated = false;
+function stopRun() { running?.destroy(); running = undefined; $('run-section').hidden = true; $('run-status').textContent = ''; }
 async function refreshContributor() {
   const account = await currentContributor(); signedIn = !!account;
   $('contributor-status').textContent = account ? `Signed in as ${account.username}. New submissions belong to your account.` : 'Sign in or create a contributor account to submit. You can still draft and download without an account.';
   $('submit-draft').disabled = !enabled || !signedIn;
+  $('authoring-ai-link').hidden = true;
+  if (account) {
+    try { const config = await contributorRequest('/api/generation/config'); $('authoring-ai-link').hidden = !config.allowed; } catch { /* Drafting remains available if generation is unavailable. */ }
+  }
 }
 const editors = contentEditor($('content-editor'), editDraft, error => message(error, true));
 function message(text, error = false) { status.textContent = text; status.setAttribute('role', error ? 'alert' : 'status'); }
@@ -69,8 +75,9 @@ export function mount(ui) {
     onInit() { this.time = 0; }
     onTick(dt) { this.time += dt; }
     onDraw(ctx) {
-      ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = '#166534';
+      const theme = SimLib.Theme.use('light');
+      SimLib.Draw.paper(ctx, width, height, { theme });
+      ctx.fillStyle = theme.accent;
       ctx.beginPath();
       ctx.arc(width / 2 + 80 * Math.sin(this.time), height / 2, 18, 0, 2 * Math.PI);
       ctx.fill();
@@ -106,6 +113,7 @@ function loadTemplate() {
   $('module-section').hidden = engine !== 'new';
   if (!$('module-code').value) $('module-code').value = starter;
   preview?.destroy(); $('preview-section').hidden = true;
+  stopRun();
 }
 $('engine').addEventListener('change', loadTemplate);
 
@@ -159,6 +167,24 @@ $('validate-preview').addEventListener('click', () => {
     message('Definition validated. The layout is shown below; physics, lessons, and checks are not running.');
   } catch (error) { message(error.message, true); }
 });
+$('run-preview').addEventListener('click', () => {
+  try {
+    const def = readDefinition();
+    const engine = $('engine').value;
+    const engineId = engine && engine !== 'new' ? engine : undefined;
+    const moduleCode = engineId ? undefined : $('module-code').value;
+    if (!engineId && !moduleCode?.trim()) throw new Error('Paste or import the engine JavaScript before running it.');
+    if (moduleCode && byteLength(moduleCode) > MAX_MODULE) throw new Error('Engine source exceeds 128 KiB.');
+    running?.destroy();
+    $('run-section').hidden = false;
+    $('run-status').textContent = 'Starting an isolated frame…';
+    running = runIsolatedPreview($('run-preview-host'), {
+      definition: def, moduleCode, engineId,
+      status(text, error) { $('run-status').textContent = text; $('run-status').setAttribute('role', error ? 'alert' : 'status'); },
+    });
+    message('Running the engine in an isolated frame. Layout-only preview remains available separately.');
+  } catch (error) { stopRun(); message(error.message, true); }
+});
 function downloadJSON(value, filename) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2) + '\n'], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
@@ -208,7 +234,8 @@ $('bundle-file').addEventListener('change', async event => {
     $('submitted-by').value = bundle.submittedBy;
     writeDefinition(bundle.definition);
     preview?.destroy(); $('preview-section').hidden = true;
-    message('Complete submission restored. Engine source is text only; no code has run.');
+    stopRun();
+    message('Complete submission restored. Engine source is text only; choose Run preview to execute it.', true);
   } catch (error) { message(error.message, true); }
   finally { event.target.value = ''; }
 });
@@ -259,6 +286,7 @@ try {
 } catch (error) { message(`Unable to load the authoring interface: ${error.message}`, true); }
 window.addEventListener('pagehide', () => {
   preview?.destroy();
+  stopRun();
   if (editing || generated) { $('submission-form').reset(); $('content-editor').replaceChildren(); $('submission-fields').disabled = true; }
 });
 window.addEventListener('pageshow', event => { if (event.persisted && (editing || generated)) location.reload(); });

@@ -10,7 +10,7 @@
   <header class="site-header"><div class="container nav-container"><a class="logo" href="/">◆ CommonLab</a><nav aria-label="Authoring navigation"><a href="/submit.html">Submit a simulation</a> · <a href="/#simulations">Simulations</a></nav></div></header>
   <main class="container authoring-page">
     <h1>Review submissions</h1>
-    <p>Only trusted maintainers can publish simulations. Draft definitions and source code are private; neither authoring nor review previews execute submitted engines.</p>
+    <p>Only trusted maintainers can publish simulations. Draft definitions and source code are private. Layout previews never execute engines; an explicit isolated run is available and cannot reach your token, this page or the network.</p>
     <p id="review-status" role="status">Enter your administrator token to open the queue.</p>
     <form id="review-login" class="authoring-actions">
       <label>Administrator token<input id="admin-token" type="password" required autocomplete="off" spellcheck="false"></label>
@@ -20,6 +20,22 @@
     <section id="review-workspace" hidden>
       <details><summary>Manage AI generation access</summary><p>Grant only trusted contributors access. Revoking cancels their queued/running requests; previously generated drafts remain theirs. Grants do not give maintainer privileges.</p>
       <form id="generation-access-form"><label>Contributor username<input id="generation-username" required maxlength="32" autocomplete="off"></label><label>Permission<select id="generation-access"><option value="grant">Grant generation access</option><option value="revoke">Revoke generation access</option></select></label><button type="submit" class="sim-btn sim-btn--soft">Update access</button></form></details>
+      <details><summary>Manage request limits</summary>
+      <p>These quotas apply immediately and are stored in SQLite. Defaults are shown beside each field; leave the deployment-wide abuse limits high enough to protect the public queue. Concurrency rules (one running job globally, one active generation per contributor) are fixed policy.</p>
+      <p id="limits-status" role="status"></p>
+      <form id="limits-form">
+        <div class="authoring-fields">
+          <label>Submissions per hour<input id="limit-submissionsPerHour" type="number" required></label>
+          <label>Pending submissions<input id="limit-pendingSubmissions" type="number" required></label>
+          <label>Retained submission records<input id="limit-retainedSubmissions" type="number" required></label>
+          <label>AI generations per contributor per day<input id="limit-generationPerDay" type="number" required></label>
+          <label>AI generations per day (all contributors)<input id="limit-generationGlobalPerDay" type="number" required></label>
+          <label>Active AI requests allowed<input id="limit-generationActiveGlobal" type="number" required></label>
+          <label>Retained AI jobs<input id="limit-generationRetainedJobs" type="number" required></label>
+          <label>Maximum AI prompt bytes<input id="limit-generationMaxPromptBytes" type="number" required></label>
+        </div>
+        <button type="submit" class="sim-btn sim-btn--soft">Save limits</button>
+      </form></details>
       <div class="authoring-actions">
         <label>Queue status<select id="queue-status"><option value="pending">Pending</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option><option value="live">Live now (any status)</option></select></label>
         <button id="refresh-queue" type="button" class="sim-btn sim-btn--soft">Refresh queue</button>
@@ -33,9 +49,11 @@
         <div id="review-module-section" hidden><label>Submitted JavaScript (text only)<textarea id="review-module" class="code-editor" rows="18" readonly spellcheck="false"></textarea></label></div>
         <p id="review-engine"></p>
         <button id="review-preview-button" type="button" class="sim-btn sim-btn--soft">Preview definition layout only</button>
+        <button id="review-run-button" type="button" class="sim-btn sim-btn--soft">Run submitted engine (isolated)</button>
         <section id="review-preview-section" hidden><h3>Layout preview — no engine running</h3><div id="review-preview"></div></section>
+        <section id="review-run-section" hidden><h3>Isolated run</h3><p class="authoring-hint">Sandboxed without same-origin access: the engine cannot read this page, the administrator token, browser storage or the network. It can still consume CPU. This run is not a security or scientific audit.</p><p id="review-run-status" role="status"></p><div id="review-run-host"></div></section>
         <form id="review-form">
-          <p class="authoring-warning">Publishing new JavaScript grants it the same privileges as CommonLab's own code. Check every import and dependency, network/storage access, UI manipulation, scientific accuracy, slot bindings, and the mount contract. Test untrusted code only in an isolated disposable environment, never in this review tab. Clicking approval is not a security audit.</p>
+          <p class="authoring-warning">Publishing new JavaScript grants it the same privileges as CommonLab's own code. Check every import and dependency, network/storage access, UI manipulation, scientific accuracy, slot bindings, and the mount contract. An isolated run cannot prove safety: it sees no real credentials or production data, but approved code later runs with full page privileges. Clicking approval is not a security audit.</p>
           <label id="code-review-label"><input id="code-reviewed" type="checkbox"> I have personally reviewed this new engine and all its dependencies, and approve it as trusted same-origin application code.</label>
           <label>Review note — visible to the contributor (required for rejection or withdrawal)<textarea id="review-note" maxlength="1000" rows="3"></textarea></label>
           <div class="authoring-actions">

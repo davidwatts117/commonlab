@@ -1,9 +1,11 @@
 import { renderSimulation } from './simulation-ui.mjs';
+import { runIsolatedPreview } from './simulation-run-preview.mjs';
 const $ = id => document.getElementById(id);
-let token = '', selected = null, preview = null, before = null, session;
+let token = '', selected = null, preview = null, running = null, before = null, session;
 function message(text, error = false) { $('review-status').textContent = text; $('review-status').setAttribute('role', error ? 'alert' : 'status'); }
+function stopRun() { running?.destroy(); running = null; $('review-run-section').hidden = true; $('review-run-status').textContent = ''; }
 function clearDetail() {
-  selected = null; preview?.destroy(); preview = null;
+  selected = null; preview?.destroy(); preview = null; stopRun();
   $('review-detail').hidden = true; $('review-preview-section').hidden = true;
   for (const id of ['review-definition', 'review-module', 'review-note']) $(id).value = '';
   $('review-title').textContent = ''; $('review-meta').textContent = ''; $('review-engine').textContent = '';
@@ -64,11 +66,46 @@ async function loadDetail(id) {
   $('review-form').hidden = item.status !== 'pending' && !item.hasPublication;
   $('review-detail').hidden = false;
 }
+const LIMIT_FIELDS = ['submissionsPerHour', 'pendingSubmissions', 'retainedSubmissions', 'generationPerDay', 'generationGlobalPerDay', 'generationActiveGlobal', 'generationRetainedJobs', 'generationMaxPromptBytes'];
+function showLimits(data) {
+  for (const key of LIMIT_FIELDS) {
+    const input = $(`limit-${key}`);
+    input.value = data.limits[key];
+    const meta = data.defaults[key];
+    input.min = meta.min; input.max = meta.max;
+    input.title = `Default ${meta.default}; allowed ${meta.min}-${meta.max}`;
+    input.setAttribute('aria-describedby', 'limits-status');
+  }
+}
+async function loadLimits() {
+  try {
+    showLimits(await api('/api/admin/limits'));
+    $('limits-status').textContent = 'Limits loaded. Defaults and allowed ranges are shown as tooltips.';
+  } catch (error) {
+    $('limits-status').textContent = error.message;
+    $('limits-status').setAttribute('role', 'alert');
+  }
+}
+$('limits-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.target.querySelector('button'); button.disabled = true;
+  try {
+    const limits = {};
+    for (const key of LIMIT_FIELDS) limits[key] = Number($(`limit-${key}`).value);
+    showLimits(await api('/api/admin/limits', { method: 'PUT', body: JSON.stringify({ limits }) }));
+    $('limits-status').textContent = 'Limits saved and now enforced.';
+    $('limits-status').setAttribute('role', 'status');
+  } catch (error) {
+    $('limits-status').textContent = error.message;
+    $('limits-status').setAttribute('role', 'alert');
+  } finally { button.disabled = false; }
+});
 $('review-login').addEventListener('submit', async event => {
   event.preventDefault(); session?.abort(); session = new AbortController();
   token = $('admin-token').value.trim(); $('admin-token').value = '';
   try {
-    await loadQueue(); $('review-workspace').hidden = false; $('review-login').hidden = true;
+    await loadQueue(); await loadLimits();
+    $('review-workspace').hidden = false; $('review-login').hidden = true;
   } catch (error) { lock(); message(error.message, true); }
 });
 $('lock-queue').addEventListener('click', lock);
@@ -81,6 +118,21 @@ $('review-preview-button').addEventListener('click', () => {
     preview?.destroy(); preview = renderSimulation($('review-preview'), selected.definition, { idPrefix: 'review-preview-' });
     $('review-preview-section').hidden = false; message('Layout preview only. No submitted code has run.');
   } catch (error) { message(error.message, true); }
+});
+$('review-run-button').addEventListener('click', () => {
+  try {
+    if (!selected) return;
+    running?.destroy();
+    $('review-run-section').hidden = false;
+    $('review-run-status').textContent = 'Starting an isolated frame…';
+    running = runIsolatedPreview($('review-run-host'), {
+      definition: selected.definition,
+      moduleCode: selected.moduleCode || undefined,
+      engineId: selected.engineId || undefined,
+      status(text, error) { $('review-run-status').textContent = text; $('review-run-status').setAttribute('role', error ? 'alert' : 'status'); },
+    });
+    message('Submitted engine is running in an isolated frame. No token or host page access is exposed.');
+  } catch (error) { stopRun(); message(error.message, true); }
 });
 $('review-form').addEventListener('submit', async event => {
   event.preventDefault(); if (!selected) return;

@@ -20,4 +20,12 @@ services:
       CL_MODEL_ID: ${CL_MODEL_ID:?Select an explicit model}
       CL_MODEL_API_KEY: ${CL_MODEL_API_KEY:?Set a dedicated provider API key}
       CL_WORKER_ALLOW_HTTP: ${CL_WORKER_ALLOW_HTTP:-false}
+      CL_AGENT_TRACE_DIR: ${CL_AGENT_TRACE_DIR:-}
+      CL_AGENT_TRACE_MAX_FILES: ${CL_AGENT_TRACE_MAX_FILES:-50}
+      CL_AGENT_TRACE_MAX_BYTES: ${CL_AGENT_TRACE_MAX_BYTES:-8388608}
+      CL_AGENT_TRACE_MAX_DAYS: ${CL_AGENT_TRACE_MAX_DAYS:-7}
+    volumes:
+      - generation-traces:/var/lib/commonlab/agent-traces
     restart: unless-stopped
+volumes:
+  generation-traces:
