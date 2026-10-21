@@ -12,7 +12,13 @@ export const schema = loadSchema();
 const diagnosticSchema = structuredClone(schema);
 diagnosticSchema.$defs.component.discriminator = { propertyName: 'type' };
 const validateSchema = new Ajv({ strict: false, allErrors: true, discriminator: true }).compile(diagnosticSchema);
-export const LIMITS = Object.freeze({ requests: 6, repairs: 4, duplicates: 2, stalledTurns: 2, toolCallsPerTurn: 3, maxTokens: 8192, contextBytes: 128 * 1024, runtimeMs: 300_000, outputBytes: 220 * 1024 });
+export const LIMITS = Object.freeze({
+  requests: 10, repairs: 4, duplicates: 2, stalledTurns: 2, toolCallsPerTurn: 3,
+  // Stage budgets: plans are short, definitions are data-heavy, engines are largest.
+  maxTokensPlan: 4096, maxTokensDefinition: 16384, maxTokensImplementation: 32768,
+  maxTokensCeiling: 65536, maxTokens: 32768, truncations: 3,
+  contextBytes: 256 * 1024, runtimeMs: 600_000, outputBytes: 220 * 1024,
+});
 const propertyNames = new Set(['definition', 'moduleCode']);
 function collectProperties(node) {
   if (!node || typeof node !== 'object') return;

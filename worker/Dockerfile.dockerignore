@@ -3,8 +3,9 @@
 !worker/package.json
 !worker/package-lock.json
 !worker/*.mjs
+!worker/models.json
 !public/
-!public/simulation-schema.mjs
+!public/**
 !schema/
 !schema/simulation.schema.json
 !docs/

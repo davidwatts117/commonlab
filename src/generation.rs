@@ -125,6 +125,13 @@ const ACTIVITY_CODES: &[&str] = &[
     "development_stage",
     "stage_completed",
     "tool_result",
+    "draft_ready",
+    "verifying",
+    "visual_check_passed",
+    "visual_check_failed",
+    "review_started",
+    "review_passed",
+    "review_failed",
 ];
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields, rename_all = "camelCase")]
@@ -138,6 +145,14 @@ struct Diagnostics {
     tool_calls: Option<u32>,
     validations: Option<u32>,
     duplicates: Option<u32>,
+    max_tokens: Option<u32>,
+    verification_rounds: Option<u32>,
+    review_rounds: Option<u32>,
+    tests: Option<u32>,
+    tests_passed: Option<u32>,
+    tests_failed: Option<u32>,
+    canvases: Option<u32>,
+    defects: Option<u32>,
     stop_reason: Option<String>,
     phase: Option<String>,
     tool: Option<String>,
@@ -172,6 +187,14 @@ impl Diagnostics {
             self.tool_calls,
             self.validations,
             self.duplicates,
+            self.max_tokens,
+            self.verification_rounds,
+            self.review_rounds,
+            self.tests,
+            self.tests_passed,
+            self.tests_failed,
+            self.canvases,
+            self.defects,
         ]
         .into_iter()
         .flatten()
@@ -191,6 +214,7 @@ impl Diagnostics {
                     "plan_simulation",
                     "define_simulation",
                     "submit_draft",
+                    "review_critique",
                     "authoring_reference",
                     "unknown",
                 ]

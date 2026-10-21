@@ -1,6 +1,6 @@
 // Only bounded, value-free diagnostics cross the child/API boundary. Never forward raw exceptions.
 export const FAILURE_CODES = new Set(['timeout', 'output_limit', 'request_limit', 'context_limit', 'provider_error', 'provider_auth', 'provider_rate_limit', 'provider_unavailable', 'output_truncated', 'repair_limit', 'no_progress', 'tool_protocol', 'not_finalized', 'worker_error', 'configuration_error']);
-export const ACTIVITY_CODES = new Set(['model_request', 'model_finished', 'reference_contract', 'reference_schema', 'validating', 'validation_passed', 'validation_failed', 'finalized', 'duplicate_draft', 'tool_batch_rejected', 'repairing', 'development_stage', 'stage_completed', 'tool_result', ...FAILURE_CODES]);
+export const ACTIVITY_CODES = new Set(['model_request', 'model_finished', 'reference_contract', 'reference_schema', 'validating', 'validation_passed', 'validation_failed', 'finalized', 'duplicate_draft', 'tool_batch_rejected', 'repairing', 'development_stage', 'stage_completed', 'tool_result', 'draft_ready', 'verifying', 'visual_check_passed', 'visual_check_failed', 'review_started', 'review_passed', 'review_failed', ...FAILURE_CODES]);
 export const RULES = new Set(['required', 'type', 'additionalProperties', 'enum', 'const', 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'pattern', 'oneOf', 'anyOf', 'schema', 'definition_size', 'module_size', 'assigned_id', 'slot_ids', 'range', 'question_keys', 'lesson_references', 'cross_field', 'javascript_syntax', 'module_scope', 'imports', 'mount']);
 const STOP_REASONS = new Set(['stop', 'length', 'toolUse', 'error', 'aborted', 'deferred', 'unknown']);
 export class GenerationError extends Error {
@@ -20,12 +20,12 @@ export function providerFailure(message = '') {
 export function safeDetails(value = {}) {
   const result = {};
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
-  for (const key of ['turn', 'attempt', 'requests', 'contextBytes', 'inputTokens', 'outputTokens', 'toolCalls', 'validations', 'duplicates']) {
+  for (const key of ['turn', 'attempt', 'requests', 'contextBytes', 'inputTokens', 'outputTokens', 'toolCalls', 'validations', 'duplicates', 'maxTokens', 'verificationRounds', 'reviewRounds', 'tests', 'testsPassed', 'testsFailed', 'canvases', 'defects']) {
     if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 10_000_000) result[key] = value[key];
   }
   if (STOP_REASONS.has(value.stopReason)) result.stopReason = value.stopReason;
   if (['plan', 'definition', 'implementation'].includes(value.phase)) result.phase = value.phase;
-  if (['plan_simulation', 'define_simulation', 'submit_draft', 'authoring_reference', 'unknown'].includes(value.tool)) result.tool = value.tool;
+  if (['plan_simulation', 'define_simulation', 'submit_draft', 'review_critique', 'authoring_reference', 'unknown'].includes(value.tool)) result.tool = value.tool;
   if (['ok', 'error', 'blocked'].includes(value.toolStatus)) result.toolStatus = value.toolStatus;
   if (Array.isArray(value.issues)) result.issues = value.issues.slice(0, 5).filter(issue => issue && RULES.has(issue.rule) && typeof issue.path === 'string' && issue.path.length <= 180 && /^[/A-Za-z0-9_*~-]*$/.test(issue.path)).map(({ path, rule, line, column }) => ({ path, rule, ...(Number.isInteger(line) && line > 0 && line <= 1_000_000 ? { line } : {}), ...(Number.isInteger(column) && column >= 0 && column <= 1_000_000 ? { column } : {}) }));
   return result;

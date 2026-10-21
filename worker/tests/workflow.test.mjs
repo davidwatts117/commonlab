@@ -4,7 +4,7 @@ import { generate } from '../runner.mjs';
 import { DraftWorkflow } from '../workflow.mjs';
 import { DraftValidationError, LIMITS, validateDraft } from '../policy.mjs';
 import { safeDetails, safeEvent } from '../protocol.mjs';
-import { job, simulationId, definition, plan, source, call, planRound, definitionRound, engineRound, streamMessage, modelEnvironment } from './fixtures.mjs';
+import { job, simulationId, definition, plan, source, call, planRound, definitionRound, engineRound, streamMessage, modelEnvironment, checks } from './fixtures.mjs';
 
 async function run(rounds, options = {}) {
   const restore = modelEnvironment();
@@ -62,7 +62,7 @@ test('definition mistakes are repaired before engine development and host assign
 });
 
 test('engine repair can adjust the definition explicitly while preserving plan and other accepted work', async () => {
-  const { result } = await run([...start(), engineRound(badSource), { content: [call('submit_draft', { moduleCode: source, definition: { ...definition, title: 'Revised spring' } })] }], {
+  const { result } = await run([...start(), engineRound(badSource), { content: [call('submit_draft', { moduleCode: source, tests: checks, definition: { ...definition, title: 'Revised spring' } })] }], {
     inspect(context, index) { if (index === 3) { const text = JSON.stringify(context); assert.ok(text.includes('syntax error')); assert.ok(text.includes('previousRejectedResult')); } },
   });
   assert.equal(result.artifact.definition.title, 'Revised spring');
@@ -92,12 +92,15 @@ test('four distinct rejected results exhaust repairs, successful stages do not',
   await assert.rejects(run([...start(), ...attempts]), error => error.code === 'repair_limit' && error.diagnostics.validations === 6 && error.diagnostics.issues[0].rule === 'javascript_syntax');
 });
 
-test('truncated calls never execute; recovery remains in the same stage and shortens the next response', async () => {
+test('truncated calls never execute and each one raises the output budget', async () => {
   const truncated = { ...planRound(), stopReason: 'length' };
-  const { result, events } = await run([truncated, ...start(), engineRound()]);
+  const budgets = [];
+  const { result, events } = await run([truncated, ...start(), engineRound()], { inspect: (_context, _index, options) => budgets.push(options.maxTokens) });
   assert.equal(result.diagnostics.validations, 3);
   assert.equal(events.filter(event => event.code === 'validating').length, 3);
-  await assert.rejects(run([truncated, truncated]), error => error.code === 'output_truncated' && error.diagnostics.validations === 0);
+  assert.deepEqual(budgets.slice(0, 3), [4096, 8192, 32768]);
+  assert.ok(events.some(event => event.code === 'model_request' && event.details.maxTokens === 8192));
+  await assert.rejects(run([truncated, truncated, truncated]), error => error.code === 'output_truncated' && error.diagnostics.validations === 0);
 });
 
 test('provider and host-budget errors preserve categories rather than reporting not-finalized', async () => {
@@ -145,4 +148,53 @@ test('stage rejection is an actual error tool result; successful stages require 
   flow.begin(); assert.equal(flow.submit({ definition }).isError, false);
   assert.equal(flow.toolName, 'submit_draft');
   flow.begin(); const result = flow.submit({ moduleCode: source }); assert.equal(result.isError, false); assert.equal(result.terminate, true);
+});
+
+const passedReport = () => ({ ok: true, runtimeErrors: [], consoleErrors: [], tests: { total: 1, passed: 1, failed: 0, results: [{ name: 'check', ok: true }] }, canvases: [{ id: 'scene', blank: false, distinctColors: 12 }], warnings: [], screenshots: [], durationMs: 5, summary: {} });
+test('a failed headless verification reopens engine work with concrete feedback', async () => {
+  let verifications = 0;
+  const verifyOverride = async () => {
+    if (verifications++ === 0) return { ok: false, runtimeErrors: [], consoleErrors: [], tests: { total: 1, passed: 0, failed: 1, results: [{ name: 'readout updates', ok: false, message: 'expected 2.0, got 0.0' }] }, canvases: [{ id: 'scene', blank: true, distinctColors: 1 }], warnings: [], screenshots: [], durationMs: 5, summary: {} };
+    return passedReport();
+  };
+  const { result, calls, events } = await run([...start(), engineRound(), engineRound()], {
+    verifyOverride,
+    inspect(context, index) {
+      if (index === 3) {
+        const text = JSON.stringify(context);
+        assert.match(text, /Headless verification FAILED/);
+        assert.match(text, /readout updates/);
+        assert.ok(text.includes('previousRejectedResult'));
+      }
+    },
+  });
+  assert.equal(calls, 4);
+  assert.equal(result.artifact.definition.id, simulationId);
+  assert.equal(verifications, 2);
+  assert.ok(events.some(event => event.code === 'visual_check_failed'));
+  assert.ok(events.some(event => event.code === 'visual_check_passed'));
+  assert.ok(events.some(event => event.code === 'finalized'));
+});
+test('an adversarial review can force a repair round and is skipped without a reviewer model', async () => {
+  let reviews = 0;
+  const reviewOverride = async () => {
+    if (reviews++ === 0) return { ok: true, verdict: 'fail', summary: 'The period is wrong.', defects: [{ severity: 'major', area: 'physics', problem: 'Period ignores mass.', evidence: 'Screenshot and test report.', fix: 'Use sqrt(m/k).' }], durationMs: 5 };
+    return { ok: true, verdict: 'pass', summary: 'No blocking defects.', defects: [], durationMs: 5 };
+  };
+  const { result, calls, events } = await run([...start(), engineRound(), engineRound()], {
+    verifyOverride: async () => passedReport(),
+    reviewOverride,
+    inspect(context, index) {
+      if (index === 3) {
+        const text = JSON.stringify(context);
+        assert.match(text, /INDEPENDENT ADVERSARIAL REVIEW/);
+        assert.match(text, /Period ignores mass/);
+      }
+    },
+  });
+  assert.equal(calls, 4);
+  assert.equal(reviews, 2);
+  assert.equal(result.artifact.definition.id, simulationId);
+  assert.ok(events.some(event => event.code === 'review_failed'));
+  assert.ok(events.some(event => event.code === 'review_passed'));
 });

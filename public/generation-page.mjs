@@ -3,11 +3,15 @@ const $ = id => document.getElementById(id);
 const activity = {
   model_request: 'Asking the model to author or refine the draft…',
   reference_contract: 'Reading the simulation authoring contract.', reference_schema: 'Reading the definition schema.',
-  validating: 'Checking the current development stage (no code execution).',
+  validating: 'Checking the current development stage.',
   validation_passed: 'Static validation passed.', validation_failed: 'Validation found problems; the agent can revise the draft.',
   finalized: 'Valid draft finalized for your review.', provider_error: 'The model provider request failed.',
+  draft_ready: 'Draft accepted; rendering it in headless Chromium.', verifying: 'Rendering the engine and running its checks in headless Chromium.',
+  visual_check_passed: 'Headless render and agent checks passed.', visual_check_failed: 'Headless render or agent checks failed; the agent is repairing the draft.',
+  review_started: 'An independent adversarial reviewer is inspecting the result.', review_passed: 'Independent review found no blocking defects.',
+  review_failed: 'Independent review filed defects; the agent is repairing the draft.',
   request_limit: 'Model request budget exhausted.', context_limit: 'Model context budget exceeded.',
-  not_finalized: 'The agent stopped without finalizing a valid draft.', timeout: 'Five-minute runtime limit reached.',
+  not_finalized: 'The agent stopped without finalizing a valid draft.', timeout: 'Ten-minute runtime limit reached.',
   output_limit: 'Output size limit reached.', worker_error: 'The worker could not finish the request.',
   development_stage: 'Developing the next stage of the simulation.', stage_completed: 'Development stage accepted.', tool_result: 'Stage tool completed.',
   model_finished: 'Model response received.', repairing: 'Preparing a focused repair turn with the latest draft and diagnostics.',
@@ -35,7 +39,7 @@ const rules = {
 };
 function diagnostics(parent, details = {}) {
   const stats = [];
-  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens']]) {
+  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens'], ['maxTokens', 'Output budget'], ['verificationRounds', 'Render checks'], ['reviewRounds', 'Review rounds'], ['tests', 'Agent checks'], ['testsPassed', 'Checks passed'], ['testsFailed', 'Checks failed'], ['defects', 'Review defects']]) {
     if (Number.isInteger(details[key])) stats.push(`${label}: ${details[key]}`);
   }
   const phases = { plan: 'Science plan', definition: 'Controls and definition', implementation: 'Engine implementation' };

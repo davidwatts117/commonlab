@@ -7,7 +7,8 @@ export const source = 'export function mount(ui) { return { app: {} }; }';
 export const call = (name, args, id = name) => ({ type: 'toolCall', name, arguments: args, id });
 export const planRound = () => ({ content: [call('plan_simulation', plan)] });
 export const definitionRound = (def = definition) => ({ content: [call('define_simulation', { definition: def })] });
-export const engineRound = (moduleCode = source) => ({ content: [call('submit_draft', { moduleCode })] });
+export const checks = { manifest: { cases: [{ name: 'mounts', steps: [{ action: 'expectCanvas', id: 'scene', nonBlank: true }] }] }, module: '' };
+export const engineRound = (moduleCode = source, tests = checks) => ({ content: [call('submit_draft', { moduleCode, tests })] });
 export function streamMessage(model, round) {
   const message = { role: 'assistant', content: round.content || [], api: model.api, provider: model.provider, model: model.id,
     usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },

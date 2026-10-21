@@ -26,7 +26,10 @@ export async function runChild(job, stillActive, { runtimeMs = LIMITS.runtimeMs,
       const child = spawn(process.execPath, [fileURLToPath(new URL('./runner.mjs', import.meta.url))], {
         cwd: dir, stdio: ['pipe', 'pipe', 'pipe', trace ? 'pipe' : 'ignore'],
         env: { PATH: process.env.PATH || '/usr/bin:/bin', HOME: dir, LANG: 'C.UTF-8',
-          CL_MODEL_PROVIDER: process.env.CL_MODEL_PROVIDER || '', CL_MODEL_ID: process.env.CL_MODEL_ID || '', CL_MODEL_API_KEY: process.env.CL_MODEL_API_KEY || '', CL_AGENT_TRACE_PIPE: trace ? '1' : '0' },
+          CL_MODEL_PROVIDER: process.env.CL_MODEL_PROVIDER || '', CL_MODEL_ID: process.env.CL_MODEL_ID || '', CL_MODEL_API_KEY: process.env.CL_MODEL_API_KEY || '',
+          CL_REVIEW_MODEL_PROVIDER: process.env.CL_REVIEW_MODEL_PROVIDER || '', CL_REVIEW_MODEL_ID: process.env.CL_REVIEW_MODEL_ID || '', CL_REVIEW_MODEL_API_KEY: process.env.CL_REVIEW_MODEL_API_KEY || '', CL_REVIEW_IMAGES: process.env.CL_REVIEW_IMAGES || '', CL_AUTHOR_IMAGES: process.env.CL_AUTHOR_IMAGES || '',
+          CL_PUBLIC_ROOT: process.env.CL_PUBLIC_ROOT || '/app/public', PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || '', PLAYWRIGHT_CHROMIUM_EXECUTABLE: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || '',
+          CL_AGENT_TRACE_PIPE: trace ? '1' : '0' },
       });
       let output = '', stopped = false, failure = 'worker_error', pending = '', eventBytes = 0, eventCount = 0, diagnostics = {};
       if (trace) {

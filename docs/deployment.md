@@ -191,7 +191,7 @@ The agent has only fixed-reference, validation, and finalization tools—no shel
 ### Limits and stopping behavior
 
 - Three attempts per contributor per rolling 24 hours; 20 globally; one running job globally. Failures/cancellations consume quota.
-- At most six provider requests per job, 8,192 output tokens per request, and five minutes of child-process runtime. Additional context/output limits apply.
+- At most ten author provider requests per job, stage-aware output budgets from 4,096 to 65,536 tokens, and ten minutes of child-process runtime. Headless Chromium verification is capped at two minutes per run; additional context/output limits apply. The worker image includes Chromium and needs roughly 2 GiB of memory.
 - A graceful worker stop kills the current child and requeues its job. Restarting runs it from scratch, potentially incurring another model charge, without another contributor attempt.
 - A crash leaves a lease that expires after six minutes; the job fails on the next queue/status access rather than automatically regenerating.
 - Cancellation/revocation prevents result acceptance, but cannot guarantee cancellation/refund of provider requests already in flight.

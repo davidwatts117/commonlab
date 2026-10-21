@@ -14,7 +14,7 @@ test('OpenRouter MiMo resolves from the pinned catalog and finalizes with dedica
         assert.equal(model.provider, 'openrouter');
         assert.equal(model.id, 'xiaomi/mimo-v2.6-flash');
         assert.equal(model.baseUrl, 'https://openrouter.ai/api/v1');
-        assert.equal(options.maxTokens, 8192);
+        assert.equal(options.maxTokens, [4096, 16384, 32768][calls]);
         const tools = context.messages.filter(message => message.role === 'system').flatMap(message => message.toolsAdded || []);
         assert.deepEqual(tools.map(tool => tool.name), [['plan_simulation'], ['define_simulation'], ['submit_draft']][calls]);
         return streamMessage(model, [planRound(), definitionRound(), engineRound()][calls++]);

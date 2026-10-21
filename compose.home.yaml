@@ -41,6 +41,12 @@ services:
       CL_MODEL_PROVIDER: openrouter
       CL_MODEL_ID: xiaomi/mimo-v2.6-flash
       CL_MODEL_API_KEY: ${CL_MODEL_API_KEY:-}
+      CL_REVIEW_MODEL_PROVIDER: ${CL_REVIEW_MODEL_PROVIDER:-}
+      CL_REVIEW_MODEL_ID: ${CL_REVIEW_MODEL_ID:-}
+      CL_REVIEW_MODEL_API_KEY: ${CL_REVIEW_MODEL_API_KEY:-}
+      CL_REVIEW_IMAGES: ${CL_REVIEW_IMAGES:-1}
+      CL_AUTHOR_IMAGES: ${CL_AUTHOR_IMAGES:-1}
+      CL_PUBLIC_ROOT: /app/public
       CL_AGENT_TRACE_DIR: ${CL_AGENT_TRACE_DIR:-}
       CL_AGENT_TRACE_MAX_FILES: ${CL_AGENT_TRACE_MAX_FILES:-50}
       CL_AGENT_TRACE_MAX_BYTES: ${CL_AGENT_TRACE_MAX_BYTES:-8388608}
@@ -52,11 +58,11 @@ services:
     init: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    pids_limit: 64
-    cpus: 1.0
-    mem_limit: 1g
+    pids_limit: 128
+    cpus: 2.0
+    mem_limit: 2g
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=134217728,mode=1777
+      - /tmp:rw,noexec,nosuid,size=536870912,mode=1777
     restart: unless-stopped
 
   cloudflared:
