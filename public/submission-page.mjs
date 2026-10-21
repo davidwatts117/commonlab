@@ -9,7 +9,7 @@ const $ = id => document.getElementById(id);
 const MAX_DEFINITION = 64 * 1024, MAX_MODULE = 128 * 1024;
 const byteLength = text => new TextEncoder().encode(text).length;
 const status = $('authoring-status');
-let catalog, preview, running, enabled = false, installedIds = [], signedIn = false, editing = null, generated = false;
+let catalog, preview, running, enabled = false, installedIds = [], signedIn = false, editing = null, generated = false, generatedNeedsAttention = false;
 function stopRun() { running?.destroy(); running = undefined; $('run-section').hidden = true; $('run-status').textContent = ''; }
 async function refreshContributor() {
   const account = await currentContributor(); signedIn = !!account;
@@ -276,13 +276,14 @@ try {
   if (generationId !== null) {
     if (requested !== null || !/^[1-9][0-9]*$/.test(generationId) || !Number.isSafeInteger(Number(generationId))) throw new Error('Invalid generation ID or conflicting edit mode.');
     const job = await contributorRequest(`/api/generation/jobs/${generationId}`);
-    if (job.status !== 'succeeded' || !job.artifact) throw new Error('This generation has not produced a draft.');
+    if (!['succeeded','needs_attention'].includes(job.status) || !job.artifact) throw new Error('This generation has not produced a draft.');
     const bundle = parseBundle(JSON.stringify(job.artifact), installedIds);
     generated = true; $('engine').value = 'new'; $('module-code').value = bundle.source.moduleCode;
+    generatedNeedsAttention = job.status === 'needs_attention';
     $('module-section').hidden = false; writeDefinition(bundle.definition);
   }
   $('submission-fields').disabled = false;
-  message(generated ? 'AI-generated draft loaded as inert text. Check the science and source, edit, and explicitly submit for human review. Nothing is published.' : requested ? 'Saved source loaded as text. Make changes and save a new revision for review.' : enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
+  message(generatedNeedsAttention ? 'Unverified AI candidate loaded as inert text. Required checks remain unresolved: inspect request activity, fix and verify it before submitting for human review.' : generated ? 'AI-generated draft loaded as inert text. Check the science and source, edit, and explicitly submit for human review. Nothing is published.' : requested ? 'Saved source loaded as text. Make changes and save a new revision for review.' : enabled ? 'Submissions are open. Start from a template or choose a new engine.' : 'Server submissions are unavailable. You can still build, preview, and download a definition.');
 } catch (error) { message(`Unable to load the authoring interface: ${error.message}`, true); }
 window.addEventListener('pagehide', () => {
   preview?.destroy();

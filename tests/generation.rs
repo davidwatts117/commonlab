@@ -13,11 +13,15 @@ async fn req(
     app: &Router,
     path: &str,
     method: &str,
-    body: Option<Value>,
+    mut body: Option<Value>,
     cookie: Option<&str>,
     bearer: Option<&str>,
     csrf: bool,
 ) -> Response {
+    // All fixtures speak the versioned worker protocol; reports below are scripted evidence.
+    if path == "/api/worker/generation/claim" && body.is_none() {
+        body = Some(json!({"protocolVersion":2}));
+    }
     let mut r = Request::builder().method(method).uri(path);
     if let Some(cookie) = cookie {
         r = r.header("Cookie", cookie);
@@ -233,7 +237,12 @@ async fn activity_is_bounded_private_lease_checked_and_failures_are_safe() {
     )
     .await)
     .await;
-    assert!(result["error"].as_str().unwrap().contains("five-minute"));
+    assert!(
+        result["error"]
+            .as_str()
+            .unwrap()
+            .contains("absolute deadline")
+    );
     assert_eq!(result["diagnostics"]["issues"], diagnostics["issues"]);
     assert_eq!(result["diagnostics"]["phase"], "implementation");
     assert_eq!(result["diagnostics"]["tool"], "submit_draft");
@@ -395,7 +404,7 @@ async fn opt_in_worker_leases_private_artifacts_revocation_and_quotas() {
         .is_null()
     );
     let engine = "export function mount(ui) { globalThis.generatedCodeExecuted = true; return { app: {} }; }";
-    let body = json!({"lease":job["lease"],"model":"test/no-paid-model","artifact":{"definition":def(&job["simulationId"]),"moduleCode":engine}});
+    let body = json!({"lease":job["lease"],"model":"test/no-paid-model","report":{"verification":"passed","review":"passed"},"artifact":{"definition":def(&job["simulationId"]),"moduleCode":engine}});
     let mut wrong = body.clone();
     wrong["lease"] = json!("wrong");
     assert_eq!(
@@ -438,7 +447,7 @@ async fn opt_in_worker_leases_private_artifacts_revocation_and_quotas() {
         )
         .await
         .status(),
-        StatusCode::CONFLICT
+        StatusCode::OK // Idempotent completion receipt, not a second publication.
     );
     let r = req(&app, &path, "GET", None, Some(&alice), None, false).await;
     assert_eq!(r.headers()["cache-control"], "no-store");
@@ -632,6 +641,52 @@ async fn permissions_and_leases_survive_restart_and_expired_work_cannot_complete
         .query_row("SELECT lease_hash FROM generation_jobs", [], |r| r.get(0))
         .unwrap();
     assert_ne!(hash, job["lease"].as_str().unwrap());
+    // Simulate a healthy job already past the OLD six-minute deadline.
+    connection.execute("UPDATE generation_jobs SET started_at=unixepoch()-400,lease_expires=unixepoch()+30,deadline_at=unixepoch()+120",[]).unwrap();
+    let id = job["id"].as_i64().unwrap();
+    let heartbeat = val(req(
+        &app,
+        &format!("/api/worker/generation/{id}/heartbeat"),
+        "POST",
+        Some(json!({"lease":job["lease"]})),
+        None,
+        Some(WORKER),
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(heartbeat["active"], true);
+    let remaining: i64 = connection
+        .query_row(
+            "SELECT lease_expires-unixepoch() FROM generation_jobs",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!((85..=90).contains(&remaining));
+    let event = json!({"lease":job["lease"],"event_key":"1:retry-safe-event","code":"model_request","details":{"phase":"build","requests":2}});
+    for _ in 0..2 {
+        assert_eq!(
+            req(
+                &app,
+                &format!("/api/worker/generation/{id}/progress"),
+                "POST",
+                Some(event.clone()),
+                None,
+                Some(WORKER),
+                false
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+    }
+    assert_eq!(
+        connection
+            .query_row::<i64, _, _>("SELECT COUNT(*) FROM generation_events", [], |r| r.get(0))
+            .unwrap(),
+        1
+    );
     connection
         .execute("UPDATE generation_jobs SET lease_expires=0", [])
         .unwrap();
@@ -660,7 +715,51 @@ async fn permissions_and_leases_survive_restart_and_expired_work_cannot_complete
     .await)
     .await;
     assert_eq!(result["status"], "failed");
+    assert_eq!(result["failureCode"], "worker_lost");
+    assert_eq!(result["diagnostics"]["phase"], "build");
     assert_eq!(create(&app, &cookie).await.status(), StatusCode::ACCEPTED);
+    let second = val(req(
+        &app,
+        "/api/worker/generation/claim",
+        "POST",
+        None,
+        None,
+        Some(WORKER),
+        false,
+    )
+    .await)
+    .await;
+    let connection = rusqlite::Connection::open(&db).unwrap();
+    connection
+        .execute(
+            "UPDATE generation_jobs SET deadline_at=unixepoch()-1 WHERE id=?1",
+            [second["id"].as_i64().unwrap()],
+        )
+        .unwrap();
+    let expired = val(req(
+        &app,
+        &format!("/api/generation/jobs/{}", second["id"]),
+        "GET",
+        None,
+        Some(&cookie),
+        None,
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(expired["failureCode"], "timeout");
+    let renewed = val(req(
+        &app,
+        &format!("/api/worker/generation/{}/heartbeat", second["id"]),
+        "POST",
+        Some(json!({"lease":second["lease"]})),
+        None,
+        Some(WORKER),
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(renewed["active"], false);
     drop(app);
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -884,5 +983,109 @@ async fn operator_limits_control_generation_quotas_and_prompt_size() {
     assert_eq!(
         put(json!({"generationActiveGlobal":1})).await.status(),
         StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn unverified_candidates_are_never_success_and_protocol_upgrade_is_explicit() {
+    let app = app_with_config(
+        "public",
+        AppConfig {
+            admin_token: Some(ADMIN.into()),
+            generation: Some(GenerationConfig::new(WORKER.into()).unwrap()),
+            ..AppConfig::new(Store::memory().unwrap())
+        },
+    )
+    .unwrap();
+    let alice = register(&app, "reliability-alice").await;
+    grant(&app, "reliability-alice", true).await;
+    let bob = register(&app, "reliability-bob").await;
+    let id = val(create(&app, &alice).await).await["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        req(
+            &app,
+            "/api/worker/generation/claim",
+            "POST",
+            Some(json!({"protocolVersion":1})),
+            None,
+            Some(WORKER),
+            false
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let job = val(req(
+        &app,
+        "/api/worker/generation/claim",
+        "POST",
+        None,
+        None,
+        Some(WORKER),
+        false,
+    )
+    .await)
+    .await;
+    let path = format!("/api/worker/generation/{id}/complete");
+    let mut completion = json!({"lease":job["lease"],"model":"scripted/test","artifact":{"definition":def(&job["simulationId"]),"moduleCode":"export function mount(ui) {}"},"report":{"verification":"failed","review":"unavailable"}});
+    assert_eq!(
+        req(
+            &app,
+            &path,
+            "POST",
+            Some(completion.clone()),
+            None,
+            Some(WORKER),
+            false
+        )
+        .await
+        .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    completion["outcome"] = json!("needs_attention");
+    completion["failure"] = json!("verification_failed");
+    for _ in 0..2 {
+        assert_eq!(
+            req(
+                &app,
+                &path,
+                "POST",
+                Some(completion.clone()),
+                None,
+                Some(WORKER),
+                false
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+    }
+    completion["model"] = json!("different");
+    assert_eq!(
+        req(
+            &app,
+            &path,
+            "POST",
+            Some(completion),
+            None,
+            Some(WORKER),
+            false
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let read = format!("/api/generation/jobs/{id}");
+    let result = val(req(&app, &read, "GET", None, Some(&alice), None, false).await).await;
+    assert_eq!(result["status"], "needs_attention");
+    assert!(result["artifact"].is_object());
+    assert_eq!(result["report"]["review"], "unavailable");
+    assert_eq!(
+        req(&app, &read, "GET", None, Some(&bob), None, false)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
     );
 }

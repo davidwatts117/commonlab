@@ -363,7 +363,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.locator('#generation-consent').check();
       await author.locator('#generation-form button').click();
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
-      const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } });
+      const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } });
       assert.equal(claimed.status(), 200); const job = await claimed.json();
       const progress = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/progress`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, code: 'validating', details: { turn: 1, attempt: 1 } } });
       assert.equal(progress.status(), 200);
@@ -376,7 +376,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.ok((await author.locator('#generation-events').innerText()).includes('Tool: define_simulation (error)'));
       const definition = { id: job.simulationId, title: 'AI spring draft', subject: 'physics', summary: 'A private generated draft.', canvas: { id: 'scene', label: 'Spring scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
       const moduleCode = 'export function mount(ui) { globalThis.generatedExecuted = true; return { app: {} }; }';
-      const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', artifact: { definition, moduleCode } } });
+      const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', report: { verification: 'passed', review: 'passed' }, artifact: { definition, moduleCode } } });
       assert.equal(completed.status(), 200);
       await author.locator('#generation-refresh').click();
       await author.getByRole('link', { name: 'Open private draft in editor' }).click();
@@ -395,12 +395,24 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.locator('#generation-prompt').fill('A request that needs repairs.');
       await author.locator('#generation-consent').check(); await author.locator('#generation-form button').click();
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
-      const failedJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } })).json();
+      const failedJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } })).json();
       await reviewer.request.post(`${base}/api/worker/generation/${failedJob.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: failedJob.lease, model: 'scripted/test', artifact: null, failure: 'repair_limit', diagnostics: { requests: 4, validations: 4, stopReason: 'toolUse', issues: [{ path: '/moduleCode', rule: 'javascript_syntax', line: 8, column: 3 }] } } });
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('repair limit'), { timeout: 10_000 });
       await author.waitForFunction(() => document.getElementById('generation-summary').textContent.includes('Requests: 4'), { timeout: 10_000 });
       assert.ok((await author.locator('#generation-summary').innerText()).includes('/moduleCode (line 8, column 3)'));
       assert.ok((await author.locator('#generation-events').innerText()).includes('Draft repair budget exhausted'));
+      // A retained, unverified candidate is editable but must never be labeled verified.
+      const candidateReceipt = await author.request.post(`${base}/api/generation/jobs`, { headers: { 'X-CommonLab-Request': '1' }, data: { prompt: 'A candidate requiring manual attention.', acceptProviderProcessing: true } });
+      assert.equal(candidateReceipt.status(), 202);
+      const candidateJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } })).json();
+      const candidateResult = await reviewer.request.post(`${base}/api/worker/generation/${candidateJob.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: candidateJob.lease, model: 'scripted/test-candidate', outcome: 'needs_attention', failure: 'verification_failed', report: { verification: 'failed', review: 'unavailable', tests: [{ name: 'Energy conservation', ok: false, message: 'Unexpected energy increase.' }] }, artifact: { definition: { ...definition, id: candidateJob.simulationId }, moduleCode } } });
+      assert.equal(candidateResult.status(), 200);
+      await author.goto(`${base}/generate.html`);
+      await author.waitForFunction(() => document.getElementById('generation-summary').textContent.includes('Energy conservation'));
+      assert.ok((await author.locator('#generation-summary').innerText()).includes('Independent review: unavailable'));
+      await author.goto(`${base}/submit.html?generation=${candidateJob.id}`);
+      await author.waitForFunction(() => document.getElementById('authoring-status').textContent.includes('Unverified AI candidate'));
+      assert.equal(await author.evaluate(() => window.generatedExecuted), undefined);
     });
 
     await t.test('runs an engine only inside an isolated frame with no host or network access', async () => {

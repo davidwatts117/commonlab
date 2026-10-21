@@ -1,6 +1,6 @@
 {
   "providers": {
-    "openrouter": {
+    "commonlab-openrouter": {
       "name": "OpenRouter",
       "api": "openai-completions",
       "baseUrl": "https://openrouter.ai/api/v1",

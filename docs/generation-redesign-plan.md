@@ -1,6 +1,6 @@
 # Generation redesign: lifecycle, verification, budgets and evidence
 
-Status: proposal only; awaiting operator approval. No implementation or deployment changes are part of this audit.
+Status: approved and implemented in protocol 2. This document retains the original audit/proposal; [ai-generation.md](ai-generation.md) describes the shipped behavior. No deployment or paid inference was performed as part of the implementation.
 
 ## Incident: request #4 in commonlab-deploy-dev
 
@@ -111,7 +111,7 @@ Initial values are tuning hypotheses, not promises. Measure a small acceptance c
 - Operator logs include redacted structured causes and request IDs even when full trace recording is disabled. Optional private JSONL traces retain completed prompts/tool messages and evidence references, never private reasoning. Add both provider keys to redaction; one complete event path must retain verification/review events.
 - Keep screenshots and raw traces private operator-local artifacts per existing preference; contributor reports do not expose transcripts/downloads. Operational checkpoint retention is separately documented and bounded.
 
-## Implementation sequence (approval required)
+## Implementation sequence (approved)
 
 1. **Lifecycle correctness:** heartbeat + absolute deadline + fencing + terminal causes + unified limits/event schema. Regression test the exact six-versus-ten-minute failure using fake clocks. Fix misleading status paths immediately in this slice.
 2. **Shared model adapter and budget ledger:** explicit provider allowlist, preflight, per-call cancellation/deadlines, streaming telemetry, reviewer accounting and safe retry policy.
@@ -130,6 +130,29 @@ Initial values are tuning hypotheses, not promises. Measure a small acceptance c
 - Tests always inject verifier/reviewer behavior explicitly; a scripted model stream must not silently disable production verification.
 - Execute the complete worker inside its actual non-root/read-only/cap-dropped image; check no external browser network, no secrets, correct restart/resume and no orphan processes.
 - Paid acceptance set includes the user's collision lab, an oscillation lab, a chemistry lab and deliberately broken specimens. Measure verified-success rate, latency p50/p95, token/cost totals, repairs, timeout categories and reviewer false positives. Compare to the current baseline; publish measurements without claiming scripted tests establish real model quality.
+
+## Implementation adjustments and remaining acceptance work
+
+- `needs_attention` is an API outcome backed by the existing terminal failed state plus an additive outcome column; this avoids rebuilding SQLite's constrained jobs table.
+- Interrupted inference is not auto-replayed. Between-operation checkpoints resume; an ambiguous charged request returns an explicit `inference_interrupted` outcome with reservations and artifacts retained.
+- Review rebuttals use a typed `respond_review` tool and remain in the owner report; they are not hidden model reasoning.
+- The current pinned SDK does not expose reliable Retry-After headers through this adapter. Recovery is one bounded jittered retry for safe transient failures, with no auth/quota/billing replay; there is no claimed exact Retry-After support.
+- Verifier snapshots are recaptured on resume rather than persisting screenshot blobs in operational checkpoints. Required tests are retained, and artifact/harness hashes bind reports to their inputs. Unchanged verification is not yet cached across separate runs.
+- Reviewers suggest regression checks in their findings; an independent reviewer-authored executable test tool is not included in this slice. Author manifests/modules and host-owned checks execute with strict bounds and fresh state.
+- The harness does not exercise complete guided lessons/assessments. Verified generation now explicitly requires empty lessons and no assessment rather than silently approving untested learning flows. The manual editor and published existing lessons are unchanged.
+- Scientific state and layout checks are deterministic; browser pixel heuristics are deliberately modest. They do not establish animation usefulness, accessibility completeness or scientific correctness. Vision review and human publication review remain necessary.
+- Multi-host failover, a contributor retry/resume UI, operator recovery UI and paid model benchmarking remain out of scope. The supported deployment is one worker with one private persistent checkpoint volume.
+- The deployment acceptance gate includes real SDK scripted tests and real Chromium in the locked, hardened image. Real latency/cost/quality measurements still require an explicitly approved paid corpus run.
+
+## Validation performed
+
+- Rust test suite, `cargo fmt --check`, and clippy with warnings denied: passed.
+- Root JavaScript unit tests: 47 passed.
+- Application browser tests: 23 passed, including private unverified candidate display/import without executing its source.
+- Pinned worker image, UID 10001, read-only filesystem, no capabilities/new privileges, network disabled, 128 PID / 2 CPU / 2 GiB limits: all 48 worker tests passed with no skips. This includes real Chromium, external infinite-loop termination, startup protocol handshake, private operational recovery, and a lost completion response retried without inference.
+- Explicit worker dependency declarations: checked with Knip/TypeScript 5.9.3 (the initial standalone Knip invocation had an incompatible transient TypeScript resolution; the compatible invocation passed).
+- OpenRouter's public metadata endpoint currently confirms image input for all four configured models. No inference calls were used for this check.
+- No live deployment, production database migration, paid inference or model-quality benchmark was performed. Those remain separate acceptance/deployment steps.
 
 ## Scope and approval
 

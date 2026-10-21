@@ -47,12 +47,14 @@ services:
       CL_REVIEW_IMAGES: ${CL_REVIEW_IMAGES:-1}
       CL_AUTHOR_IMAGES: ${CL_AUTHOR_IMAGES:-1}
       CL_PUBLIC_ROOT: /app/public
+      CL_CHECKPOINT_DIR: /var/lib/commonlab/checkpoints
       CL_AGENT_TRACE_DIR: ${CL_AGENT_TRACE_DIR:-}
       CL_AGENT_TRACE_MAX_FILES: ${CL_AGENT_TRACE_MAX_FILES:-50}
       CL_AGENT_TRACE_MAX_BYTES: ${CL_AGENT_TRACE_MAX_BYTES:-8388608}
       CL_AGENT_TRACE_MAX_DAYS: ${CL_AGENT_TRACE_MAX_DAYS:-7}
     volumes:
       - generation-traces:/var/lib/commonlab/agent-traces
+      - generation-checkpoints:/var/lib/commonlab/checkpoints
     read_only: true
     user: "10001:10001"
     init: true
@@ -85,3 +87,4 @@ services:
 volumes:
   commonlab-data:
   generation-traces:
+  generation-checkpoints:

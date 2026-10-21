@@ -8,5 +8,7 @@
 !public/**
 !schema/
 !schema/simulation.schema.json
+!schema/generation-protocol.json
 !docs/
 !docs/simulation-authoring.md
+!docs/generation-engine-api.md

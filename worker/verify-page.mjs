@@ -1,223 +1,283 @@
-// Browser-side verification helpers. This module runs inside the disposable
-// headless page, never in the app origin. Engine and test source are untrusted.
+// Trusted helpers inside an opaque-origin disposable frame. Never app/account origin.
+import { renderSimulation } from '/simulation-ui.mjs';
 const PREFIX = 'verify-';
-const slot = id => {
-  const el = document.getElementById(`${PREFIX}${id}`);
-  if (!el) throw new Error(`Missing declared UI slot: ${id}`);
-  return el;
-};
-const nextFrame = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
-async function settle(ms = 40) {
-  await nextFrame(); await nextFrame();
-  await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(ms, 0), 500)));
+let ui,
+  controller,
+  assertions = 0,
+  bindings = new Set();
+const slot = (id) => ui.getElementById(id);
+function draw() {
+  controller.app.sim.onDraw(controller.app.ctx);
 }
-function compare(actual, expected) {
-  return String(actual) === String(expected);
+export async function reset() {
+  controller.app.sim.stop();
+  controller.app.sim.onReset();
+  draw();
+}
+export function state() {
+  const data = controller.inspectState();
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !Object.keys(data).length)
+    throw new Error('inspectState must expose a nonempty scientific state object');
+  const seen = new WeakSet();
+  let values = 0;
+  const walk = (v) => {
+    if (++values > 5000) throw new Error('Scientific state is too large');
+    if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('Nonfinite scientific state');
+    if (['undefined', 'function', 'symbol', 'bigint'].includes(typeof v))
+      throw new Error('Scientific state must contain only JSON values');
+    if (v && typeof v === 'object') {
+      if (seen.has(v) || (!Array.isArray(v) && Object.getPrototypeOf(v) !== Object.prototype))
+        throw new Error('Scientific state must be acyclic plain JSON');
+      seen.add(v);
+      Object.values(v).forEach(walk);
+      seen.delete(v);
+    }
+  };
+  walk(data);
+  return structuredClone(data);
+}
+export function step(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds > 10)
+    throw new Error('step outside 0–10 seconds');
+  controller.app.sim.stop();
+  let left = seconds;
+  while (left > 1e-9) {
+    const dt = Math.min(left, 1 / 120);
+    controller.app.sim.onTick(dt);
+    left -= dt;
+  }
+  draw();
+  return state();
 }
 export function pixelStats(id) {
-  const canvas = slot(id);
-  const ctx = canvas.getContext('2d');
-  const width = canvas.width, height = canvas.height;
-  if (!width || !height) return { id, width, height, blank: true, distinctColors: 0, nonBackgroundFraction: 0 };
-  let data;
-  try { data = ctx.getImageData(0, 0, width, height).data; }
-  catch (error) { return { id, width, height, error: `canvas pixels are not readable: ${error.message}` }; }
-  const step = Math.max(1, Math.floor(Math.sqrt((width * height) / 20000)));
-  const samples = [];
-  const counts = new Map();
-  let luma = 0;
-  for (let y = 0; y < height; y += step) {
-    for (let x = 0; x < width; x += step) {
-      const i = (y * width + x) * 4;
-      const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-      const key = `${r >> 3},${g >> 3},${b >> 3},${a >> 6}`;
-      const entry = counts.get(key);
-      if (entry) entry.count++; else counts.set(key, { count: 1, r, g, b, a });
-      samples.push([x, y, r, g, b, a]);
-      luma += 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
+  const c = slot(id),
+    ctx = c.getContext('2d');
+  const d = ctx.getImageData(0, 0, c.width, c.height).data,
+    counts = new Map();
+  let total = 0;
+  const stride = Math.max(1, Math.ceil((c.width * c.height) / 20000));
+  for (let p = 0; p < c.width * c.height; p += stride) {
+    const i = p * 4,
+      key = `${d[i] >> 4},${d[i + 1] >> 4},${d[i + 2] >> 4},${d[i + 3] >> 6}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    total++;
   }
-  // The background is the modal colour, not the corner: paper, gradients and
-  // anti-aliased edges otherwise make a mostly-empty scene look fully inked.
-  let mode = null;
-  for (const entry of counts.values()) if (!mode || entry.count > mode.count) mode = entry;
-  const bg = mode ? [mode.r, mode.g, mode.b, mode.a] : [255, 255, 255, 255];
-  const distance = (r, g, b, a) => Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2]) + Math.abs(a - bg[3]);
-  let nonBg = 0, minX = width, minY = height, maxX = -1, maxY = -1;
-  const edge = Math.max(1, Math.round(Math.min(width, height) * 0.02));
-  let edgeInk = 0, edgeTotal = 0;
-  for (const [x, y, r, g, b, a] of samples) {
-    if (distance(r, g, b, a) > 24) {
-      nonBg++;
-      if (x < minX) minX = x; if (x > maxX) maxX = x;
-      if (y < minY) minY = y; if (y > maxY) maxY = y;
-    }
-    if (x < edge || x >= width - edge || y < edge || y >= height - edge) {
-      edgeTotal++;
-      if (distance(r, g, b, a) > 24) edgeInk++;
-    }
-  }
-  const total = samples.length;
+  const dominant = Math.max(0, ...counts.values());
   return {
-    id, width, height,
-    background: `rgb(${bg[0]}, ${bg[1]}, ${bg[2]})`,
+    id,
+    width: c.width,
+    height: c.height,
     distinctColors: counts.size,
-    nonBackgroundFraction: total ? nonBg / total : 0,
-    blank: total === 0 || nonBg / total < 0.002,
-    meanLuma: total ? luma / total : 0,
-    inkBox: maxX < 0 ? null : { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 },
-    borderInkFraction: edgeTotal ? edgeInk / edgeTotal : 0,
+    nonBackgroundFraction: 1 - dominant / total,
+    blank: counts.size < 2,
   };
 }
-async function runStep(step) {
-  if (!step || typeof step !== 'object') throw new Error('Invalid test step');
-  switch (step.action) {
-    case 'set': {
-      const el = slot(step.id);
-      el.value = String(step.value ?? '');
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      await settle(step.wait ?? 60);
+function expect(ok, message) {
+  assertions++;
+  if (!ok) throw new Error(String(message || 'Assertion failed').slice(0, 500));
+}
+export async function action(s) {
+  const el = s.id ? slot(s.id) : null;
+  switch (s.action) {
+    case 'set':
+    case 'select':
+      el.value = String(s.value);
+      el.dispatchEvent(new Event(s.action === 'select' ? 'change' : 'input', { bubbles: true }));
+      if (s.action === 'set') el.dispatchEvent(new Event('change', { bubbles: true }));
+      draw();
       return;
-    }
-    case 'select': {
-      const el = slot(step.id);
-      el.value = String(step.value ?? '');
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-      await settle(step.wait ?? 60);
-      return;
-    }
-    case 'click': {
-      const el = slot(step.id);
+    case 'click':
       el.click();
-      await settle(step.wait ?? 60);
+      draw();
       return;
-    }
-    case 'check': {
-      const el = slot(step.id);
-      el.checked = !!step.checked;
+    case 'check':
+      el.checked = s.checked;
       el.dispatchEvent(new Event('change', { bubbles: true }));
-      await settle(step.wait ?? 60);
+      draw();
       return;
-    }
-    case 'reset': {
-      window.__cl?.controller?.app?.sim?.reset?.();
-      await settle(step.wait ?? 120);
-      return;
-    }
-    case 'wait': await settle(step.ms ?? 100); return;
+    case 'step':
+      return step(s.seconds);
+    case 'reset':
+      return reset();
     case 'expectText': {
-      const text = slot(step.id).textContent.trim();
-      if (step.equals !== undefined && !compare(text, step.equals)) throw new Error(`text ${JSON.stringify(text)} != ${JSON.stringify(step.equals)}`);
-      if (step.contains !== undefined && !text.includes(String(step.contains))) throw new Error(`text ${JSON.stringify(text)} does not contain ${JSON.stringify(step.contains)}`);
-      if (step.nonEmpty === true && !text) throw new Error('text is empty');
+      const t = el.textContent.trim();
+      if ('equals' in s) expect(t === String(s.equals), `Expected text ${s.equals}; got ${t}`);
+      if ('contains' in s)
+        expect(t.includes(String(s.contains)), `Expected text containing ${s.contains}; got ${t}`);
+      if (s.nonEmpty) expect(t.length > 0, 'Empty text');
       return;
     }
-    case 'expectValue': {
-      const value = slot(step.id).value;
-      if (!compare(value, step.equals)) throw new Error(`value ${JSON.stringify(value)} != ${JSON.stringify(step.equals)}`);
+    case 'expectValue':
+      expect(String(el.value) === String(s.equals), `Expected value ${s.equals}; got ${el.value}`);
       return;
-    }
-    case 'expectVisible': {
-      const el = slot(step.id);
-      const rect = el.getBoundingClientRect();
-      const visible = !el.hidden && rect.width > 0 && rect.height > 0 && el.getClientRects().length > 0;
-      if (visible !== (step.equals ?? true)) throw new Error(`visible is ${visible}, expected ${step.equals ?? true}`);
+    case 'expectVisible':
+      expect(
+        Boolean(el.getClientRects().length && !el.hidden) === (s.equals ?? true),
+        'Visibility differs',
+      );
       return;
-    }
-    case 'expectChecked': {
-      const checked = !!slot(step.id).checked;
-      if (checked !== (step.equals ?? true)) throw new Error(`checked is ${checked}, expected ${step.equals ?? true}`);
+    case 'expectChecked':
+      expect(el.checked === (s.equals ?? true), 'Checked state differs');
       return;
-    }
     case 'expectCanvas': {
-      const stats = pixelStats(step.id);
-      if (step.nonBlank === true && stats.blank) throw new Error('canvas is blank');
-      if (step.minColors !== undefined && stats.distinctColors < step.minColors) throw new Error(`canvas has ${stats.distinctColors} colors, expected at least ${step.minColors}`);
-      if (step.minInkFraction !== undefined && stats.nonBackgroundFraction < step.minInkFraction) throw new Error(`canvas ink fraction ${stats.nonBackgroundFraction.toFixed(4)} < ${step.minInkFraction}`);
-      if (step.maxInkFraction !== undefined && stats.nonBackgroundFraction > step.maxInkFraction) throw new Error(`canvas ink fraction ${stats.nonBackgroundFraction.toFixed(4)} > ${step.maxInkFraction}`);
+      const p = pixelStats(s.id);
+      if (s.nonBlank) expect(!p.blank, 'Blank canvas');
+      if ('minColors' in s) expect(p.distinctColors >= s.minColors, 'Too few canvas colors');
+      if ('minInkFraction' in s)
+        expect(p.nonBackgroundFraction >= s.minInkFraction, 'Too little canvas ink');
+      if ('maxInkFraction' in s)
+        expect(p.nonBackgroundFraction <= s.maxInkFraction, 'Too much canvas ink');
       return;
     }
-    default: throw new Error(`Unsupported test action: ${step.action}`);
+    default:
+      throw new Error('Unsupported test action');
   }
 }
-export async function runManifest(manifest = {}) {
-  const cases = Array.isArray(manifest.cases) ? manifest.cases.slice(0, 24) : [];
-  const results = [];
-  for (const item of cases) {
-    const name = String(item?.name || item?.id || 'aggressive check').slice(0, 200);
-    try {
-      // Start every case from the engine's declared reset state.
-      try { window.__cl?.controller?.app?.sim?.reset?.(); await settle(80); } catch { /* ignore */ }
-      const steps = Array.isArray(item?.steps) ? item.steps.slice(0, 40) : [];
-      for (const step of steps) await runStep(step);
-      results.push({ name, ok: true });
-    } catch (error) {
-      results.push({ name, ok: false, message: String(error?.message || error).slice(0, 600) });
-      // A failed case may leave the scene in an unknown state; reset before the next one.
-      try { window.__cl?.controller?.app?.sim?.reset?.(); await settle(80); } catch { /* ignore */ }
-    }
+export async function runCase(test) {
+  assertions = 0;
+  try {
+    for (const s of test.steps) await action(s);
+    if (!assertions) throw new Error('No assertions executed');
+    return { name: test.name, ok: true, assertions };
+  } catch (e) {
+    return { name: test.name, ok: false, assertions, message: String(e.message).slice(0, 500) };
   }
-  return results;
 }
 export async function runModuleTests(source) {
-  if (!source) return [];
+  assertions = 0;
   const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-  let module;
-  try { module = await import(url); }
-  finally { URL.revokeObjectURL(url); }
-  const run = module.run || module.test;
-  if (typeof run !== 'function') throw new Error('The test module must export async function run(api)');
-  const results = [];
-  let score = 0;
-  const assert = (condition, message) => {
-    if (!condition) throw new Error(String(message || 'assertion failed'));
-  };
-  const api = {
-    ui: window.__cl.ui,
-    controller: window.__cl.controller,
-    app: window.__cl.controller?.app,
-    slot,
-    text: id => slot(id).textContent.trim(),
-    value: id => slot(id).value,
-    set: async (id, value) => runStep({ action: 'set', id, value }),
-    select: async (id, value) => runStep({ action: 'select', id, value }),
-    click: async id => runStep({ action: 'click', id }),
-    check: async (id, checked) => runStep({ action: 'check', id, checked }),
-    wait: async ms => settle(ms),
-    reset: async () => runStep({ action: 'reset' }),
-    pixels: id => pixelStats(id),
-    assert,
-    near: (actual, expected, tolerance = 1e-6, message = '') => assert(Math.abs(Number(actual) - Number(expected)) <= Math.abs(tolerance), message || `${actual} is not within ${tolerance} of ${expected}`),
-    score: value => { score = Number(value) || 0; },
-  };
-  const executed = await Promise.race([
-    Promise.resolve().then(() => run(api)),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Test module exceeded 15 seconds')), 15000)),
-  ]);
-  const list = Array.isArray(executed) ? executed : [];
-  for (const item of list.slice(0, 40)) {
-    if (item && typeof item === 'object' && typeof item.ok === 'boolean') results.push({ name: String(item.name || 'module test').slice(0, 200), ok: item.ok, message: item.message ? String(item.message).slice(0, 600) : undefined });
-    else results.push({ name: 'module test', ok: !!item });
+  try {
+    const m = await import(url);
+    if (typeof m.run !== 'function') throw new Error('Export async function run(api)');
+    await m.run(
+      Object.freeze({
+        assert: expect,
+        near: (actual, expected, tolerance = 1e-6, message) =>
+          expect(
+            Number.isFinite(actual) &&
+              Number.isFinite(expected) &&
+              Number.isFinite(tolerance) &&
+              Math.abs(actual - expected) <= Math.abs(tolerance),
+            message || `Expected ${expected} ± ${tolerance}; got ${actual}`,
+          ),
+        state,
+        step,
+        reset,
+        text: (id) => slot(id).textContent.trim(),
+        value: (id) => slot(id).value,
+        pixels: pixelStats,
+        set: (id, value) => action({ action: 'set', id, value }),
+        select: (id, value) => action({ action: 'select', id, value }),
+        check: (id, checked) => action({ action: 'check', id, checked }),
+        click: (id) => action({ action: 'click', id }),
+      }),
+    );
+    if (!assertions) throw new Error('Test module executed no assertions');
+    return { name: 'scientific test module', ok: true, assertions };
+  } catch (e) {
+    return {
+      name: 'scientific test module',
+      ok: false,
+      assertions,
+      message: String(e.message).slice(0, 500),
+    };
+  } finally {
+    URL.revokeObjectURL(url);
   }
-  if (!results.length) results.push({ name: 'test module ran', ok: true });
-  results.push({ name: 'test module score', ok: true, message: `score ${score}` });
-  return results;
 }
 export async function mount(definition, moduleCode) {
-  const { renderSimulation } = await import('/simulation-ui.mjs');
-  const root = document.getElementById('sandbox-root');
-  root.replaceChildren();
-  const ui = renderSimulation(root, definition, { idPrefix: PREFIX });
+  ui = renderSimulation(document.getElementById('sandbox-root'), definition, { idPrefix: PREFIX });
+  bindings = new Set();
+  const original = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, ...args) {
+    if (['click', 'input', 'change', 'pointerdown', 'keydown'].includes(type)) bindings.add(this);
+    return original.call(this, type, ...args);
+  };
   const url = URL.createObjectURL(new Blob([moduleCode], { type: 'text/javascript' }));
-  let module;
-  try { module = await import(url); }
-  finally { URL.revokeObjectURL(url); }
-  if (typeof module.mount !== 'function') throw new Error('The engine must export mount(ui).');
-  const controller = module.mount(ui);
-  if (!controller?.app?.sim) throw new Error('mount(ui) must return { app } with a simulation.');
-  controller.app.sim.start();
-  window.__cl = { ui, controller };
-  await settle(120);
+  try {
+    const m = await import(url);
+    controller = m.mount(ui);
+  } finally {
+    URL.revokeObjectURL(url);
+    EventTarget.prototype.addEventListener = original;
+  }
+  if (!controller?.app?.sim || typeof controller.inspectState !== 'function')
+    throw new Error('Return { app, inspectState() } with finite scientific state');
+  controller.app.sim.stop();
+  state();
+  draw();
   return true;
+}
+export async function hostChecks() {
+  const results = [];
+  const record = (name, fn) => {
+    try {
+      fn();
+      results.push({ name, ok: true });
+    } catch (e) {
+      results.push({ name, ok: false, message: String(e.message).slice(0, 300) });
+    }
+  };
+  record('state finite', () => state());
+  const initial = JSON.stringify(state());
+  step(0.25);
+  await reset();
+  record('reset restores initial scientific state', () => {
+    if (JSON.stringify(state()) !== initial) throw new Error('Reset did not restore initial state');
+  });
+  const canvases = [ui.definition.canvas, ...ui.definition.graphs];
+  for (const c of canvases)
+    record(`canvas ${c.id} draws`, () => {
+      if (pixelStats(c.id).blank) throw new Error('Canvas is blank');
+    });
+  const controls = [...ui.root.querySelectorAll('input,select,button')].filter((el) =>
+    el.id.startsWith(PREFIX),
+  );
+  if (controls.length > 40)
+    throw new Error('Too many interactive controls for bounded verification');
+  if (ui.definition.lessons?.length)
+    record('lessons have an adapter', () => {
+      if (!controller.adapter) throw new Error('Declared lessons require an adapter');
+    });
+  const isBound = (el) => {
+    for (let p = el; p && ui.root.contains(p); p = p.parentElement)
+      if (bindings.has(p)) return true;
+    return Boolean(el.onclick || el.oninput || el.onchange);
+  };
+  for (const el of controls) {
+    record(`control ${el.id.slice(PREFIX.length)} is bound`, () => {
+      if (!isBound(el)) throw new Error('No engine input binding observed');
+    });
+    if (el.tagName === 'INPUT' && ['range', 'number'].includes(el.type)) {
+      for (const v of [el.min, el.max]) {
+        await action({ action: 'set', id: el.id.slice(PREFIX.length), value: v });
+        step(0.1);
+        record(`control ${el.id.slice(PREFIX.length)} at ${v}: finite state`, () => state());
+      }
+    } else if (el.type === 'checkbox')
+      await action({ action: 'check', id: el.id.slice(PREFIX.length), checked: !el.checked });
+    else if (el.tagName === 'SELECT') {
+      for (const option of el.options)
+        await action({ action: 'select', id: el.id.slice(PREFIX.length), value: option.value });
+    } else if (el.tagName === 'BUTTON') el.click();
+  }
+  for (const group of ui.root.querySelectorAll('fieldset.simulation-choices, .simulation-views')) {
+    record(`choice ${group.id.slice(PREFIX.length)} is bound`, () => {
+      if (!isBound(group) && ![...group.querySelectorAll('button')].some(isBound))
+        throw new Error('No engine choice binding observed');
+    });
+    for (const option of group.querySelectorAll('[data-value]')) {
+      option.click();
+      draw();
+      step(0.1);
+      record(`choice ${group.id.slice(PREFIX.length)} remains finite`, () => state());
+    }
+  }
+  await reset();
+  record('responsive layout fits viewport', () => {
+    if (document.documentElement.scrollWidth > innerWidth + 2)
+      throw new Error('Horizontal page overflow');
+  });
+  record('reset/state remain finite after control exploration', () => state());
+  return results;
 }
