@@ -179,6 +179,74 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.deepEqual(result.errors, []); await result.page.close();
     });
 
+    await t.test('Circuit wires draw in open space and connect at endpoints and mid-wire junctions', async () => {
+      for (const mobile of [false, true]) {
+        const { page, errors } = await pageFor('circuits', mobile);
+        const canvas = page.locator('#circuitCanvas');
+        const tool = value => page.locator(`#tools [data-value="${value}"]`).click();
+        async function point(x, y) {
+          await canvas.scrollIntoViewIfNeeded();
+          const box = await canvas.boundingBox();
+          return { x: box.x + x * box.width / 900, y: box.y + y * box.height / 560 };
+        }
+        async function draw(ax, ay, bx, by) {
+          const a = await point(ax, ay), b = await point(bx, by);
+          await page.mouse.move(a.x, a.y); await page.mouse.down();
+          await page.mouse.move(b.x, b.y, { steps: 4 }); await page.mouse.up();
+        }
+        async function currentBetween(min, max) {
+          await page.waitForFunction(([lo, hi]) => {
+            const current = Number(document.getElementById('current').textContent);
+            return current > lo && current < hi;
+          }, [min, max]);
+        }
+        await page.locator('#clearBtn').click();
+        await tool('wire');
+        // Neither end touches a part: the wire must still be placed and selectable.
+        await draw(150, 150, 350, 150);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        await tool('select');
+        const middle = await point(250, 150); await page.mouse.click(middle.x, middle.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        // Dragged parts use the same placement path as wires.
+        await tool('battery'); await draw(300, 400, 370, 400);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Battery/);
+        await tool('resistor'); await draw(500, 150, 570, 150);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Resistor/);
+        await tool('wire');
+        await draw(350, 150, 500, 150); // wire endpoint to resistor
+        await draw(150, 150, 150, 400); // wire endpoint to open space
+        await draw(150, 400, 300, 400);
+        await draw(570, 150, 700, 150);
+        await draw(700, 150, 700, 400);
+        await currentBetween(-0.001, 0.001); // still an open circuit
+        await draw(700, 400, 370, 400);
+        await currentBetween(0.08, 0.10); // 9 V through 100 ohms
+        // Add a second 100-ohm branch, starting AND ending on wire interiors.
+        await tool('resistor'); await draw(350, 300, 420, 300);
+        // Aim slightly off the wire to exercise interior snapping, not just
+        // coincident grid points.
+        await tool('wire'); await draw(254, 157, 350, 300);
+        await draw(420, 300, 620, 157);
+        await currentBetween(0.17, 0.19);
+        assert.equal(await page.locator('#warning').isVisible(), false);
+        // Select still moves a wire, including its attached branch. Disconnect
+        // the branch at its resistor so the original single path remains live.
+        await tool('select'); await draw(302, 225, 352, 225);
+        await currentBetween(0.08, 0.10);
+        // Both click-to-place paths (free and anchored) must also survive release.
+        await page.locator('#clearBtn').click(); await tool('wire');
+        let p = await point(300, 200); await page.mouse.click(p.x, p.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        p = await point(345, 200); await page.mouse.click(p.x, p.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        await tool('select'); p = await point(400, 200); await page.mouse.click(p.x, p.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        assert.deepEqual(errors, [], mobile ? 'phone' : 'desktop');
+        await page.close();
+      }
+    });
+
     await t.test('Projectile launch, zoom, and data-driven questions remain usable', async () => {
       const { page, errors } = await pageFor('projectile');
       await page.locator('#zoomInBtn').click(); assert.equal(await page.locator('#zoomDisplay').innerText(), '1.30x');
