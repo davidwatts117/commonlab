@@ -208,6 +208,81 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal((await reviewer.request.get(`${base}/api/contributor/submissions/${receipt.id}`)).status(), 401);
     });
 
+    await t.test('designed dashboard handles empty states, pagination, selection, live revisions and errors', async () => {
+      const dashboard = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      dashboard.on('pageerror', error => pageErrors.push(error.message));
+      let signedIn = false, fail = false, populated = false;
+      const literalTitle = '<img src=x onerror="window.titleExecuted=true">';
+      const item = { id: 42, title: literalTitle, simulationId: 'dashboard-fixture', revision: 3, status: 'rejected', publishedRevision: 2, createdAt: '2026-01-01T12:00:00Z', updatedAt: '2026-02-02T12:00:00Z', reviewNote: 'Please clarify the explanation.' };
+      const queries = [];
+      await dashboard.route('**/api/auth/me', route => route.fulfill({ status: signedIn ? 200 : 401, json: signedIn ? { id: 99, username: 'dashboard-fixture' } : {} }));
+      await dashboard.route('**/api/contributor/submissions?*', route => {
+        const query = new URL(route.request().url()).searchParams; queries.push(query.toString());
+        const items = !populated || query.get('status') === 'pending' ? [] : [query.has('before') ? { ...item, id: 41, title: 'Earlier submission', publishedRevision: null } : item];
+        return route.fulfill({ status: fail ? 503 : 200, json: fail ? { error: 'Service temporarily unavailable.' } : { items, hasMore: populated && items.length > 0 && !query.has('before') } });
+      });
+      await dashboard.route('**/api/contributor/submissions/42/history', route => route.fulfill({ json: { events: [{ createdAt: item.updatedAt, revision: 3, actor: 'maintainer', action: 'reject', status: 'rejected', note: '<script>not executable</script>' }] } }));
+      try {
+        await dashboard.goto(`${base}/contributions.html`);
+        await dashboard.locator('#contributions-login').waitFor();
+        assert.equal(await dashboard.getByRole('link', { name: 'Sign in or create an account', exact: true }).getAttribute('href'), '/account.html');
+        assert.equal(await dashboard.locator('#contributions-workspace').isVisible(), false);
+        signedIn = true; await dashboard.reload();
+        await dashboard.locator('#contributions-empty').waitFor();
+        assert.equal(await dashboard.locator('#contributions-empty-title').innerText(), 'No submissions yet');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), false);
+        populated = true; await dashboard.locator('#contributions-refresh').click();
+        const card = dashboard.locator('#contributions-list button').first();
+        await card.waitFor();
+        assert.equal(await card.locator('.contribution-card-title').innerText(), literalTitle);
+        assert.equal(await card.locator('[data-status="rejected"]').innerText(), 'Rejected');
+        assert.equal(await card.locator('[data-status="live"]').innerText(), 'Live revision 2');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), true);
+        await card.focus(); await dashboard.keyboard.press('Enter');
+        await dashboard.waitForFunction(() => document.getElementById('contribution-history').textContent.includes('reject'));
+        assert.equal(await card.getAttribute('aria-expanded'), 'true');
+        assert.equal(await card.getAttribute('aria-controls'), 'contribution-detail');
+        assert.equal(await dashboard.locator('#contribution-title').evaluate(el => el === document.activeElement), true);
+        assert.equal(await dashboard.locator('#contribution-live').getAttribute('href'), '/simulations/dashboard-fixture');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), false);
+        const desktopList = await dashboard.locator('#contributions-list').boundingBox();
+        const desktopDetail = await dashboard.locator('#contribution-detail').boundingBox();
+        assert.ok(desktopDetail.x > desktopList.x + desktopList.width, 'desktop details sit beside the list');
+        assert.equal(await dashboard.locator('#contributions-workspace img, #contributions-workspace script').count(), 0);
+        await dashboard.locator('#contributions-more').click();
+        await dashboard.waitForFunction(() => document.querySelectorAll('#contributions-list button').length === 2);
+        assert.ok(queries.includes('status=all&before=42'));
+        assert.equal(await dashboard.locator('#contributions-more').isVisible(), false);
+        const earlier = dashboard.locator('#contributions-list button').last();
+        await dashboard.route('**/api/contributor/submissions/41/history', route => route.fulfill({ json: { events: [] } }));
+        await earlier.click(); await dashboard.getByText('No review events yet.', { exact: true }).waitFor();
+        assert.equal(await card.getAttribute('aria-expanded'), 'false');
+        assert.equal(await earlier.getAttribute('aria-expanded'), 'true');
+        assert.equal(await dashboard.locator('#contribution-live').isVisible(), false);
+        await dashboard.setViewportSize({ width: 390, height: 844 });
+        const mobileList = await dashboard.locator('#contributions-list').boundingBox();
+        const mobileDetail = await dashboard.locator('#contribution-detail').boundingBox();
+        assert.ok(mobileDetail.y >= mobileList.y + mobileList.height, 'phone details stack below the list');
+        assert.equal(await dashboard.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+        await card.click();
+        await dashboard.waitForFunction(() => document.getElementById('contribution-history').textContent.includes('reject'));
+        await dashboard.setViewportSize({ width: 320, height: 700 });
+        assert.equal(await dashboard.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+        await dashboard.locator('#contributions-filter').selectOption('pending');
+        await dashboard.getByText('No submissions match this filter', { exact: true }).waitFor();
+        assert.ok((await dashboard.locator('#contributions-empty-text').innerText()).includes('All statuses'));
+        assert.equal(await dashboard.locator('#contribution-detail').isVisible(), false);
+        assert.equal(await dashboard.locator('#contribution-feedback').innerText(), '');
+        fail = true; await dashboard.locator('#contributions-refresh').click();
+        await dashboard.getByRole('alert').filter({ hasText: 'Service temporarily unavailable.' }).waitFor();
+        assert.equal(await dashboard.locator('#contributions-workspace').isVisible(), false);
+        fail = false; await dashboard.reload(); await dashboard.locator('#contributions-workspace').waitFor();
+        signedIn = false; await dashboard.locator('#contributions-refresh').click();
+        await dashboard.locator('#contributions-login').waitFor();
+        assert.equal(await dashboard.locator('#contributions-list button').count(), 0);
+      } finally { await dashboard.close(); }
+    });
+
     await t.test('dashboard tracks private status, literal feedback, history and signed-out privacy', async () => {
       const rejected = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { revision: 2, decision: 'reject', note: '<img src=x onerror="window.noteExecuted=true"> Please revise the explanation.' } });
       assert.equal(rejected.status(), 200);
