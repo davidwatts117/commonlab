@@ -89,6 +89,12 @@ For repository-authored simulations, add an entry to `public/simulations/catalog
 
 See [Simulation authoring](docs/simulation-authoring.md) for the schema, module contract, examples, and verification checklist. All seven existing simulations have been migrated.
 
+## Completion certificates
+
+After exploring any simulation, students can enter their name in **Finished exploring?** to create a completion certificate, then **Print / save as PDF**. The certificate includes the simulation, issue date, guided experiments started/completed during this visit, and any unfinished or latest locally saved Check Understanding result. Regenerate it after further activity to update the record.
+
+Names and certificates stay on the page: they are not saved in browser storage or sent to a server. Guided participation resets on reload; existing CFU persistence is unchanged. These are participation records, not verified qualifications or proof of mastery (guided steps can be skipped).
+
 ## Guided experiments / lessons
 
 The shared engine (`guided.js`) and overlay styles (`guided.css`) are implemented. The Pendulum simulation includes the first pilot lesson, **“What controls a pendulum’s period?”**, with predictions, guided tasks, observation, three practice-only CFU checkpoints, hints, restart/exit, and a completion recap.

@@ -90,6 +90,77 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.deepEqual(errors, []); await page.close();
     });
 
+    await t.test('certificates distinguish guided participation and completed checks without sending or storing names', async () => {
+      const { page, errors } = await pageFor('pendulum');
+      const name = '<img src=x onerror=alert(1)> Student';
+      const sent = [];
+      page.on('request', request => sent.push(request.url() + (request.postData() || '')));
+      const certificate = page.locator('.completion-certificate');
+      const create = page.getByRole('button', { name: 'Create completion certificate', exact: true });
+      await page.getByLabel('Your name', { exact: true }).fill('   ');
+      await create.click(); assert.equal(await certificate.isVisible(), false);
+      await page.getByLabel('Your name', { exact: true }).fill(name);
+      await create.click();
+      assert.equal(await certificate.locator('.certificate-name').innerText(), name);
+      assert.equal(await certificate.locator('img').count(), 0);
+      assert.doesNotMatch(await certificate.innerText(), /Guided experiment|Check Understanding/);
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      await page.locator('[data-exit]').click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Guided experiment started \(not completed\): What controls a pendulum/);
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      // Deliberate Skip is supported by the lesson; completion is participation, not mastery.
+      for (let i = 0; i < catalog.simulations[0].lessons[0].steps.length; i++) await page.locator('[data-skip]').click();
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Guided experiment completed: What controls a pendulum/);
+      assert.match(await certificate.innerText(), /Check Understanding in progress/);
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      const questions = catalog.simulations[0].assessment.questions.filter(q => ['assessment', 'both'].includes(q.use));
+      for (let i = 0; i < questions.length; i++) {
+        await page.locator('.cfu-choice input').first().check();
+        await page.getByRole('button', { name: 'Submit answer', exact: true }).click();
+        await page.getByRole('button', { name: i === questions.length - 1 ? 'See results' : 'Continue', exact: true }).click();
+      }
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Check Understanding completed \(latest local result\)/);
+      assert.doesNotMatch(await certificate.innerText(), /in progress/);
+      assert.equal(await certificate.locator('li').count(), 3);
+      await page.evaluate(() => { window.print = () => { window.certificatePrinted = true; }; });
+      await page.getByRole('button', { name: 'Print / save as PDF', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.certificatePrinted), true);
+      await page.emulateMedia({ media: 'print' });
+      assert.equal(await certificate.isVisible(), true);
+      assert.equal(await page.locator('.certificate-form').isVisible(), false);
+      assert.equal(await page.locator('.sim-canvas-area').isVisible(), false);
+      assert.equal(await page.locator('.site-header').isVisible(), false);
+      const pdf = await page.pdf({ format: 'A4' });
+      // Chromium writes one /Type /Page object per page; catch trailing blank pages.
+      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
+      assert.equal(sent.some(request => request.includes(name) || request.includes(encodeURIComponent(name))), false);
+      const stored = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
+      assert.equal(stored.includes(name), false);
+      await page.emulateMedia({ media: 'screen' });
+      await page.reload(); await page.waitForSelector('[data-ready="true"]');
+      assert.equal(await certificate.isVisible(), false);
+      assert.equal(await page.getByLabel('Your name', { exact: true }).inputValue(), '');
+      assert.deepEqual(errors, []); await page.close();
+    });
+
+    await t.test('mobile simulations without learning activities offer free-exploration certificates', async () => {
+      const { page, errors } = await pageFor('gas-laws', true);
+      await page.getByLabel('Your name', { exact: true }).fill('A'.repeat(100));
+      await page.getByRole('button', { name: 'Create completion certificate', exact: true }).click();
+      const certificate = page.locator('.completion-certificate');
+      assert.match(await certificate.innerText(), /Gas Laws/);
+      assert.equal(await certificate.locator('li').count(), 1);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(errors, []); await page.close();
+    });
+
     await t.test('Gas controls and accessible information dialog work', async () => {
       const { page, errors } = await pageFor('gas-laws');
       const before = await page.locator('#pressureDisplay').innerText();
