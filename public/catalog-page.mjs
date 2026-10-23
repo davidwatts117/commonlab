@@ -21,6 +21,7 @@ function span(cls, text) {
 
 try {
   const catalog = await loadCatalog();
+  const communityIds = new Set(catalog.communitySimulationIds || []);
   catalog.simulations.forEach((simulation, index) => {
     const card = document.createElement('a'); card.className = 'sim-card';
     // Query-form links retain compatibility with static hosting as well as Axum.
@@ -47,8 +48,13 @@ try {
     launch.lastChild.setAttribute('aria-hidden', 'true');
 
     card.append(thumb, body, launch);
-    grid.append(card);
+    const group = communityIds.has(simulation.id) ? 'community' : 'original';
+    document.getElementById(`${group}-simulations`).append(card);
   });
+  for (const group of ['original', 'community']) {
+    document.getElementById(`${group}-simulations-empty`).hidden = document.getElementById(`${group}-simulations`).children.length > 0;
+  }
+  grid.hidden = false;
   document.getElementById('catalog-status').hidden = true;
 } catch (error) {
   const status = document.getElementById('catalog-status'); status.textContent = `Unable to load simulations: ${error.message}`; status.setAttribute('role', 'alert');
