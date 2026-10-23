@@ -1,9 +1,11 @@
 import { loadCatalog } from './simulation-schema.mjs';
 import { renderSimulation, mountLearning } from './simulation-ui.mjs';
+import { mountCertificate } from './completion-certificate.mjs';
 
 const status = document.getElementById('simulation-status');
 const root = document.getElementById('simulation-root');
-let ui, controller, learning;
+const certificateHost = document.querySelector('.certificate-host');
+let ui, controller, learning, certificate;
 try {
   const catalog = await loadCatalog();
   // Axum serves this same file for both canonical and old bookmarked URLs.
@@ -25,10 +27,13 @@ try {
   controller = module.mount(ui);
   if (!controller?.app?.sim) throw new Error('Simulation module must return { app }.');
   learning = mountLearning(ui, controller, document.getElementById('lesson-launcher'));
+  certificate = mountCertificate({ host: certificateHost, definition, learning, bus: controller.app.bus });
+  certificateHost.hidden = false;
   window.CommonLabSite.initializeSimulationChrome();
   status.hidden = true;
   root.dataset.ready = 'true';
 } catch (error) {
+  certificate?.destroy(); certificateHost.hidden = true;
   learning?.destroy(); controller?.app?.sim.stop(); ui?.destroy(); root.hidden = true;
   status.textContent = `Unable to load simulation: ${error.message}`;
   status.setAttribute('role', 'alert');
@@ -36,7 +41,7 @@ try {
 }
 window.addEventListener('pagehide', event => {
   if (event.persisted) return; // Preserve the rendered slots for browser Back/Forward cache.
-  learning?.destroy(); controller?.app?.sim.stop(); ui?.destroy();
+  certificate?.destroy(); learning?.destroy(); controller?.app?.sim.stop(); ui?.destroy();
 });
 window.addEventListener('pageshow', event => {
   if (event.persisted) controller?.app?.sim.start();
