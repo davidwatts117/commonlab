@@ -70,6 +70,103 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('wide workspaces bring graphs and explanations alongside without narrow-screen overflow', async () => {
+      for (const { id } of catalog.simulations) {
+        const { page, errors } = await pageFor(id);
+        for (const width of [390, 900, 1279, 1280, 1440, 1799, 1800, 1920, 2199, 2200, 2560]) {
+          await page.setViewportSize({ width, height: 900 });
+          const boxes = await page.evaluate(() => {
+            const rect = selector => {
+              const el = document.querySelector(selector);
+              if (!el || !el.getClientRects().length) return null;
+              const { x, y, right, bottom, width, height } = el.getBoundingClientRect();
+              return { x, y, right, bottom, width, height };
+            };
+            return {
+              scene: rect('.canvas-wrapper'), graphs: rect('.simulation-graphs'),
+              controls: rect('.sim-main > .controls-panel'), main: rect('.sim-main'),
+              sidebar: rect('.sim-sidebar'), root: rect('#simulation-root'), dock: rect('.simulation-dock'),
+              cardColumns: getComputedStyle(document.querySelector('.sim-sidebar')).gridTemplateColumns.split(' ').length,
+              overflow: document.documentElement.scrollWidth - innerWidth,
+              canvases: [...document.querySelectorAll('.simulation-canvas')].map(canvas => ({
+                width: canvas.getBoundingClientRect().width, height: canvas.getBoundingClientRect().height,
+                ratio: Number(canvas.style.aspectRatio.split('/')[0]) / Number(canvas.style.aspectRatio.split('/')[1]),
+              })),
+            };
+          });
+          const context = `${id} at ${width}px`;
+          assert.ok(boxes.overflow <= 1, `${context}: horizontal overflow`);
+          for (const canvas of boxes.canvases) {
+            assert.ok(canvas.width > 0 && canvas.height > 0, `${context}: invisible canvas`);
+            assert.ok(Math.abs(canvas.width / canvas.height - canvas.ratio) < 0.02, `${context}: distorted canvas`);
+          }
+          if (width >= 1280) {
+            assert.ok(boxes.controls.x >= boxes.scene.right, `${context}: controls not beside scene`);
+            assert.ok(Math.abs(boxes.controls.width - 420) < 1, `${context}: unreadable controls width`);
+            if (boxes.graphs) {
+              assert.ok(boxes.graphs.x >= boxes.scene.right, `${context}: graphs not beside scene`);
+              assert.ok(Math.abs(boxes.graphs.y - boxes.scene.y) < 1, `${context}: graphs start below scene`);
+              assert.ok(boxes.graphs.right <= boxes.controls.x, `${context}: graphs overlap controls`);
+            }
+          } else if (boxes.graphs) {
+            assert.ok(boxes.graphs.y >= boxes.scene.bottom, `${context}: narrow graphs must stack`);
+          }
+          if (width >= 1800 && boxes.sidebar) {
+            assert.ok(boxes.sidebar.x >= boxes.main.right, `${context}: explanations not beside workspace`);
+            assert.ok(Math.abs(boxes.sidebar.y - boxes.scene.y) < 1, `${context}: explanations start below workspace`);
+            assert.equal(boxes.cardColumns, width >= 2200 ? 2 : 1, `${context}: reference columns waste available space`);
+          } else if (boxes.sidebar) {
+            assert.ok(boxes.sidebar.y >= boxes.main.bottom, `${context}: explanations overlap workspace`);
+          }
+          if (boxes.dock) {
+            // The sticky dock intentionally overlays the scene while scrolling,
+            // but its layout row must span the workspace rather than squeeze it.
+            assert.ok(Math.abs(boxes.dock.width - boxes.main.width) < 1, `${context}: dock does not span workspace`);
+            assert.ok(boxes.dock.right <= boxes.root.right, `${context}: dock escapes workspace`);
+          }
+          if (width >= 1440) assert.ok(boxes.root.width > 1280, `${context}: workspace still capped`);
+        }
+        if (id === 'pendulum') {
+          await page.locator('#pauseBtn').click();
+          await page.locator('#lengthSlider').fill('2');
+          assert.equal(await page.locator('#lengthValue').innerText(), '2.00 m');
+          await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+          assert.equal(await page.locator('.cfu-choice').first().isVisible(), true);
+        }
+        assert.deepEqual(errors, [], id); await page.close();
+      }
+    });
+
+    await t.test('fullscreen keeps graphs, controls and view tabs usable after wide layout', async () => {
+      for (const id of ['pendulum', 'build-a-nucleus']) {
+        const { page, errors } = await pageFor(id);
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await page.getByRole('button', { name: 'Fullscreen simulation', exact: true }).click();
+        await page.waitForFunction(() => document.fullscreenElement?.id === 'simulation-root' && document.fullscreenElement.classList.contains('fs-active'));
+        assert.equal(await page.locator('.controls-panel').isVisible(), true);
+        assert.equal(await page.locator('.sim-sidebar').isVisible(), false);
+        assert.equal(await page.locator('.simulation-canvas').first().isVisible(), true);
+        assert.equal(await page.locator('.sim-stage').evaluate(el => getComputedStyle(el).display), 'flex');
+        if (id === 'build-a-nucleus') {
+          await page.getByRole('tab').nth(1).click();
+          assert.equal(await page.locator('#chartCanvas').isVisible(), true);
+          assert.equal(await page.locator('#nucleusCanvas').isVisible(), false);
+          await page.getByRole('tab').first().click();
+          assert.equal(await page.locator('#nucleusCanvas').isVisible(), true);
+          assert.equal(await page.locator('#chartCanvas').isVisible(), false);
+        } else {
+          assert.equal(await page.locator('#angleGraphCanvas').isVisible(), true);
+          await page.locator('#pauseBtn').click();
+          assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');
+        }
+        await page.evaluate(() => document.exitFullscreen());
+        await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#simulation-root').classList.contains('fs-active'));
+        assert.equal(await page.locator('.simulation-graphs').evaluate(el => getComputedStyle(el).display), 'flex');
+        assert.equal(await page.locator('.simulation-graph').first().isVisible(), true);
+        assert.deepEqual(errors, []); await page.close();
+      }
+    });
+
     await t.test('Pendulum controls, persisted assessment, and guided lesson use the same shell', async () => {
       const { page, errors } = await pageFor('pendulum');
       await page.locator('#pauseBtn').click(); assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');

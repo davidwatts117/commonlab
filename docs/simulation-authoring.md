@@ -67,6 +67,8 @@ Simulation IDs are lowercase slugs, up to 80 characters; the module filename is 
 
 `cards` contains `{title, formulas: [text], paragraphs: [text]}`, plus optional `components` (up to 10 of the components above, such as a log `table`). Content is plain text, including mathematical notation; HTML is never interpreted. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, optional `legend: [{label,color}]` (six-digit hex colors), and optional `controls` (up to 10 components shown above that canvas).
 
+The live simulation workspace uses the available page width. At desktop widths of 1280px and above, graphs form a column beside the scene and controls remain alongside; at 1800px and above, explanation cards occupy a separate reference column (two card columns from 2200px). Smaller screens stack these sections in reading order. Simulations without graphs or cards do not reserve empty columns. Embedded authoring previews keep graphs below the scene and do not use the new wide-page columns.
+
 Optional top-level `views: {id, value, options: [{value,label}]}` declares fullscreen tabs. The first option shows the main canvas and controls; a graph with `view` set to another option is shown on its own tab. Outside fullscreen every view stays visible. The tab group's `.value` holds the current view and it dispatches `change` when a tab is chosen.
 
 For information dialogs, define `info: {key: {title,formula,explanation,detail}}` and reference the key from a slider. The shell provides the accessible native dialog and focus restoration.

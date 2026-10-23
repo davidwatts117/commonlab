@@ -103,6 +103,28 @@ test('approved component slots render labels and untrusted strings as plain text
   ui.destroy(); assert.equal(root.children.length, 0);
 });
 
+test('graphs share a companion column without changing slot or reading order', () => {
+  for (const definition of catalog.simulations) {
+    const document = documentWithDialogs(); const root = rootFor(document);
+    const ui = renderSimulation(root, definition);
+    const stage = root.querySelector('.sim-stage');
+    const graphs = root.querySelector('.simulation-graphs');
+    assert.equal(stage.classList.contains('sim-stage--graphs'), definition.graphs.length > 0);
+    assert.equal(stage.children[0].className, 'canvas-wrapper');
+    if (definition.graphs.length) {
+      assert.equal(stage.children[1], graphs);
+      assert.equal(graphs.children.length, definition.graphs.length);
+      definition.graphs.forEach((graph, i) => {
+        assert.equal(graphs.children[i].querySelector('canvas'), ui.getElementById(graph.id));
+      });
+    } else {
+      assert.equal(graphs, null);
+      assert.equal(stage.children.length, 1);
+    }
+    ui.destroy();
+  }
+});
+
 test('extended components validate cross-field rules and slot ids wherever they are nested', () => {
   const byId = id => clone(catalog.simulations.find(def => def.id === id));
   const bad = [
