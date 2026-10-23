@@ -119,8 +119,11 @@ export class Workspace {
   }
   edit(name, oldText, newText, expectedHash) {
     const before = this.get(name);
-    if (!oldText || before.split(oldText).length !== 2)
-      throw new Error('Exact edit must match once');
+    const matches = oldText ? before.split(oldText).length - 1 : 0;
+    if (!oldText || matches !== 1)
+      throw new Error(
+        `Exact edit matched ${matches} occurrences; nothing was applied. Copy literal current artifact text, including whitespace. If an exact edit is awkward, use write_artifact to replace the whole file with the current inventory hash; do not keep retrying the same edit.`,
+      );
     return this.write(
       name,
       before.replace(oldText, () => newText),

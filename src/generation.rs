@@ -155,10 +155,15 @@ impl Diagnostics {
         };
         for (key, value) in &self.0 {
             let valid = if policy_contains("counters", key) {
-                value.as_u64().is_some_and(|n| n <= 10_000_000)
+                value
+                    .as_u64()
+                    .is_some_and(|n| n <= policy_number("counterMax") as u64)
             } else {
                 match key.as_str() {
                     "phase" => value.as_str().is_some_and(|s| policy_contains("phases", s)),
+                    "reasoningEffort" => value
+                        .as_str()
+                        .is_some_and(|s| policy_contains("reasoningEfforts", s)),
                     "tool" => value.as_str().is_some_and(|s| policy_contains("tools", s)),
                     "cause" => value
                         .as_str()
@@ -860,7 +865,12 @@ async fn complete(
                     "submittedBy": "",
                     "source": {"kind": "javascript", "moduleCode": a.module_code},
                 });
-                if input.outcome=="needs_attention" { ("failed",Some(bundle.to_string()),"Draft retained for manual attention; required verification or review remains unresolved.") } else { ("succeeded", Some(bundle.to_string()), "") }
+                if input.outcome=="needs_attention" {
+                    let message = if input.failure.as_deref()==Some("storage_error") {
+                        "Draft retained for manual attention after a checkpoint storage failure. Ask the operator to check the writable checkpoint volume."
+                    } else { "Draft retained for manual attention; required verification or review remains unresolved." };
+                    ("failed",Some(bundle.to_string()),message)
+                } else { ("succeeded", Some(bundle.to_string()), "") }
             } else {
                 (
                     "failed",
@@ -871,6 +881,7 @@ async fn complete(
                         Some("provider_idle_timeout") => "The provider stream stalled before completing the current stage.",
                         Some("provider_timeout") => "The provider request reached its total time limit.",
                         Some("budget_exhausted") => "The job reached its configured token or estimated-cost budget.",
+                        Some("storage_error") => "The worker could not write its private checkpoint storage. Ask the operator to check the writable checkpoint volume, permissions and free space. No automatic regeneration was attempted.",
                         Some("verification_failed") => "Runtime checks remain unresolved; the candidate was not marked successful.",
                         Some("verification_unavailable") => "The browser verification service could not complete its checks.",
                         Some("review_unavailable") => "Independent review was unavailable; no review pass was recorded.",

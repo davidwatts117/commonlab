@@ -7,8 +7,18 @@ import {
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
 import { PROTOCOL, GenerationError, providerFailure } from './protocol.mjs';
+import { configuredReasoning } from './models.mjs';
 export function emptyLedger() {
-  return { requests: 0, inputTokens: 0, outputTokens: 0, costMicros: 0, retries: 0 };
+  return {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    costMicros: 0,
+    retries: 0,
+    reportedReasoningTokens: 0,
+    thinkingBytes: 0,
+    answerBytes: 0,
+  };
 }
 export class ModelCaller {
   constructor({
@@ -24,6 +34,7 @@ export class ModelCaller {
     streamOverride,
     limits = PROTOCOL.limits,
     signal,
+    reasoningEffort,
   }) {
     Object.assign(this, {
       runtime,
@@ -38,6 +49,7 @@ export class ModelCaller {
       streamOverride,
       limits,
       signal,
+      reasoningEffort,
     });
   }
   async call({
@@ -47,11 +59,14 @@ export class ModelCaller {
     role = 'author',
     phase = 'build',
     images = [],
-    targetTokens = 12000,
+    targetTokens = this.limits.buildTokens,
   }) {
     const l = this.ledger,
       m = this.model,
       caps = this.limits;
+    const reasoningEffort = configuredReasoning(m, role, process.env, this.reasoningEffort);
+    // Additive metrics for checkpoints written before reasoning observability.
+    for (const key of ['reportedReasoningTokens', 'thinkingBytes', 'answerBytes']) l[key] ??= 0;
     if (this.signal?.aborted) throw new GenerationError('worker_error');
     const remainingMs = this.deadlineAt - Date.now() - PROTOCOL.deliveryReserveMs;
     if (remainingMs < 1000) throw new GenerationError('timeout');
@@ -79,13 +94,14 @@ export class ModelCaller {
     l.inputTokens += inputEstimate;
     l.outputTokens += maxTokens;
     l.costMicros += cost;
-    l.inflight = { role, phase, request: l.requests, maxTokens };
+    l.inflight = { role, phase, request: l.requests, maxTokens, reasoningEffort };
     await this.onSave();
     const details = () => ({
       ...l,
       role,
       phase,
       maxTokens,
+      reasoningEffort,
       remainingMs: Math.max(0, this.deadlineAt - Date.now()),
     });
     this.emit('model_request', details());
@@ -136,7 +152,7 @@ export class ModelCaller {
         agentDir: this.dir,
         modelRuntime: this.runtime,
         model: m,
-        thinkingLevel: 'off',
+        thinkingLevel: reasoningEffort,
         resourceLoader: loader,
         sessionManager: SessionManager.inMemory(this.dir),
         settingsManager: SettingsManager.inMemory({
@@ -176,14 +192,23 @@ export class ModelCaller {
           maxTokens,
           context,
         });
-        return stream(model, context, { ...options, maxTokens });
+        return stream(model, context, {
+          ...options,
+          maxTokens,
+          timeoutMs: Math.min(caps.callMs, remainingMs),
+          maxRetries: 0,
+        });
       };
       let lastProgress = 0;
       session.subscribe((event) => {
         if (event.type === 'message_update') {
           const delta = event.assistantMessageEvent?.delta;
           // Count traffic, never publish or persist thinking/reasoning text.
-          bytes += typeof delta === 'string' ? Buffer.byteLength(delta) : 0;
+          const size = typeof delta === 'string' ? Buffer.byteLength(delta) : 0;
+          bytes += size;
+          const type = event.assistantMessageEvent?.type;
+          if (type === 'thinking_delta') l.thinkingBytes += size;
+          else if (type === 'text_delta' || type === 'toolcall_delta') l.answerBytes += size;
           if (!received) {
             received = true;
             clearTimeout(firstTimer);
@@ -213,6 +238,7 @@ export class ModelCaller {
       if (!last) throw new GenerationError('provider_error');
       // Only reconcile a completed authoritative message. Otherwise retain reservation.
       if (
+        ['stop', 'toolUse', 'length'].includes(last.stopReason) &&
         last.usage &&
         ['input', 'output'].every(
           (key) => Number.isSafeInteger(last.usage[key]) && last.usage[key] >= 0,
@@ -227,6 +253,15 @@ export class ModelCaller {
           (last.usage.cacheWrite || 0) -
           inputEstimate;
         l.outputTokens += last.usage.output - maxTokens;
+        // Reasoning is already INCLUDED in output; never add it to spending twice.
+        // Providers may omit this breakdown: the reported count is a lower bound,
+        // not evidence that an unreported zero means reasoning was disabled.
+        if (
+          Number.isSafeInteger(last.usage.reasoning) &&
+          last.usage.reasoning >= 0 &&
+          last.usage.reasoning <= last.usage.output
+        )
+          l.reportedReasoningTokens += last.usage.reasoning;
         const actual = last.usage.cost?.total;
         l.costMicros +=
           Number.isFinite(actual) && actual > 0
@@ -253,7 +288,9 @@ export class ModelCaller {
       if (block) {
         if (last.stopReason === 'length') throw new GenerationError('output_truncated');
         const error = new GenerationError(providerFailure(last.errorMessage || ''));
-        error.retryable = !received && !/quota|credit|billing/i.test(last.errorMessage || '');
+        error.retryable =
+          (error.code === 'provider_unavailable' || !received) &&
+          !/quota|credit|billing/i.test(last.errorMessage || '');
         throw error;
       }
       if (!validCall) throw new GenerationError('tool_protocol');

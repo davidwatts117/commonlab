@@ -34,6 +34,7 @@ async function run(items = rounds(), options = {}) {
   try {
     return {
       result: await generate(job, {
+        limits: { ...PROTOCOL.limits, repairs: 3, reviews: 2, protocolFailures: 3 },
         streamOverride: scripted(items),
         reviewStreamOverride: scripted([passReview()]),
         verifyOverride: async () => passedReport(),
@@ -60,6 +61,146 @@ test('locked SDK exposes only host tools, checkpoints operations and accounts fo
   assert.ok(snapshots.some((s) => s.ledger.inflight));
   assert.ok(events.some((e) => e.code === 'review_passed'));
   assert.ok(snapshots.some((s) => s.files['engine.js']));
+});
+test('generous budgets permit more than fourteen operations and retain reads across model calls', async () => {
+  const [design, ...build] = rounds();
+  const reads = Array.from({ length: 20 }, (_, i) =>
+    call('read_artifact', { name: i % 2 ? 'definition.json' : 'engine.js' }),
+  );
+  const { result, snapshots } = await run([design, ...reads, ...build]);
+  assert.equal(result.outcome, 'succeeded');
+  assert.ok(result.diagnostics.requests > 14);
+  assert.ok(
+    snapshots.some(
+      (s) =>
+        s.readResults.some((r) => r.name === 'definition.json') &&
+        s.readResults.some((r) => r.name === 'engine.js'),
+    ),
+  );
+  assert.ok(
+    !snapshots.at(-1).readResults.some((r) => r.name === 'engine.js'),
+    'writes invalidate stale cached reads',
+  );
+  assert.ok(
+    snapshots.every(
+      (s) =>
+        s.recentOperations.length <= 24 &&
+        Buffer.byteLength(JSON.stringify(s.readResults)) <= 262144,
+    ),
+  );
+});
+test('the next operation sees exact current engine source when writing tests', async () => {
+  const script = scripted(rounds());
+  let turn = 0,
+    checked = false;
+  const { result } = await run([], {
+    streamOverride: (model, context, options) => {
+      if (++turn === 3) {
+        const prompt = context.messages
+          .filter((m) => m.role === 'user')
+          .flatMap((m) =>
+            Array.isArray(m.content)
+              ? m.content.filter((c) => c.type === 'text').map((c) => c.text)
+              : [m.content],
+          )
+          .join('\n');
+        assert.ok(prompt.includes(source), 'engine source must not disappear after a write');
+        assert.ok(prompt.includes('artifacts'));
+        assert.ok(
+          prompt.includes('"oneOf"'),
+          'definition component schema must remain available during build/repair',
+        );
+        checked = true;
+      }
+      return script(model, context, options);
+    },
+  });
+  assert.ok(checked);
+  assert.equal(result.outcome, 'succeeded');
+});
+test('failed authored expectations can be corrected with an audited reason, while passing tests become baselines', async () => {
+  const bad =
+    'export async function run(api){await api.step(0.5);api.near((await api.state()).time,3,0.01,"elapsed time");}';
+  const good = bad.replace('time,3,', 'time,0.5,');
+  const edit = {
+    name: 'tests.js',
+    expectedHash: hash(bad),
+    oldText: 'time,3,',
+    newText: 'time,0.5,',
+  };
+  const reason =
+    'Independent elapsed time is 0.5 seconds after step(0.5); the old expected 3 seconds was a test typo.';
+  let checks = 0;
+  const { result, snapshots, events } = await run(
+    [
+      ...rounds().slice(0, 3),
+      call('write_artifact', { name: 'tests.js', expectedHash: hash(''), content: bad }),
+      call('run_verification', {}),
+      call('edit_artifact', edit),
+      call('edit_artifact', { ...edit, reason }),
+      call('run_verification', {}),
+    ],
+    {
+      verifyOverride: async () =>
+        ++checks === 1
+          ? {
+              ...passedReport(),
+              ok: false,
+              tests: {
+                total: 1,
+                passed: 0,
+                failed: 1,
+                results: [
+                  {
+                    name: 'scientific test module',
+                    ok: false,
+                    message: 'elapsed time expected 3; got 0.5',
+                  },
+                ],
+              },
+            }
+          : passedReport(),
+    },
+  );
+  assert.equal(result.outcome, 'succeeded');
+  assert.ok(
+    events.some((e) => e.code === 'validation_failed'),
+    'unexplained test changes must be rejected',
+  );
+  assert.ok(
+    snapshots.filter((s) => s.verifications === 1).every((s) => !s.requiredModules.includes(bad)),
+  );
+  assert.deepEqual(snapshots.at(-1).requiredModules, [good]);
+  assert.equal(snapshots.at(-1).testRevisions[0].reason, reason);
+});
+test('the host refreshes stale verification after three repair edits without another model tool request', async () => {
+  let current = source,
+    checks = 0;
+  const edits = [];
+  for (let i = 0; i < PROTOCOL.limits.verifyAfterEdits; i++) {
+    const chunk = `\n// focused repair ${i}`;
+    edits.push(
+      call('write_artifact', {
+        name: 'engine.js',
+        expectedHash: hash(current),
+        content: chunk,
+        append: true,
+      }),
+    );
+    current += chunk;
+  }
+  const { result } = await run([...rounds(), ...edits], {
+    verifyOverride: async () =>
+      ++checks === 1
+        ? {
+            ...passedReport(),
+            ok: false,
+            tests: { total: 1, passed: 0, failed: 1, results: [{ name: 'repair me', ok: false }] },
+          }
+        : passedReport(),
+  });
+  assert.equal(checks, 2);
+  assert.equal(result.outcome, 'succeeded');
 });
 test('scripted author stream does NOT disable production verification', async () => {
   const restore = modelEnvironment();
@@ -105,6 +246,30 @@ test('failed verification forces repair and cannot become success at repair exha
   assert.equal(checks, 4);
   assert.ok(!events.some((e) => e.code === 'review_passed'));
   assert.equal(result.report.verification, 'failed');
+});
+test('malformed reviewer output is retained and gets bounded format repair instead of a false pass', async () => {
+  const invalid = call('review_critique', {
+    verdict: 'pass',
+    summary: 'x'.repeat(6001),
+    defects: [],
+  });
+  const { result, events, snapshots } = await run(rounds(), {
+    reviewStreamOverride: scripted([invalid, passReview()]),
+  });
+  assert.equal(result.outcome, 'succeeded');
+  assert.equal(result.diagnostics.requests, 6);
+  assert.equal(result.diagnostics.retries, 1);
+  assert.ok(events.some((e) => e.code === 'retrying' && e.details.cause === 'tool_protocol'));
+  assert.ok(snapshots.some((s) => s.rejectedOperation?.role === 'reviewer'));
+});
+test('a pass label cannot override a major reviewer defect', async () => {
+  const contradictory = failedReview();
+  contradictory.content[0].arguments.verdict = 'pass';
+  const { result } = await run([...rounds(), response()], {
+    reviewStreamOverride: scripted([contradictory, failedReview()]),
+  });
+  assert.equal(result.outcome, 'needs_attention');
+  assert.notEqual(result.report.review, 'passed');
 });
 test('reviewer outage is unavailable, not pass, and the private candidate survives', async () => {
   const { result, events } = await run(rounds(), {
@@ -160,8 +325,24 @@ test('truncated operations do not execute and retry locally at a bounded larger 
     },
   });
   assert.equal(result.outcome, 'succeeded');
-  assert.deepEqual(budgets.slice(0, 2), [5000, 10000]);
+  assert.deepEqual(budgets.slice(0, 2), [
+    PROTOCOL.limits.designTokens,
+    PROTOCOL.limits.designTokens * 2,
+  ]);
   assert.equal(result.diagnostics.retries, 1);
+});
+test('transport failures get bounded ledger-accounted recovery without executing partial calls', async () => {
+  const error = { content: [], stopReason: 'error', errorMessage: 'terminated' };
+  const { result } = await run([error, ...rounds()]);
+  assert.equal(result.outcome, 'succeeded');
+  assert.equal(result.diagnostics.requests, 6);
+  assert.equal(result.diagnostics.retries, 1);
+  assert.ok(result.diagnostics.outputTokens >= PROTOCOL.limits.designTokens);
+  const exhausted = await run(
+    Array.from({ length: PROTOCOL.limits.transientRetries + 1 }, () => error),
+  );
+  assert.equal(exhausted.result.failure, 'provider_unavailable');
+  assert.equal(exhausted.result.diagnostics.requests, PROTOCOL.limits.transientRetries + 1);
 });
 test('unknown or auth failure is not blindly retried', async () => {
   let calls = 0;

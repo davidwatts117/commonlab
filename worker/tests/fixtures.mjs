@@ -96,6 +96,8 @@ export function modelEnvironment() {
     'CL_REVIEW_MODEL_ID',
     'CL_REVIEW_MODEL_API_KEY',
     'CL_REVIEW_IMAGES',
+    'CL_MODEL_REASONING_EFFORT',
+    'CL_REVIEW_REASONING_EFFORT',
   ];
   const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   Object.assign(process.env, {
@@ -104,6 +106,8 @@ export function modelEnvironment() {
     CL_MODEL_API_KEY: 'test-only-never-sent',
     CL_REVIEW_MODEL_ID: 'deepseek/deepseek-v4.1-flash-1017',
     CL_REVIEW_IMAGES: '1',
+    CL_MODEL_REASONING_EFFORT: 'low',
+    CL_REVIEW_REASONING_EFFORT: '',
   });
   return () => {
     for (const k of keys)

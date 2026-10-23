@@ -1,7 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyArtifact } from '../verify.mjs';
+import { verifyArtifact, formatVerification } from '../verify.mjs';
 import { SMOKE_ARTIFACT } from '../preflight.mjs';
+test('repair feedback prioritizes failures instead of truncating them behind passing checks', () => {
+  const text = formatVerification({
+    ok: false,
+    tests: {
+      total: 101,
+      passed: 100,
+      failed: 1,
+      results: [
+        ...Array.from({ length: 100 }, () => ({
+          name: 'unneeded passing detail '.repeat(100),
+          ok: true,
+        })),
+        { name: 'critical collision law', ok: false, message: 'Expected momentum 3; got 7' },
+      ],
+    },
+  });
+  assert.ok(text.includes('critical collision law'));
+  assert.ok(text.includes('Expected momentum 3; got 7'));
+  assert.ok(!text.includes('unneeded passing detail'));
+  assert.ok(text.includes('scientific reason'));
+});
 const enabled = process.env.CL_TEST_BROWSER === '1';
 const run = (name, fn) => test(name, { skip: !enabled, timeout: 30000 }, fn);
 run('real opaque-origin Chromium renders desktop/mobile and counts real assertions', async () => {
@@ -12,6 +33,26 @@ run('real opaque-origin Chromium renders desktop/mobile and counts real assertio
   assert.ok(r.tests.results.some((t) => t.assertions === 2));
   assert.equal(r.screenshots.length, 4);
   assert.ok(r.screenshots.some((i) => i.viewport.width === 390));
+});
+run('failing declarative assertions identify their exact step, slot and actual value', async () => {
+  const a = structuredClone(SMOKE_ARTIFACT);
+  a.definition.controls = [{ type: 'text', id: 'probeValue', text: 'actual value', hidden: false }];
+  a.tests = {
+    manifest: {
+      cases: [
+        {
+          name: 'specific diagnostic',
+          steps: [{ action: 'expectText', id: 'probeValue', equals: 'expected value' }],
+        },
+      ],
+    },
+  };
+  const r = await verifyArtifact(a, { timeoutMs: 15000 });
+  const failure = r.tests.results.find((t) => t.name === 'specific diagnostic');
+  assert.equal(failure.ok, false);
+  assert.match(failure.message, /Step 1/);
+  assert.match(failure.message, /#probeValue/);
+  assert.match(failure.message, /actual value/);
 });
 run('self-reported pass flags without executed assertions fail', async () => {
   const a = structuredClone(SMOKE_ARTIFACT);

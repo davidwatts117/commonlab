@@ -5,7 +5,20 @@ import { fileURLToPath } from 'node:url';
 import { killTree } from './processes.mjs';
 import { PROTOCOL } from './protocol.mjs';
 export function formatVerification(report) {
-  return `Verification ${report.ok ? 'PASSED' : 'FAILED'}: ${JSON.stringify({ ...report, screenshots: undefined }).slice(0, 18000)}. Fix the cause, not the tests. A passing run is not a scientific audit.`;
+  const summary = {
+    ok: report.ok,
+    infrastructure: report.infrastructure,
+    runtimeErrors: report.runtimeErrors?.slice(0, 8),
+    consoleErrors: report.consoleErrors?.slice(0, 8),
+    tests: {
+      total: report.tests?.total,
+      passed: report.tests?.passed,
+      failed: report.tests?.failed,
+      failures: report.tests?.results?.filter((r) => !r.ok).slice(0, 24),
+    },
+    warnings: report.warnings?.slice(0, 8),
+  };
+  return `Verification ${report.ok ? 'PASSED' : 'FAILED'}: ${JSON.stringify(summary).slice(0, 18000)}. Correct engine defects. If a failing authored expectation is independently wrong, correct that test using write_artifact/edit_artifact with a scientific reason; never weaken passing baseline checks. Do not use respond_review for test failures: it is only for IDs from an actual independent review. A passing run is not a scientific audit.`;
 }
 export async function verifyArtifact(
   artifact,

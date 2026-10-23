@@ -16,12 +16,22 @@ let failed = false;
 for (const model of config.providers['commonlab-openrouter'].models) {
   const remote = data.find((m) => m.id === model.id);
   const image = remote?.architecture?.input_modalities?.includes('image') === true;
-  const ok = !!remote && (!model.input.includes('image') || image);
+  const reasoning = !!remote?.reasoning;
+  const mandatory = remote?.reasoning?.mandatory === true;
+  const reasoningOk =
+    typeof model.reasoning === 'boolean' &&
+    model.reasoning === reasoning &&
+    (!mandatory || model.thinkingLevelMap?.off === null);
+  const ok = !!remote && (!model.input.includes('image') || image) && reasoningOk;
   console.log(
     JSON.stringify({
       id: model.id,
       available: !!remote,
       image,
+      reasoning,
+      mandatory,
+      defaultEffort: remote?.reasoning?.default_effort || null,
+      reasoningOk,
       ok,
       checkedAt: new Date().toISOString(),
     }),

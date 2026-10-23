@@ -101,32 +101,40 @@ export async function action(s) {
       return reset();
     case 'expectText': {
       const t = el.textContent.trim();
-      if ('equals' in s) expect(t === String(s.equals), `Expected text ${s.equals}; got ${t}`);
+      if ('equals' in s)
+        expect(t === String(s.equals), `#${s.id}: Expected text ${s.equals}; got ${t}`);
       if ('contains' in s)
-        expect(t.includes(String(s.contains)), `Expected text containing ${s.contains}; got ${t}`);
-      if (s.nonEmpty) expect(t.length > 0, 'Empty text');
+        expect(
+          t.includes(String(s.contains)),
+          `#${s.id}: Expected text containing ${s.contains}; got ${t}`,
+        );
+      if (s.nonEmpty) expect(t.length > 0, `#${s.id}: Empty text`);
       return;
     }
     case 'expectValue':
-      expect(String(el.value) === String(s.equals), `Expected value ${s.equals}; got ${el.value}`);
+      expect(
+        String(el.value) === String(s.equals),
+        `#${s.id}: Expected value ${s.equals}; got ${el.value}`,
+      );
       return;
     case 'expectVisible':
       expect(
         Boolean(el.getClientRects().length && !el.hidden) === (s.equals ?? true),
-        'Visibility differs',
+        `#${s.id}: Visibility differs`,
       );
       return;
     case 'expectChecked':
-      expect(el.checked === (s.equals ?? true), 'Checked state differs');
+      expect(el.checked === (s.equals ?? true), `#${s.id}: Checked state differs`);
       return;
     case 'expectCanvas': {
       const p = pixelStats(s.id);
-      if (s.nonBlank) expect(!p.blank, 'Blank canvas');
-      if ('minColors' in s) expect(p.distinctColors >= s.minColors, 'Too few canvas colors');
+      if (s.nonBlank) expect(!p.blank, `#${s.id}: Blank canvas`);
+      if ('minColors' in s)
+        expect(p.distinctColors >= s.minColors, `#${s.id}: Too few canvas colors`);
       if ('minInkFraction' in s)
-        expect(p.nonBackgroundFraction >= s.minInkFraction, 'Too little canvas ink');
+        expect(p.nonBackgroundFraction >= s.minInkFraction, `#${s.id}: Too little canvas ink`);
       if ('maxInkFraction' in s)
-        expect(p.nonBackgroundFraction <= s.maxInkFraction, 'Too much canvas ink');
+        expect(p.nonBackgroundFraction <= s.maxInkFraction, `#${s.id}: Too much canvas ink`);
       return;
     }
     default:
@@ -136,7 +144,15 @@ export async function action(s) {
 export async function runCase(test) {
   assertions = 0;
   try {
-    for (const s of test.steps) await action(s);
+    for (const [index, s] of test.steps.entries()) {
+      try {
+        await action(s);
+      } catch (error) {
+        throw new Error(
+          `Step ${index + 1} ${s.action}${s.id ? ` #${s.id}` : ''}: ${error.message}`,
+        );
+      }
+    }
     if (!assertions) throw new Error('No assertions executed');
     return { name: test.name, ok: true, assertions };
   } catch (e) {
@@ -158,7 +174,7 @@ export async function runModuleTests(source) {
               Number.isFinite(expected) &&
               Number.isFinite(tolerance) &&
               Math.abs(actual - expected) <= Math.abs(tolerance),
-            message || `Expected ${expected} ± ${tolerance}; got ${actual}`,
+            `${message || 'Numeric comparison'}: expected ${typeof expected === 'number' ? expected : typeof expected} ± ${typeof tolerance === 'number' ? tolerance : typeof tolerance}; got ${typeof actual === 'number' ? actual : typeof actual}`,
           ),
         state,
         step,

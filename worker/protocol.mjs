@@ -55,7 +55,11 @@ export function providerFailure(message = '') {
     return 'provider_auth';
   if (/\b429\b|rate.limit|quota|insufficient.credit|billing/i.test(message))
     return 'provider_rate_limit';
-  if (/\b(500|502|503|504)\b|overloaded|unavailable|timed?.?out|ECONNRESET/i.test(message))
+  if (
+    /\b(408|5\d\d)\b|overloaded|unavailable|timed?.?out|ECONNRESET|ECONNREFUSED|EAI_AGAIN|terminated|fetch failed|other side closed|premature close|UND_ERR/i.test(
+      message,
+    )
+  )
     return 'provider_unavailable';
   return 'provider_error';
 }
@@ -63,13 +67,14 @@ export function safeDetails(value = {}) {
   const result = {};
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
   for (const key of PROTOCOL.counters)
-    if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 10_000_000)
+    if (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= PROTOCOL.counterMax)
       result[key] = value[key];
   for (const [key, choices] of Object.entries({
     phase: PROTOCOL.phases,
     tool: PROTOCOL.tools,
     cause: PROTOCOL.failures,
     role: ['author', 'reviewer', 'host'],
+    reasoningEffort: PROTOCOL.reasoningEfforts,
     stopReason: ['stop', 'length', 'toolUse', 'error', 'aborted', 'deferred', 'unknown'],
     toolStatus: ['ok', 'error', 'blocked'],
   }))

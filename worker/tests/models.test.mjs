@@ -11,6 +11,7 @@ test('the static OpenRouter provider resolves every configured model and exposes
       'deepseek/deepseek-v4.1-flash',
       'deepseek/deepseek-v4.1-flash-1017',
       'xiaomi/mimo-v2.6-flash',
+      'xiaomi/mimo-v2.6-pro',
       'openai/gpt-6.1-sol',
     ]) {
       const { model } = await createRuntimeForModel({

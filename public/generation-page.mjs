@@ -11,6 +11,7 @@ const activity = {
   budget_exhausted: 'Shared model token or estimated-cost budget reached.',
   provider_first_timeout: 'Provider did not start responding in time.', provider_idle_timeout: 'Provider stream stalled.', provider_timeout: 'Provider call reached its time limit.',
   lease_lost: 'Worker lost its renewable lease.', worker_lost: 'Worker heartbeat expired.',
+  storage_error: 'Checkpoint storage is unavailable. Ask the operator to check the writable volume, permissions and free space.',
   inference_interrupted: 'Worker restarted during inference. Saved work retained; the potentially paid call was not repeated.',
   reference_contract: 'Reading the simulation authoring contract.', reference_schema: 'Reading the definition schema.',
   validating: 'Checking the current development stage.',
@@ -49,11 +50,12 @@ const rules = {
 };
 function diagnostics(parent, details = {}) {
   const stats = [];
-  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens'], ['maxTokens', 'Output budget'], ['verificationRounds', 'Render checks'], ['reviewRounds', 'Review rounds'], ['tests', 'Agent checks'], ['testsPassed', 'Checks passed'], ['testsFailed', 'Checks failed'], ['defects', 'Review defects']]) {
+  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens'], ['reportedReasoningTokens', 'Reported thinking tokens'], ['thinkingBytes', 'Streamed thinking bytes'], ['answerBytes', 'Streamed answer/tool bytes'], ['maxTokens', 'Output budget'], ['verificationRounds', 'Render checks'], ['reviewRounds', 'Review rounds'], ['tests', 'Agent checks'], ['testsPassed', 'Checks passed'], ['testsFailed', 'Checks failed'], ['defects', 'Review defects']]) {
     if (Number.isInteger(details[key])) stats.push(`${label}: ${details[key]}`);
   }
   const phases = { preflight: 'Preflight', design: 'Science and UI design', build: 'Building artifacts', repair: 'Repairing artifacts', verify: 'Browser verification', review: 'Independent vision review', delivery: 'Saving result', complete: 'Verification complete', plan: 'Science plan', definition: 'Controls and definition', implementation: 'Engine implementation' };
   if (details.role) stats.push(`Role: ${details.role}`);
+  if (details.reasoningEffort) stats.push(`Reasoning: ${details.reasoningEffort}`);
   if (details.cause) stats.push(`Cause: ${details.cause.replaceAll('_', ' ')}`);
   if (Number.isInteger(details.elapsedMs)) stats.push(`Elapsed: ${Math.round(details.elapsedMs / 1000)}s`);
   if (Number.isInteger(details.remainingMs)) stats.push(`Remaining: ${Math.round(details.remainingMs / 1000)}s`);

@@ -125,14 +125,15 @@ async fn activity_is_bounded_private_lease_checked_and_failures_are_safe() {
     .await;
     let path = format!("/api/worker/generation/{id}/progress");
     let read = format!("/api/generation/jobs/{id}/events");
-    let diagnostics = json!({"requests":3,"validations":2,"stopReason":"toolUse","phase":"implementation","tool":"submit_draft","toolStatus":"error","issues":[{"path":"/controls/0/value","rule":"required"}]});
+    let diagnostics = json!({"requests":3,"validations":2,"costMicros":20000000,"reasoningEffort":"high","stopReason":"toolUse","phase":"implementation","tool":"submit_draft","toolStatus":"error","issues":[{"path":"/controls/0/value","rule":"required"}]});
     let body = json!({"lease":job["lease"],"code":"validation_failed","details":diagnostics});
     for bad in [
         json!({"rawError":"secret-key"}),
         json!({"phase":"secret-key"}),
         json!({"tool":"bash"}),
         json!({"toolStatus":"secret-key"}),
-        json!({"requests":10000001}),
+        json!({"requests":1000000001}),
+        json!({"reasoningEffort":"secret-key"}),
         json!({"stopReason":"secret-key"}),
         json!({"issues":[{"path":"/secret-key","rule":"required"}]}),
         json!({"issues":[{"path":"/title","rule":"secret-key"}]}),
@@ -1087,5 +1088,81 @@ async fn unverified_candidates_are_never_success_and_protocol_upgrade_is_explici
             .await
             .status(),
         StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn checkpoint_storage_failure_is_terminal_and_actionable_not_heartbeat_expiry() {
+    let app = app_with_config(
+        "public",
+        AppConfig {
+            admin_token: Some(ADMIN.into()),
+            generation: Some(GenerationConfig::new(WORKER.into()).unwrap()),
+            ..AppConfig::new(Store::memory().unwrap())
+        },
+    )
+    .unwrap();
+    let alice = register(&app, "storage-alice").await;
+    grant(&app, "storage-alice", true).await;
+    let id = val(create(&app, &alice).await).await["id"]
+        .as_i64()
+        .unwrap();
+    let job = val(req(
+        &app,
+        "/api/worker/generation/claim",
+        "POST",
+        None,
+        None,
+        Some(WORKER),
+        false,
+    )
+    .await)
+    .await;
+    let completion = json!({"lease":job["lease"],"model":"scripted/no-inference","artifact":null,"outcome":"failed","failure":"storage_error","diagnostics":{"phase":"preflight","cause":"storage_error","requests":0},"report":{"verification":"unresolved","review":"unresolved"}});
+    for _ in 0..2 {
+        assert_eq!(
+            req(
+                &app,
+                &format!("/api/worker/generation/{id}/complete"),
+                "POST",
+                Some(completion.clone()),
+                None,
+                Some(WORKER),
+                false
+            )
+            .await
+            .status(),
+            StatusCode::OK
+        );
+    }
+    let result = val(req(
+        &app,
+        &format!("/api/generation/jobs/{id}"),
+        "GET",
+        None,
+        Some(&alice),
+        None,
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(result["status"], "failed");
+    assert_eq!(result["failureCode"], "storage_error");
+    assert!(result["error"].as_str().unwrap().contains("checkpoint"));
+    assert_eq!(result["diagnostics"]["requests"], 0);
+    let events = val(req(
+        &app,
+        &format!("/api/generation/jobs/{id}/events"),
+        "GET",
+        None,
+        Some(&alice),
+        None,
+        false,
+    )
+    .await)
+    .await;
+    assert_eq!(
+        events["items"].as_array().unwrap().last().unwrap()["code"],
+        "storage_error"
     );
 }
