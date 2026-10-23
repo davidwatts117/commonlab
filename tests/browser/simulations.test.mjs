@@ -70,6 +70,56 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('Pendulum survives a hidden minute and retains a user pause on return', async () => {
+      const page = await browser.newPage();
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      // Observe the actual engine without adding a production debugging API.
+      await page.route('**/library.js*', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: `${await response.text()}
+          const attach = SimLib.attach;
+          SimLib.attach = options => {
+            const app = attach(options); window.testSim = app.sim; return app;
+          };` });
+      });
+      await page.goto(`${base}/simulations/pendulum`);
+      await page.waitForSelector('#simulation-root[data-ready="true"]');
+      await page.clock.install();
+      await page.clock.pauseAt(new Date());
+      await page.clock.runFor(100);
+      // Headless tabs stay visible: dispatch the browser lifecycle signal explicitly.
+      const before = await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        return { time: testSim.simTime, angle: testSim.angle, velocity: testSim.angularVel };
+      });
+      await page.clock.fastForward(60_000);
+      assert.deepEqual(await page.evaluate(() => ({ time: testSim.simTime, angle: testSim.angle, velocity: testSim.angularVel })), before);
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.clock.runFor(100);
+      const resumed = await page.evaluate(() => ({ time: testSim.simTime, angle: testSim.angle, energy: testSim._computeEnergy().total }));
+      assert.ok(resumed.time > before.time && resumed.time - before.time <= 0.15);
+      assert.ok(Number.isFinite(resumed.angle) && Number.isFinite(resumed.energy));
+      assert.ok(Math.abs(resumed.angle) < Math.PI / 2, 'pendulum must not explode after returning');
+      await page.locator('#pauseBtn').click();
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.clock.fastForward(60_000);
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+      await page.clock.runFor(100);
+      assert.equal(await page.evaluate(() => testSim.simTime), resumed.time);
+      assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');
+      assert.deepEqual(errors, []); await page.close();
+    });
+
     await t.test('Pendulum controls, persisted assessment, and guided lesson use the same shell', async () => {
       const { page, errors } = await pageFor('pendulum');
       await page.locator('#pauseBtn').click(); assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');
