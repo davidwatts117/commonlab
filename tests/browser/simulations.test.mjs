@@ -10,6 +10,25 @@ import { chromium } from 'playwright';
 const root = new URL('../../', import.meta.url);
 const catalog = JSON.parse(readFileSync(new URL('public/simulations/catalog.json', root), 'utf8'));
 
+async function assertCertificateSections(certificate, definition) {
+  const description = certificate.getByRole('region', { name: 'About this simulation', exact: true });
+  const participation = certificate.getByRole('region', { name: 'Recorded participation', exact: true });
+  assert.equal(await description.getByRole('heading', { level: 3 }).innerText(), 'About this simulation');
+  assert.equal(await description.getByRole('heading', { level: 4 }).innerText(), definition.title);
+  assert.equal(await description.locator('p').innerText(), definition.summary);
+  assert.equal(await description.locator('li').count(), 0);
+  assert.equal(await participation.getByRole('heading', { level: 3 }).innerText(), 'Recorded participation');
+  assert.equal(await participation.locator('li').count(), await certificate.locator('li').count());
+  const descriptionBox = await description.boundingBox();
+  const participationBox = await participation.boundingBox();
+  assert.ok(participationBox.y >= descriptionBox.y + descriptionBox.height + 16, 'Description and record need visible spacing');
+  const divider = await participation.evaluate(el => {
+    const style = getComputedStyle(el);
+    return { width: parseFloat(style.borderTopWidth), style: style.borderTopStyle, padding: parseFloat(style.paddingTop) };
+  });
+  assert.ok(divider.width >= 1 && divider.style === 'solid' && divider.padding >= 16, 'Record needs a visible divider, including in print');
+}
+
 const stripAnsi = text => text.split(String.fromCharCode(27)).map((part, index) => index === 0 ? part : part.replace(/^\[[0-9;]*m/, '')).join('');
 test('shared simulation shell in a real browser', { timeout: 120_000 }, async t => {
   const storage = mkdtempSync(join(tmpdir(), 'commonlab-simulation-browser-'));
@@ -105,6 +124,7 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await certificate.locator('img').count(), 0);
       assert.doesNotMatch(await certificate.innerText(), /Guided experiment|Check Understanding/);
       assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'pendulum'));
       // Physics engines dispatch synthetic input events when applying presets/lesson state.
       await page.locator('#lengthSlider').dispatchEvent('input');
       await create.click();
@@ -145,6 +165,7 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await page.locator('.certificate-form').isVisible(), false);
       assert.equal(await page.locator('.sim-canvas-area').isVisible(), false);
       assert.equal(await page.locator('.site-header').isVisible(), false);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'pendulum'));
       const pdf = await page.pdf({ format: 'A4' });
       // Chromium writes one /Type /Page object per page; catch trailing blank pages.
       assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
@@ -173,6 +194,7 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.match(await certificate.innerText(), /Gas Laws/);
       assert.match(await certificate.innerText(), /Simulation exploration: time spent:/);
       assert.equal(await certificate.locator('li').count(), 1);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'gas-laws'));
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []); await page.close();
     });

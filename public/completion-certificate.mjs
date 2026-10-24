@@ -95,15 +95,19 @@ export function mountCertificate({ host, definition, learning, bus, simulationRo
     const session = learning.check?.session;
     if (session?.latest) activities.append(node('li', 'Check Understanding completed (latest local result)'));
     if (session?.active) activities.append(node('li', 'Check Understanding in progress'));
+    const description = node('section', undefined, 'certificate-description');
+    description.setAttribute('aria-label', 'About this simulation');
+    description.append(node('h3', 'About this simulation'), node('h4', definition.title), node('p', definition.summary));
+    const participation = node('section', undefined, 'certificate-activities');
+    participation.setAttribute('aria-label', 'Recorded participation');
+    participation.append(node('h3', 'Recorded participation'), activities);
     certificate.replaceChildren(
       node('p', 'CommonLab'),
       node('h2', 'Certificate of completion'),
       node('p', 'Presented to'),
       node('p', name, 'certificate-name'),
-      node('p', 'For engaging in'),
-      node('h3', definition.title),
-      node('p', definition.summary),
-      activities,
+      description,
+      participation,
       node('p', `Issued ${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`),
       node('p', 'Participation record, not a verified qualification. Guided steps may be skipped. Exploration time excludes hidden tabs and pauses after 60 seconds without interaction.', 'certificate-note'),
     );

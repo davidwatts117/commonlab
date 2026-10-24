@@ -60,6 +60,30 @@ test('free exploration produces a dated, named, printable certificate without in
   assert.equal(prints(), 1);
 });
 
+test('simulation description and recorded participation stay in separate labeled sections on regeneration', () => {
+  const { submit, bus } = setup({ lessons: [{ id: 'lesson', title: 'A guided activity' }] });
+  for (const name of ['Student', 'Another student']) {
+    const certificate = submit(name);
+    const description = certificate.querySelector('.certificate-description');
+    const participation = certificate.querySelector('.certificate-activities');
+    assert.equal(description.tagName, 'SECTION');
+    assert.equal(description.getAttribute('aria-label'), 'About this simulation');
+    // The small DOM shim's tag selectors do not support digits in heading names.
+    assert.equal(description.children.find(el => el.tagName === 'H3').textContent, 'About this simulation');
+    assert.equal(description.children.find(el => el.tagName === 'H4').textContent, '<img src=x onerror=alert(1)>');
+    assert.equal(description.querySelector('p').textContent, '<script>bad()</script>');
+    assert.equal(description.querySelectorAll('li').length, 0);
+    assert.equal(participation.tagName, 'SECTION');
+    assert.equal(participation.getAttribute('aria-label'), 'Recorded participation');
+    assert.equal(participation.children.find(el => el.tagName === 'H3').textContent, 'Recorded participation');
+    assert.equal(participation.querySelectorAll('li').length, name === 'Student' ? 1 : 2);
+    assert.equal(participation.querySelectorAll('li').length, certificate.querySelectorAll('li').length);
+    assert.equal(certificate.querySelectorAll('section').length, 2);
+    assert.ok(certificate.children.indexOf(description) < certificate.children.indexOf(participation));
+    bus.emit('guided:complete', 'lesson');
+  }
+});
+
 test('exploration requires trusted simulation interaction, not loading, form entry, or generated events', () => {
   const { submit, advance, interact, host } = setup();
   advance(120_000);
