@@ -162,7 +162,7 @@
         {
           "title": "Period of a Pendulum",
           "formulas": [
-            "T = 2π√(L/g)"
+            "$$T = 2\\pi\\sqrt{\\frac{L}{g}}$$"
           ],
           "paragraphs": [
             "For small angles (< 15°), the period depends only on length and gravity, not on mass or amplitude. This is isochronism ."
@@ -171,7 +171,7 @@
         {
           "title": "Energy Dynamics",
           "formulas": [
-            "E _tot = K + P + E _thermal"
+            "$$E_{\\mathrm{tot}} = K + P + E_{\\mathrm{thermal}}$$"
           ],
           "paragraphs": [
             "Energy transitions smoothly between Kinetic (K) and Potential (P). Air drag continuously dissipates mechanical energy into Thermal energy, so the Total line stays flat even as the pendulum slows."
@@ -180,7 +180,7 @@
         {
           "title": "Large-Angle Correction",
           "formulas": [
-            "T ≈ 2π√(L/g) · (1 + θ²/16)"
+            "$$T \\approx 2\\pi\\sqrt{\\frac{L}{g}} \\cdot \\left(1 + \\frac{\\theta^2}{16}\\right)$$"
           ],
           "paragraphs": [
             "For angles above ~15°, the small-angle approximation breaks down. The true period increases slightly with amplitude."
@@ -680,7 +680,7 @@
         {
           "title": "Ohm's Law",
           "formulas": [
-            "V = IR"
+            "$$V = IR$$"
           ],
           "paragraphs": [
             "Voltage (V) equals current (I) times resistance (R). It is the relationship behind every circuit you build here."
@@ -689,7 +689,7 @@
         {
           "title": "Series Circuits",
           "formulas": [
-            "R _eq = R _1 + R _2 + ..."
+            "$$R_{\\mathrm{eq}} = R_1 + R_2 + \\cdots$$"
           ],
           "paragraphs": [
             "Parts in a single loop share one current. Resistances add up, and the voltage splits between the parts."
@@ -698,7 +698,7 @@
         {
           "title": "Parallel Circuits",
           "formulas": [
-            "1/R _eq = 1/R _1 + 1/R _2 + ..."
+            "$$\\frac{1}{R_{\\mathrm{eq}}} = \\frac{1}{R_1} + \\frac{1}{R_2} + \\cdots$$"
           ],
           "paragraphs": [
             "Parts side by side share the same voltage. The current splits between the branches and Req is smaller than any branch."
@@ -707,7 +707,7 @@
         {
           "title": "Power",
           "formulas": [
-            "P = IV = I²R"
+            "$$P = IV = I^2R$$"
           ],
           "paragraphs": [
             "Energy per second. A bulb lights up in proportion to the power it dissipates, so a brighter bulb means more current."
@@ -837,8 +837,8 @@
         {
           "title": "Equations of Motion",
           "formulas": [
-            "x = x _0 + v _x t",
-            "y = y _0 + v _y t − ½gt ^2"
+            "$$x = x_0 + v_x t$$",
+            "$$y = y_0 + v_y t - \\frac{1}{2}gt^2$$"
           ],
           "paragraphs": [
             "Horizontal motion is constant velocity. Vertical motion is constant acceleration due to gravity (g = 9.8 m/s²)."
@@ -847,8 +847,8 @@
         {
           "title": "Components",
           "formulas": [
-            "v _x = v cos(θ)",
-            "v _y = v sin(θ)"
+            "$$v_x = v\\cos(\\theta)$$",
+            "$$v_y = v\\sin(\\theta)$$"
           ],
           "paragraphs": [
             "The initial velocity vector is split into horizontal and vertical components using the launch angle."
@@ -1397,16 +1397,16 @@
         {
           "title": "Ideal Gas Law",
           "formulas": [
-            "PV = nRT"
+            "$$PV = nRT$$"
           ],
           "paragraphs": [
-            "Relates pressure (P), volume (V), number of moles (n), temperature (T), and the gas constant (R = 0.0821 L.atm.mol ^-1 .K ^-1 )."
+            "Relates pressure (P), volume (V), number of moles (n), temperature (T), and the gas constant (\\(R = 0.0821\\,\\mathrm{L}\\cdot\\mathrm{atm}\\cdot\\mathrm{mol}^{-1}\\cdot\\mathrm{K}^{-1}\\))."
           ]
         },
         {
           "title": "Boyle's Law",
           "formulas": [
-            "P _1 V _1 = P _2 V _2"
+            "$$P_1 V_1 = P_2 V_2$$"
           ],
           "paragraphs": [
             "At constant temperature and moles, pressure and volume are inversely proportional. Squeeze the gas (decrease V) and pressure goes up (increase P)."
@@ -1415,7 +1415,7 @@
         {
           "title": "Charles's Law",
           "formulas": [
-            "V _1 / T _1 = V _2 / T _2"
+            "$$\\frac{V_1}{T_1} = \\frac{V_2}{T_2}$$"
           ],
           "paragraphs": [
             "At constant pressure and moles, volume is proportional to temperature. Heat the gas (increase T) and it expands (increase V)."
@@ -1424,7 +1424,7 @@
         {
           "title": "Gay-Lussac's Law",
           "formulas": [
-            "P _1 / T _1 = P _2 / T _2"
+            "$$\\frac{P_1}{T_1} = \\frac{P_2}{T_2}$$"
           ],
           "paragraphs": [
             "At constant volume and moles, pressure is proportional to temperature. Heat the gas (increase T) and pressure rises (increase P)."
@@ -1433,7 +1433,7 @@
         {
           "title": "Avogadro's Law",
           "formulas": [
-            "V _1 / n _1 = V _2 / n _2"
+            "$$\\frac{V_1}{n_1} = \\frac{V_2}{n_2}$$"
           ],
           "paragraphs": [
             "At constant pressure and temperature, volume is proportional to the number of moles. More particles (increase n) take up more space (increase V)."
@@ -1445,25 +1445,25 @@
       "info": {
         "boyle": {
           "title": "Boyle's Law",
-          "formula": "P₁V₁ = P₂V₂",
+          "formula": "$$P_1 V_1 = P_2 V_2$$",
           "explanation": "At constant temperature and moles, the pressure and volume of a gas are inversely proportional. When you squeeze a gas into a smaller space, its pressure increases proportionally.",
           "detail": "Boyle's law describes how pressure and volume relate at constant n and T: P ∝ 1/V. If you double the volume, pressure halves; if you halve the volume, pressure doubles. This assumes the gas behaves ideally (no intermolecular forces and point-mass particles)."
         },
         "charles": {
           "title": "Charles's Law",
-          "formula": "V₁ / T₁ = V₂ / T₂",
+          "formula": "$$\\frac{V_1}{T_1} = \\frac{V_2}{T_2}$$",
           "explanation": "At constant pressure and moles, the volume of a gas is proportional to its absolute temperature. Heating a gas causes it to expand; cooling causes it to contract.",
           "detail": "Charles's law states that volume is directly proportional to absolute temperature at constant n and P: V ∝ T. At absolute zero (0 K), the volume of an ideal gas would theoretically reach zero. This is why temperature must be measured in Kelvin."
         },
         "gaylussac": {
           "title": "Gay-Lussac's Law",
-          "formula": "P₁ / T₁ = P₂ / T₂",
+          "formula": "$$\\frac{P_1}{T_1} = \\frac{P_2}{T_2}$$",
           "explanation": "At constant volume and moles, the pressure of a gas is proportional to its absolute temperature. Heating a gas in a rigid container increases the pressure.",
           "detail": "Gay-Lussac's law describes the direct proportionality between pressure and absolute temperature at constant n and V: P ∝ T. This explains why aerosol cans warn against heating - the pressure inside can rise until the container fails."
         },
         "avogadro": {
           "title": "Avogadro's Law",
-          "formula": "V₁ / n₁ = V₂ / n₂",
+          "formula": "$$\\frac{V_1}{n_1} = \\frac{V_2}{n_2}$$",
           "explanation": "At constant pressure and temperature, the volume of a gas is proportional to the number of moles. More gas particles require more space at the same pressure.",
           "detail": "Avogadro's law states that equal volumes of gases at the same temperature and pressure contain equal numbers of molecules: V ∝ n. At STP (0 °C, 1 atm), one mole of any ideal gas occupies 22.4 L."
         }
