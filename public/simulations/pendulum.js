@@ -258,9 +258,11 @@ export function mount(ui) {
             const plotW = gW - padL - padR, plotH = gH - padT - padB;
             const x0 = padL;
 
-            let amp = Math.max(5, Math.abs(this.angleDeg));
-            for (const p of this.angleHistory) amp = Math.max(amp, Math.abs(p.a));
-            amp = Math.min(90, amp * 1.12);
+            const window = 8, t0 = this.simTime - window;
+            const pts = this.angleHistory.filter(p => p.t >= t0);
+            let amp = 5;
+            for (const p of pts) amp = Math.max(amp, Math.abs(p.a));
+            amp *= 1.12;
 
             g.strokeStyle = T.ink; g.lineWidth = 1;
             g.beginPath(); g.moveTo(x0, padT + plotH / 2); g.lineTo(x0 + plotW, padT + plotH / 2); g.stroke();
@@ -275,13 +277,11 @@ export function mount(ui) {
             g.textAlign = 'center'; g.textBaseline = 'top';
             g.fillText('time (s)', x0 + plotW / 2, gH - 14);
 
-            const window = 8, t0 = this.simTime - window;
-            if (this.angleHistory.length > 1) {
+            if (pts.length > 1) {
                 g.strokeStyle = T.accent; g.lineWidth = 2;
                 g.beginPath();
                 let first = true;
-                for (const p of this.angleHistory) {
-                    if (p.t < t0) continue;
+                for (const p of pts) {
                     const x = x0 + ((p.t - t0) / window) * plotW;
                     const y = padT + plotH / 2 - (p.a / amp) * (plotH / 2);
                     if (first) { g.moveTo(x, y); first = false; } else { g.lineTo(x, y); }
@@ -304,12 +304,14 @@ export function mount(ui) {
             const plotH = gH - padT - padB;
             const x0 = padL, y0 = gH - padB;
 
-            // Y ceiling from the maximum possible potential energy
-            const initialHeight = this.length * (1 - Math.cos(this.angle));
-            const maxE = Math.max(0.1, this.mass * this.gravity * Math.max(initialHeight, this.length) * 1.15);
-
             const tNow = this.simTime;
             const tStart = Math.max(0, tNow - GRAPH_WINDOW_S);
+            const pts = this.energyHistory.filter(p => p.t >= tStart);
+
+            // Scale the same samples we plot, not the latest control settings.
+            let peakE = 0;
+            for (const p of pts) peakE = Math.max(peakE, p.ke, p.pe, p.thermal, p.total);
+            const maxE = Math.max(0.1, peakE * 1.15);
 
             // Horizontal gridlines + Y labels
             g.font = T.font(10);
@@ -352,7 +354,6 @@ export function mount(ui) {
                 return;
             }
 
-            const pts = this.energyHistory.filter(p => p.t >= tStart);
             if (pts.length < 2) return;
 
             const plotLine = (key, color, lineWidth, dash) => {
@@ -363,7 +364,7 @@ export function mount(ui) {
                 let started = false;
                 for (const p of pts) {
                     const x = x0 + ((p.t - tStart) / GRAPH_WINDOW_S) * plotW;
-                    const val = Math.max(0, Math.min(maxE, p[key]));
+                    const val = p[key];
                     const y = y0 - (val / maxE) * plotH;
                     if (!started) { g.moveTo(x, y); started = true; } else { g.lineTo(x, y); }
                 }
