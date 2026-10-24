@@ -10,7 +10,7 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(std::io::Error::other)?;
-    if version > 8 {
+    if version > 9 {
         return Err(std::io::Error::other(
             "Unsupported submission database version",
         ));
@@ -92,6 +92,20 @@ pub fn migrate(connection: &mut Connection) -> std::io::Result<()> {
     if version < 8 {
         transaction.execute_batch("CREATE TABLE settings(key TEXT PRIMARY KEY, value INTEGER NOT NULL, updated_at INTEGER NOT NULL DEFAULT (unixepoch()));
             PRAGMA user_version=8;").map_err(std::io::Error::other)?;
+    }
+    if version < 9 {
+        transaction.execute_batch("ALTER TABLE generation_jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE generation_jobs ADD COLUMN deadline_at INTEGER;
+            ALTER TABLE generation_jobs ADD COLUMN heartbeat_at INTEGER;
+            ALTER TABLE generation_jobs ADD COLUMN failure_code TEXT NOT NULL DEFAULT '';
+            ALTER TABLE generation_jobs ADD COLUMN outcome TEXT NOT NULL DEFAULT '';
+            ALTER TABLE generation_jobs ADD COLUMN report TEXT NOT NULL DEFAULT '{}';
+            ALTER TABLE generation_jobs ADD COLUMN completion_hash TEXT;
+            ALTER TABLE generation_jobs ADD COLUMN receipt_hash TEXT;
+            ALTER TABLE generation_events ADD COLUMN event_key TEXT;
+            CREATE UNIQUE INDEX generation_event_key ON generation_events(job_id,event_key) WHERE event_key IS NOT NULL;
+            UPDATE generation_jobs SET deadline_at=started_at+720 WHERE status='running';
+            PRAGMA user_version=9;").map_err(std::io::Error::other)?;
     }
     transaction.commit().map_err(std::io::Error::other)
 }

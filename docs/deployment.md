@@ -186,14 +186,15 @@ Keep that isolation: do not mount the repository, database, home directory, Dock
 4. Refresh status, open the successful private result in the editor, inspect/edit it, and explicitly submit it for review.
 5. Review the code and scientific content before publication. Generated results never publish automatically.
 
-The agent has only fixed-reference, validation, and finalization tools—no shell, general file access, or code execution. That is **not a security/scientific audit or an engine-testing sandbox**. Published JavaScript runs with trusted same-origin browser privileges. Test unknown engines only in a disposable environment without production credentials or data.
+The agent has only named-artifact editing and verification tools—no shell, arbitrary filesystem or publication tools. Chromium runs engines/tests in a separate credential-free, opaque-origin verification subprocess. An image-capable independent reviewer is required. This is **not a security or scientific audit**; the worker container remains the outer boundary. Published JavaScript runs with trusted same-origin privileges. See [generation lifecycle and recovery](ai-generation.md).
 
 ### Limits and stopping behavior
 
 - Three attempts per contributor per rolling 24 hours; 20 globally; one running job globally. Failures/cancellations consume quota.
-- At most six provider requests per job, 8,192 output tokens per request, and five minutes of child-process runtime. Additional context/output limits apply.
-- A graceful worker stop kills the current child and requeues its job. Restarting runs it from scratch, potentially incurring another model charge, without another contributor attempt.
-- A crash leaves a lease that expires after six minutes; the job fails on the next queue/status access rather than automatically regenerating.
+- Protocol 2 shares one policy across app/worker: 256 model requests across author/reviewer/retries, 8M input/2M output tokens, $100 estimated/reserved budget, two-hour absolute deadline and 60-second browser watchdog. Per-call first/idle deadlines are three minutes and total is 30 minutes; design/review responses allow 65,536 tokens, build responses 131,072, and truncation recovery up to 262,144 (always clamped to the selected model's own maximum). These are estimates, not a hard provider billing cap. The pinned image includes Chromium and needs roughly 2 GiB RAM.
+- Reasoning is configurable with `CL_MODEL_REASONING_EFFORT=low` and `CL_REVIEW_REASONING_EFFORT=` (inherits author). Use only model-supported efforts; DeepSeek supports `off`, `low`, `high`, `max`. Effective effort appears in job diagnostics. Recreate the worker after changing its environment.
+- A graceful stop kills the child tree and requeues without losing accepted operational checkpoints or resetting the absolute deadline. Completed operations resume; inference interrupted by restart is not silently replayed or charged again.
+- Heartbeats every 15 seconds renew a 90-second liveness lease, never beyond the absolute deadline. Expiry preserves diagnostics and records whether the worker was lost or the job deadline was reached. Mount the separate private checkpoint volume, and upgrade app/worker together (SQLite migration 9).
 - Cancellation/revocation prevents result acceptance, but cannot guarantee cancellation/refund of provider requests already in flight.
 - Generation retains at most 500 jobs and has no automatic archive/deletion UI. Monitor capacity and define a retention policy.
 

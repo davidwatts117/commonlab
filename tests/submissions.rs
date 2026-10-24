@@ -182,6 +182,7 @@ async fn private_drafts_require_auth_and_explicit_code_review_then_publish_and_w
     )
     .await;
     assert_eq!(catalog["simulations"].as_array().unwrap().len(), 7);
+    assert_eq!(catalog["communitySimulationIds"], json!([]));
     assert_eq!(
         review(&router, id, "publish", false).await.status(),
         StatusCode::UNPROCESSABLE_ENTITY
@@ -237,6 +238,7 @@ async fn private_drafts_require_auth_and_explicit_code_review_then_publish_and_w
     )
     .await;
     assert_eq!(catalog["simulations"].as_array().unwrap().len(), 8);
+    assert_eq!(catalog["communitySimulationIds"], json!(["new-lab"]));
     assert!(catalog.to_string().find("submittedBy").is_none());
     let engines =
         body(request(&router, Method::GET, "/api/submissions/engines", None, None).await).await;
@@ -269,6 +271,7 @@ async fn private_drafts_require_auth_and_explicit_code_review_then_publish_and_w
     )
     .await;
     assert_eq!(catalog["simulations"].as_array().unwrap().len(), 7);
+    assert_eq!(catalog["communitySimulationIds"], json!([]));
     assert_eq!(
         review(&router, id, "publish", true).await.status(),
         StatusCode::CONFLICT

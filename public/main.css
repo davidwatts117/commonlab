@@ -462,6 +462,21 @@ select:focus-visible {
 }
 
 /* === Simulations Grid === */
+.catalog-group + .catalog-group {
+    margin-top: 48px;
+    padding-top: 32px;
+    border-top: var(--rule);
+}
+
+.catalog-group h3 {
+    font-size: 26px;
+}
+
+.catalog-intro {
+    margin: 8px 0 24px;
+    color: var(--ink-soft);
+}
+
 .sim-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -805,6 +820,8 @@ select:focus-visible {
 
 /* Label reads above the value, as on a lab spec sheet. */
 .sim-readout {
+    min-width: 0;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column-reverse;
     justify-content: flex-end;
@@ -836,6 +853,7 @@ select:focus-visible {
 
 /* Buttons -------------------------------------------------------- */
 .sim-btn {
+    overflow-wrap: anywhere;
     min-height: 44px;
     padding: 10px 18px;
     border-radius: var(--sim-radius-sm);

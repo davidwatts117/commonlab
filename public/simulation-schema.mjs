@@ -282,7 +282,7 @@ function validateBank(bank) {
 }
 
 export function validateCatalog(catalog) {
-  object(catalog, ['schemaVersion', 'simulations'], 'catalog');
+  object(catalog, ['schemaVersion', 'simulations', 'communitySimulationIds'], 'catalog');
   if (catalog.schemaVersion !== 1) fail('unsupported schema version');
   list(catalog.simulations, 'simulations'); const ids = new Set(), bankIds = new Set();
   if (!catalog.simulations.length) fail('catalog cannot be empty');
@@ -294,6 +294,12 @@ export function validateCatalog(catalog) {
       if (bankIds.has(def.assessment.id)) fail(`duplicate assessment id: ${def.assessment.id}`);
       bankIds.add(def.assessment.id);
     }
+  }
+  // Static repository catalogs omit this server-owned publication metadata.
+  if (catalog.communitySimulationIds !== undefined) {
+    strings(catalog.communitySimulationIds, 'community simulation ids');
+    const communityIds = new Set(catalog.communitySimulationIds);
+    if (communityIds.size !== catalog.communitySimulationIds.length || [...communityIds].some(id => !ids.has(id))) fail('invalid/duplicate community simulation id');
   }
   return catalog;
 }
