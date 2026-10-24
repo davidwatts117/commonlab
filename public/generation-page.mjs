@@ -2,12 +2,27 @@ import { contributorRequest } from './contributor-api.mjs';
 const $ = id => document.getElementById(id);
 const activity = {
   model_request: 'Asking the model to author or refine the draft…',
+  model_first_response: 'Provider began responding.', model_streaming: 'Provider is streaming its response.',
+  retrying: 'Retrying a bounded operation after a recoverable failure.',
+  checkpointed: 'Accepted work saved privately.', resumed: 'Resuming saved work.',
+  needs_attention: 'Candidate retained, but required checks remain unresolved. Manual attention needed.',
+  review_unavailable: 'Independent review unavailable; no review pass recorded.',
+  verification_unavailable: 'Browser verification could not run.', verification_failed: 'Required checks remain unresolved.',
+  budget_exhausted: 'Shared model token or estimated-cost budget reached.',
+  provider_first_timeout: 'Provider did not start responding in time.', provider_idle_timeout: 'Provider stream stalled.', provider_timeout: 'Provider call reached its time limit.',
+  lease_lost: 'Worker lost its renewable lease.', worker_lost: 'Worker heartbeat expired.',
+  storage_error: 'Checkpoint storage is unavailable. Ask the operator to check the writable volume, permissions and free space.',
+  inference_interrupted: 'Worker restarted during inference. Saved work retained; the potentially paid call was not repeated.',
   reference_contract: 'Reading the simulation authoring contract.', reference_schema: 'Reading the definition schema.',
-  validating: 'Checking the current development stage (no code execution).',
+  validating: 'Checking the current development stage.',
   validation_passed: 'Static validation passed.', validation_failed: 'Validation found problems; the agent can revise the draft.',
   finalized: 'Valid draft finalized for your review.', provider_error: 'The model provider request failed.',
+  draft_ready: 'Draft accepted; rendering it in headless Chromium.', verifying: 'Rendering the engine and running its checks in headless Chromium.',
+  visual_check_passed: 'Headless render and agent checks passed.', visual_check_failed: 'Headless render or agent checks failed; the agent is repairing the draft.',
+  review_started: 'An independent adversarial reviewer is inspecting the result.', review_passed: 'Independent review found no blocking defects.',
+  review_failed: 'Independent review filed defects; the agent is repairing the draft.',
   request_limit: 'Model request budget exhausted.', context_limit: 'Model context budget exceeded.',
-  not_finalized: 'The agent stopped without finalizing a valid draft.', timeout: 'Five-minute runtime limit reached.',
+  not_finalized: 'The agent stopped without finalizing a valid draft.', timeout: 'Absolute job deadline reached.',
   output_limit: 'Output size limit reached.', worker_error: 'The worker could not finish the request.',
   development_stage: 'Developing the next stage of the simulation.', stage_completed: 'Development stage accepted.', tool_result: 'Stage tool completed.',
   model_finished: 'Model response received.', repairing: 'Preparing a focused repair turn with the latest draft and diagnostics.',
@@ -35,10 +50,16 @@ const rules = {
 };
 function diagnostics(parent, details = {}) {
   const stats = [];
-  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens']]) {
+  for (const [key, label] of [['turn', 'Turn'], ['requests', 'Requests'], ['validations', 'Validations'], ['duplicates', 'Duplicates'], ['toolCalls', 'Tool calls'], ['inputTokens', 'Input tokens'], ['outputTokens', 'Output tokens'], ['reportedReasoningTokens', 'Reported thinking tokens'], ['thinkingBytes', 'Streamed thinking bytes'], ['answerBytes', 'Streamed answer/tool bytes'], ['maxTokens', 'Output budget'], ['verificationRounds', 'Render checks'], ['reviewRounds', 'Review rounds'], ['tests', 'Agent checks'], ['testsPassed', 'Checks passed'], ['testsFailed', 'Checks failed'], ['defects', 'Review defects']]) {
     if (Number.isInteger(details[key])) stats.push(`${label}: ${details[key]}`);
   }
-  const phases = { plan: 'Science plan', definition: 'Controls and definition', implementation: 'Engine implementation' };
+  const phases = { preflight: 'Preflight', design: 'Science and UI design', build: 'Building artifacts', repair: 'Repairing artifacts', verify: 'Browser verification', review: 'Independent vision review', delivery: 'Saving result', complete: 'Verification complete', plan: 'Science plan', definition: 'Controls and definition', implementation: 'Engine implementation' };
+  if (details.role) stats.push(`Role: ${details.role}`);
+  if (details.reasoningEffort) stats.push(`Reasoning: ${details.reasoningEffort}`);
+  if (details.cause) stats.push(`Cause: ${details.cause.replaceAll('_', ' ')}`);
+  if (Number.isInteger(details.elapsedMs)) stats.push(`Elapsed: ${Math.round(details.elapsedMs / 1000)}s`);
+  if (Number.isInteger(details.remainingMs)) stats.push(`Remaining: ${Math.round(details.remainingMs / 1000)}s`);
+  if (Number.isInteger(details.costMicros)) stats.push(`Est. cost/reserved: $${(details.costMicros / 1e6).toFixed(4)}`);
   if (phases[details.phase]) stats.unshift(`Stage: ${phases[details.phase]}`);
   if (details.tool) stats.push(`Tool: ${details.tool}${details.toolStatus ? ` (${details.toolStatus})` : ''}`);
   if (details.stopReason) stats.push(`Stop: ${details.stopReason}`);
@@ -69,7 +90,7 @@ async function refresh() {
         if (job.error) li.append(node('p', job.error));
         const view = node('button', 'View activity'); view.type = 'button'; view.className = 'sim-btn sim-btn--soft';
         view.addEventListener('click', () => { selected = job.id; refresh(); }); li.append(view);
-        if (job.status === 'succeeded') {
+        if (['succeeded','needs_attention'].includes(job.status)) {
           const link = node('a', 'Open private draft in editor →'); link.href = `/submit.html?generation=${job.id}`; li.append(link);
         }
         if (['queued', 'running'].includes(job.status)) {
@@ -88,6 +109,14 @@ async function refresh() {
       const job = result.items.find(item => item.id === selected);
       $('generation-detail-status').textContent = `Request #${selected} · ${job?.status || 'saved'}${job?.error ? `: ${job.error}` : job?.status === 'queued' ? '. Waiting for a worker; no model activity yet.' : ''}`;
       $('generation-summary').replaceChildren(); diagnostics($('generation-summary'), job?.diagnostics || {});
+      if (job?.status === 'running' && job.heartbeatAt) $('generation-summary').append(node('p', `Last worker heartbeat: ${Math.max(0, Math.round(Date.now()/1000-job.heartbeatAt))}s ago. Deadline: ${new Date(job.deadlineAt*1000).toLocaleTimeString()}.`));
+      if (job?.failureCode) $('generation-summary').append(node('p', activity[job.failureCode] || `Failure: ${job.failureCode}`));
+      if (job?.report?.verification) $('generation-summary').append(node('p', `Verification: ${job.report.verification} · Independent review: ${job.report.review}`));
+      if (job?.report?.testsSummary) $('generation-summary').append(node('p', `Checks: ${job.report.testsSummary.passed} passed, ${job.report.testsSummary.failed} failed (${job.report.testsSummary.total} total).`));
+      if (Object.values(job?.report?.omitted || {}).some(n => n > 0)) $('generation-summary').append(node('p', 'This is a bounded report excerpt; additional evidence is retained in the private operator checkpoint.'));
+      for (const finding of job?.report?.findings || []) $('generation-summary').append(node('p', `[${finding.severity}] ${finding.problem} Evidence: ${finding.evidence}`));
+      for (const response of job?.report?.responses || []) $('generation-summary').append(node('p', `Finding ${response.id}: ${response.disposition}. ${response.evidence}`));
+      for (const check of job?.report?.tests || []) if (!check.ok) $('generation-summary').append(node('p', `Failed check: ${check.name}${check.message ? ': '+check.message : ''}`));
       $('generation-events').replaceChildren(...events.items.map(event => {
         const li = node('li', `${new Date(event.createdAt * 1000).toLocaleTimeString()} · ${activity[event.code] || 'Working…'}`);
         diagnostics(li, event.details || {}); return li;

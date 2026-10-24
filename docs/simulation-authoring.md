@@ -13,6 +13,8 @@ All seven simulations use **one page**, `public/simulation.html`, and **one styl
 3. Run the Node catalog tests, Rust tests, and browser tests.
 4. Restart Axum so it registers the new catalog entry's URLs.
 
+Homepage cards use built-in static artwork when available, or a physics/chemistry illustration for community simulations. These are decorative previews, not captures of the running engine; browsing the catalog never executes simulation code or loads contributor-supplied images.
+
 No homepage markup, routing code, or shell code changes are needed. Axum serves the shared shell at `/simulations/<id>` and `/simulations/<id>.html`. Unregistered simulation URLs return 404. Homepage links use `/simulation.html?id=<id>` so the same frontend also works with ordinary static hosting. Browser assets must be served at the site root.
 
 The server checks the catalog version, IDs, uniqueness, and module/shell availability at startup. The browser validates the complete UI/learning definition before loading a module. `tests/simulation-catalog.test.mjs` validates the repository catalog and checks each module's DOM bindings against declared slots. Deploy the catalog, modules, and shell together; don't edit the deployed catalog without restarting the server.

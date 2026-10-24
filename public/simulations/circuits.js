@@ -98,11 +98,17 @@ function nearestEndpoint(x, y, radius, exclude) {
     return best;
 }
 
-// Snap a point onto a nearby endpoint, or to the grid.
+// Prefer endpoints, then wire interiors (split on release), then the grid.
 function snapPoint(x, y, exclude) {
     const ep = nearestEndpoint(x, y, JOIN, exclude);
     if (ep) { const p = ep.comp[ep.end]; return { x: p.x, y: p.y }; }
-    return { x: snapGrid(x), y: snapGrid(y) };
+    let best = null, bd = SPLIT;
+    for (const w of comps) {
+        if (w === exclude || w.type !== 'wire') continue;
+        const r = distToSeg(x, y, w.a.x, w.a.y, w.b.x, w.b.y);
+        if (r.d < bd) { bd = r.d; best = { x: r.x, y: r.y }; }
+    }
+    return best || { x: snapGrid(x), y: snapGrid(y) };
 }
 
 function compAt(x, y) {
@@ -596,8 +602,8 @@ function drawHover() {
     ctx.restore();
 }
 
-function buildDragComp() {
-    const s = drag.start, e = drag.cur;
+function buildDragComp(d) {
+    const s = d.start, e = d.cur;
     const dist = Math.hypot(e.x - s.x, e.y - s.y);
     let bx, by;
     if (dist < 6) {
@@ -623,7 +629,7 @@ function draw() {
     drawDots();
     drawValues();
 
-    if (drag && drag.mode === 'draw') drawComp(buildDragComp(), true);
+    if (drag && drag.mode === 'draw') drawComp(buildDragComp(drag), true);
     if (ghost) drawComp(ghost.preview, true);
 
     drawHover();
@@ -656,7 +662,7 @@ function updateHint() {
     const hint = document.getElementById('hint');
     const msgs = {
         select: 'Click a part to edit its value, or drag it to move. Drag a wire end dot to reconnect it.',
-        wire: 'Drag on the board to draw a wire. Its ends snap onto nearby parts to connect.',
+        wire: 'Drag anywhere on the board to draw a wire. Its ends snap onto nearby parts or wires to connect.',
         battery: 'Drag on the board to place a battery. The + end is where you start the drag.',
         bulb: 'Drag on the board to place a bulb.',
         resistor: 'Drag on the board to place a resistor.',
@@ -895,7 +901,8 @@ canvas.addEventListener('pointerdown', (e) => {
         const q = ep.comp[ep.end];
         drag = { mode: 'draw', start: { x: q.x, y: q.y }, cur: { x: q.x, y: q.y }, moved: false, anchored: true };
     } else {
-        const c = compAt(p.x, p.y);
+        // The wire tool draws branches from wire bodies; Select moves them.
+        const c = tool === 'wire' ? null : compAt(p.x, p.y);
         if (c) { drag = startMove(c, p); select(c); }
         else {
             const s = snapPoint(p.x, p.y, null);
@@ -957,7 +964,7 @@ function endDrag() {
     const d = drag;
     drag = null;
     if (d.mode === 'draw') {
-        const c = (!d.moved && !d.anchored) ? defaultComp(tool, d.start.x, d.start.y) : buildDragComp();
+        const c = (!d.moved && !d.anchored) ? defaultComp(tool, d.start.x, d.start.y) : buildDragComp(d);
         comps.push(c);
         settleSnap(c);
         select(c);

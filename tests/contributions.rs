@@ -326,6 +326,7 @@ async fn owner_revisions_are_private_stale_safe_and_do_not_modify_approved_snaps
         .await,
     )
     .await;
+    assert_eq!(catalog["communitySimulationIds"], json!(["versioned-lab"]));
     assert_eq!(
         catalog["simulations"]
             .as_array()

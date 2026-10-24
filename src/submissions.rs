@@ -658,6 +658,13 @@ async fn catalog(State(state): State<SubmissionState>) -> Result<Json<Value>, Ap
         })
         .await?;
     let mut catalog = (*state.catalog).clone();
+    // Provenance belongs to the public catalog, not contributor-controlled definitions.
+    catalog["communitySimulationIds"] = json!(
+        definitions
+            .iter()
+            .map(|definition| &definition["id"])
+            .collect::<Vec<_>>()
+    );
     catalog["simulations"]
         .as_array_mut()
         .unwrap()
