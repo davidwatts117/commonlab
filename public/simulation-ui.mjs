@@ -1,6 +1,7 @@
 import { validateDefinition } from './simulation-schema.mjs';
+import { renderMathText } from './simulation-math.mjs';
 
-/** Render only approved components. Metadata/content is always text, never HTML. */
+/** Render only approved components. Content is text or delimited math, never HTML. */
 export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   validateDefinition(definition);
   const doc = root.ownerDocument;
@@ -13,6 +14,9 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     // Preview namespaces prevent draft slot IDs from shadowing author/reviewer form IDs.
     if (id) { el.id = `${idPrefix}${id}`; slots.set(id, el); }
     return el;
+  }
+  function mathText(tag, cls, text) {
+    return renderMathText(node(tag, cls), text);
   }
   function button(data, label = data.label) {
     if (data.variant === 'display') return node('span', 'control-value', label, data.id);
@@ -44,7 +48,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   }
   function showInfo(key, opener) {
     const data = definition.info[key];
-    dialog.replaceChildren(node('h2', '', data.title), node('p', 'equation-formula', data.formula), node('p', '', data.explanation), node('p', '', data.detail));
+    dialog.replaceChildren(node('h2', '', data.title), mathText('p', 'equation-formula', data.formula), mathText('p', '', data.explanation), mathText('p', '', data.detail));
     const close = node('button', 'sim-btn sim-btn--soft', 'Close'); close.type = 'button';
     close.addEventListener('click', () => dialog.close()); dialog.append(close);
     dialog.onclose = () => opener.focus(); dialog.showModal();
@@ -231,8 +235,8 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   const sidebar = node('aside', 'sim-sidebar'); sidebar.setAttribute('aria-label', 'Science explanations');
   for (const data of definition.cards) {
     const card = node('div', 'equation-card'); card.append(node('h3', '', data.title));
-    data.formulas.forEach(text => card.append(node('div', 'equation-formula', text)));
-    data.paragraphs.forEach(text => card.append(node('p', 'eq-explanation', text)));
+    data.formulas.forEach(text => card.append(mathText('div', 'equation-formula', text)));
+    data.paragraphs.forEach(text => card.append(mathText('p', 'eq-explanation', text)));
     data.components?.forEach(data => card.append(component(data))); sidebar.append(card);
   }
   const dialog = node('dialog', 'simulation-dialog'); dialog.setAttribute('aria-label', 'Science explanation');

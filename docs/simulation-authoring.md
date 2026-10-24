@@ -39,7 +39,7 @@ The server checks the catalog version, IDs, uniqueness, and module/shell availab
       "items": [{ "id": "extensionValue", "label": "Extension (m)", "value": "0.00", "tone": "highlight" }]
     }
   ],
-  "cards": [{ "title": "Hooke's law", "formulas": ["F = kx"], "paragraphs": ["Force is proportional to extension within the elastic limit."] }],
+  "cards": [{ "title": "Hooke's law", "formulas": ["$$F = kx$$"], "paragraphs": ["Force is proportional to extension within the elastic limit."] }],
   "graphs": [],
   "lessons": []
 }
@@ -67,7 +67,7 @@ Simulation IDs are lowercase slugs, up to 80 characters; the module filename is 
 | `stepper` | `label`, `output: {id,text}`, `increase` button, optional `decrease` button |
 | `meter` | `id` for the fill, `label`, `output: {id,text}`, `ticks: [text]` |
 
-`cards` contains `{title, formulas: [text], paragraphs: [text]}`, plus optional `components` (up to 10 of the components above, such as a log `table`). Content is plain text, including mathematical notation; HTML is never interpreted. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, optional `legend: [{label,color}]` (six-digit hex colors), and optional `controls` (up to 10 components shown above that canvas).
+`cards` contains `{title, formulas: [text], paragraphs: [text]}`, plus optional `components` (up to 10 of the components above, such as a log `table`). Content is text, with optional delimited LaTeX in card `formulas`/`paragraphs` and info-dialog `formula`/`explanation`/`detail`; HTML is never interpreted. Use `\( ... \)` for inline math or `$$ ... $$` / `\[ ... \]` for display math. In JSON, double each backslash, for example `"$$\\frac{V_1}{T_1} = \\frac{V_2}{T_2}$$"` or `"Use \\(T^2\\) here."`. The visual editor accepts ordinary single backslashes. Unmarked text (including legacy formulas and currency using single `$`) stays literal. Invalid/unsupported LaTeX falls back to its original text without breaking the simulation. Rendering uses locally served Temml and native accessible MathML; links, images and trusted HTML commands are disabled, with bounded macro expansion and dimensions. No CDN or frontend build is required. `graphs` contains additional canvases with `id/label/width/height`, optional `caption`, optional `legend: [{label,color}]` (six-digit hex colors), and optional `controls` (up to 10 components shown above that canvas).
 
 Optional top-level `views: {id, value, options: [{value,label}]}` declares fullscreen tabs. The first option shows the main canvas and controls; a graph with `view` set to another option is shown on its own tab. Outside fullscreen every view stays visible. The tab group's `.value` holds the current view and it dispatches `change` when a tab is chosen.
 

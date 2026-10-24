@@ -11,11 +11,14 @@ export function makeDocument() {
       this.listeners[type] = (this.listeners[type] || []).filter(item => item !== fn);
     },
     createTextNode(text) { return makeNode(null, text); },
+    createDocumentFragment() { const node = makeNode(null); node.nodeType = 11; return node; },
     createElement(tag) { return makeNode(tag); },
+    createElementNS(namespace, tag) { const node = makeNode(tag); node.namespaceURI = namespace; return node; },
     querySelector() { return null; },
   };
   function makeNode(tag, text = '') {
     const node = {
+      ownerDocument: doc,
       tagName: tag ? tag.toUpperCase() : null,
       className: '', attrs: {}, listeners: {}, childNodes: [], parentElement: null,
       hidden: false, disabled: false, inert: false, dataset: {},
@@ -42,6 +45,7 @@ export function makeDocument() {
       },
       append(...children) {
         for (const child of children) {
+          if (child.nodeType === 11) { this.append(...child.childNodes); continue; }
           child.remove();
           this.childNodes.push(child);
           child.parentElement = this;
