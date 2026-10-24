@@ -57,6 +57,25 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await page.locator('h1').innerText(), 'Pendulum Lab'); await page.close();
     });
 
+    await t.test('homepage contact links to the official support address on desktop and mobile', async () => {
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        await page.goto(base);
+        await page.getByRole('link', { name: 'Contact', exact: true }).click();
+        await page.waitForFunction(() => {
+          const box = document.querySelector('#contact a[href^="mailto:"]').getBoundingClientRect();
+          return box.top >= 0 && box.bottom <= innerHeight;
+        });
+        const contact = page.locator('#contact a[href^="mailto:"]');
+        assert.equal(await contact.count(), 1);
+        assert.equal(await contact.innerText(), 'support@common-lab.org');
+        assert.equal(await contact.getAttribute('href'), 'mailto:support@common-lab.org');
+        assert.equal(await contact.isVisible(), true);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.close();
+      }
+    });
+
     await t.test('community cards get safe subject artwork without loading engines', async () => {
       const literal = '<img src=x onerror="x = 1">';
       const community = [

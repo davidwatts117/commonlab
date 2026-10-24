@@ -92,3 +92,24 @@ Rust tools required adding `/home/agent/.cargo/bin` to PATH in this environment.
 ## Scope and caveats
 
 The title-only issue was interpreted as a discoverability problem, not a request to redesign authentication. Changes are limited to navigation, initial form mode, documentation, and tests; account APIs, permissions, password rules, and submission behavior are unchanged. Browsing simulations still requires no account. No blocking ambiguities were found.
+
+# Issue #19 — Official contact address
+
+Updated the homepage footer’s displayed email and `mailto:` destination from `hello@commonlab.org` to **support@common-lab.org**. Repository search found no other public contact email requiring replacement; no unrelated behavior changed.
+
+Added desktop/mobile browser regression coverage for Contact navigation, the exact email text and destination, visibility, and absence of horizontal overflow. Confirmed the regression fails against the original address and passes after the fix.
+
+## Validation
+All requested checks passed:
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` — 32 tests
+- `npm test` — 51 tests
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 27 tests
+- `git diff --check`
+
+Cargo required adding `/home/agent/.cargo/bin` to `PATH`. Exercised the running Axum app using the browser skill with Chrome at desktop/mobile widths; inspected actual footer screenshots:
+- [Desktop contact](contact-desktop.png)
+- [Mobile contact](contact-mobile.png)
+
+Screenshots use only the public homepage and an isolated temporary database. Email delivery and external mail-client behavior were not tested; the exact `mailto:` destination is verified without sending email. No blocking ambiguities.
