@@ -27,7 +27,7 @@ try {
   controller = module.mount(ui);
   if (!controller?.app?.sim) throw new Error('Simulation module must return { app }.');
   learning = mountLearning(ui, controller, document.getElementById('lesson-launcher'));
-  certificate = mountCertificate({ host: certificateHost, definition, learning, bus: controller.app.bus });
+  certificate = mountCertificate({ host: certificateHost, definition, learning, bus: controller.app.bus, simulationRoot: root });
   certificateHost.hidden = false;
   window.CommonLabSite.initializeSimulationChrome();
   status.hidden = true;

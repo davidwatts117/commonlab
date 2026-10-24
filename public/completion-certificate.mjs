@@ -1,6 +1,46 @@
+/** Foreground participation estimate, not proof of attention or mastery. */
+function trackExploration(root, doc) {
+  const view = doc.defaultView;
+  const now = () => view.performance.now();
+  let total = 0, since = null, deadline = 0, engaged = false;
+  function settle() {
+    const time = now();
+    if (since !== null) {
+      total += Math.max(0, Math.min(time, deadline) - since);
+      since = time;
+    }
+    return time;
+  }
+  function interact(event) {
+    // Ignore engine-generated events, page navigation, and certificate form entry.
+    if (!event.isTrusted || doc.hidden ||
+        event.target.closest('.simulation-check, .guided-modal-wrap, .guided-hud, .guided-card, dialog') ||
+        !event.target.closest('button, input, select, canvas') ||
+        (event.type === 'keydown' && ['Tab', 'Shift', 'Control', 'Alt', 'Meta', 'Escape'].includes(event.key))) return;
+    const time = settle();
+    engaged = true; since = time; deadline = time + 60_000;
+  }
+  function pause() { settle(); since = null; }
+  function visibility() { if (doc.hidden) pause(); }
+  const events = ['pointerdown', 'keydown', 'click', 'input', 'change'];
+  events.forEach(type => root?.addEventListener(type, interact, true));
+  doc.addEventListener('visibilitychange', visibility);
+  // Also suspend time while a page is in the browser Back/Forward cache.
+  view.addEventListener('pagehide', pause);
+  return {
+    seconds() { settle(); return engaged ? Math.floor(total / 1000) : null; },
+    destroy() {
+      events.forEach(type => root?.removeEventListener(type, interact, true));
+      doc.removeEventListener('visibilitychange', visibility);
+      view.removeEventListener('pagehide', pause);
+    },
+  };
+}
+
 /** Local participation certificates. Student names are never persisted or sent. */
-export function mountCertificate({ host, definition, learning, bus }) {
+export function mountCertificate({ host, definition, learning, bus, simulationRoot }) {
   const doc = host.ownerDocument;
+  const exploration = trackExploration(simulationRoot, doc);
   const lessons = new Map();
   const subscriptions = [];
   function record(experimentId, completed) {
@@ -44,7 +84,10 @@ export function mountCertificate({ host, definition, learning, bus }) {
       return;
     }
     const activities = node('ul');
-    activities.append(node('li', 'Simulation exploration'));
+    const seconds = exploration.seconds();
+    activities.append(node('li', seconds === null
+      ? 'Simulation exploration: not recorded (no interaction this visit)'
+      : `Simulation exploration: time spent: ${seconds < 1 ? 'less than 1 second' : `${Math.floor(seconds / 60)}m ${seconds % 60}s`} (this visit)`));
     for (const lesson of definition.lessons) {
       if (lessons.has(lesson.id)) activities.append(node('li',
         `Guided experiment ${lessons.get(lesson.id) ? 'completed' : 'started (not completed)'}: ${lesson.title}`));
@@ -62,17 +105,18 @@ export function mountCertificate({ host, definition, learning, bus }) {
       node('p', definition.summary),
       activities,
       node('p', `Issued ${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`),
-      node('p', 'Participation record, not a verified qualification. Guided steps may be skipped.', 'certificate-note'),
+      node('p', 'Participation record, not a verified qualification. Guided steps may be skipped. Exploration time excludes hidden tabs and pauses after 60 seconds without interaction.', 'certificate-note'),
     );
     certificate.hidden = false; print.hidden = false;
     certificate.focus();
   };
   form.addEventListener('submit', onSubmit);
   host.append(node('h2', 'Finished exploring?'),
-    node('p', 'Enter your name to receive a completion certificate. Print it or save it as a PDF. Your name stays on this page; guided activity is recorded only for this visit.'),
+    node('p', 'Enter your name to receive a completion certificate. Print it or save it as a PDF. Your name stays on this page; guided activity and exploration time are recorded only for this visit. Exploration time starts when you use a simulation control or canvas, excludes hidden tabs, and pauses after 60 seconds without interaction.'),
     form, certificate, print);
   return {
     destroy() {
+      exploration.destroy();
       subscriptions.forEach(unsubscribe => unsubscribe());
       input.removeEventListener('input', onInput);
       form.removeEventListener('submit', onSubmit);

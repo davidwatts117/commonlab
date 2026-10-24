@@ -104,6 +104,14 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await certificate.locator('.certificate-name').innerText(), name);
       assert.equal(await certificate.locator('img').count(), 0);
       assert.doesNotMatch(await certificate.innerText(), /Guided experiment|Check Understanding/);
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      // Physics engines dispatch synthetic input events when applying presets/lesson state.
+      await page.locator('#lengthSlider').dispatchEvent('input');
+      await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      await page.locator('#lengthSlider').focus(); await page.keyboard.press('ArrowRight');
+      await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: time spent:/);
       await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
       await page.locator('[data-exit]').click();
       await create.click();
@@ -147,15 +155,23 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       await page.reload(); await page.waitForSelector('[data-ready="true"]');
       assert.equal(await certificate.isVisible(), false);
       assert.equal(await page.getByLabel('Your name', { exact: true }).inputValue(), '');
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      await page.locator('[data-exit]').click();
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await page.getByLabel('Your name', { exact: true }).fill('Student'); await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
       assert.deepEqual(errors, []); await page.close();
     });
 
     await t.test('mobile simulations without learning activities offer free-exploration certificates', async () => {
       const { page, errors } = await pageFor('gas-laws', true);
+      await page.locator('.simulation-canvas').first().click();
       await page.getByLabel('Your name', { exact: true }).fill('A'.repeat(100));
       await page.getByRole('button', { name: 'Create completion certificate', exact: true }).click();
       const certificate = page.locator('.completion-certificate');
       assert.match(await certificate.innerText(), /Gas Laws/);
+      assert.match(await certificate.innerText(), /Simulation exploration: time spent:/);
       assert.equal(await certificate.locator('li').count(), 1);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []); await page.close();

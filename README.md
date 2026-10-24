@@ -93,7 +93,9 @@ See [Simulation authoring](docs/simulation-authoring.md) for the schema, module 
 
 After exploring any simulation, students can enter their name in **Finished exploring?** to create a completion certificate, then **Print / save as PDF**. The certificate includes the simulation, issue date, guided experiments started/completed during this visit, and any unfinished or latest locally saved Check Understanding result. Regenerate it after further activity to update the record.
 
-Names and certificates stay on the page: they are not saved in browser storage or sent to a server. Guided participation resets on reload; existing CFU persistence is unchanged. These are participation records, not verified qualifications or proof of mastery (guided steps can be skipped).
+Simulation exploration is marked **not recorded** until a student uses a simulation control or canvas. Its **time spent** is a local estimate of visible time after interaction, paused after 60 seconds without another interaction. Hidden tabs and time away in the browser Back/Forward cache are excluded; interact again to resume. Regenerate the certificate to update the time.
+
+Names and certificates stay on the page: they are not saved in browser storage or sent to a server. Guided participation and exploration time reset on reload; existing CFU persistence is unchanged. These are participation records, not verified qualifications or proof of mastery (guided steps can be skipped).
 
 ## Guided experiments / lessons
 
