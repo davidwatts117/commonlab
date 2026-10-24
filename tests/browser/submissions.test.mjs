@@ -41,9 +41,38 @@ test('public authoring and private moderation in a real browser', { timeout: 120
     for (const page of [author, reviewer]) page.on('request', request => { if (request.url().includes('/simulations/browser-new-lab.js')) moduleRequests.push(request.url()); });
     let receipt;
 
+    await t.test('homepage makes account creation directly discoverable on desktop and mobile', async () => {
+      for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+        await author.setViewportSize(viewport);
+        await author.goto(base);
+        const createAccount = author.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Create contributor account', exact: true });
+        assert.equal(await createAccount.isVisible(), true);
+        assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await createAccount.click();
+        await author.waitForFunction(() => document.getElementById('account-action')?.value === 'register');
+        assert.equal(await author.locator('#account-confirm').isVisible(), true);
+        assert.equal(await author.locator('#account-confirm').getAttribute('required'), '');
+        assert.equal(await author.locator('#account-password').getAttribute('autocomplete'), 'new-password');
+        assert.equal(await author.locator('#account-submit').innerText(), 'Create account');
+        assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await author.locator('#account-action').selectOption('login');
+        assert.equal(await author.locator('#account-confirm').isVisible(), false);
+        assert.equal(await author.locator('#account-confirm').getAttribute('required'), null);
+        assert.equal(await author.locator('#account-password').getAttribute('autocomplete'), 'current-password');
+        assert.equal(await author.locator('#account-submit').innerText(), 'Sign in');
+      }
+      for (const path of ['/account.html', '/account.html?action=unexpected']) {
+        await author.goto(`${base}${path}`);
+        await author.waitForFunction(() => document.getElementById('account-status').textContent.includes('Sign in to submit'));
+        assert.equal(await author.locator('#account-action').inputValue(), 'login');
+        assert.equal(await author.locator('#account-confirm').isVisible(), false);
+      }
+    });
+
     await t.test('contributor registration, logout and login use private cookie sessions', async () => {
-      await author.goto(`${base}/account.html`);
-      await author.locator('#account-action').selectOption('register');
+      await author.goto(base);
+      await author.getByRole('link', { name: 'Create contributor account', exact: true }).click();
+      await author.locator('#account-confirm').waitFor();
       await author.locator('#account-username').fill('browser-author');
       await author.locator('#account-password').fill('test-only-browser-password');
       await author.locator('#account-confirm').fill('test-only-browser-password');
@@ -52,8 +81,13 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.ok((await author.locator('#account-name').innerText()).includes('browser-author'));
       assert.equal(await author.evaluate(() => document.cookie.includes('cl_session')), false);
       assert.equal((await author.context().cookies()).some(cookie => cookie.name === 'cl_session' && cookie.httpOnly && cookie.sameSite === 'Strict'), true);
+      await author.goto(`${base}/account.html?action=register`);
+      await author.locator('#account-signed-in').waitFor();
+      assert.equal(await author.locator('#account-form').isVisible(), false);
       await author.locator('#account-logout').click(); await author.locator('#account-form').waitFor();
-      await author.locator('#account-action').selectOption('login');
+      await author.goto(base);
+      await author.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Sign in', exact: true }).click();
+      await author.locator('#account-username').fill('browser-author');
       await author.locator('#account-password').fill('test-only-browser-password');
       await author.locator('#account-submit').click(); await author.locator('#account-signed-in').waitFor();
     });
@@ -152,7 +186,11 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal(await page.locator('#community-simulations .sim-card').count(), 1);
       assert.equal(await page.locator('#original-simulations a').filter({ hasText: 'Browser uploaded lab' }).count(), 0);
       assert.equal(await page.locator('#community-simulations-empty').isVisible(), false);
-      await page.locator('#community-simulations a').filter({ hasText: 'Browser uploaded lab' }).click();
+      const card = page.locator('#community-simulations a').filter({ hasText: 'Browser uploaded lab' });
+      await card.waitFor();
+      assert.equal(await card.locator('.sim-thumb svg circle').count() > 0, true);
+      assert.equal(await page.evaluate(() => window.draftExecuted), undefined, 'catalog artwork does not run the published engine');
+      await card.click();
       await page.waitForSelector('#simulation-root[data-ready="true"]');
       assert.equal(await page.evaluate(() => window.draftExecuted), true);
       assert.equal(await page.locator('#simulation-root img').count(), 0);
@@ -222,6 +260,81 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal((await reviewer.request.get(`${base}/api/contributor/submissions/${receipt.id}`)).status(), 401);
     });
 
+    await t.test('designed dashboard handles empty states, pagination, selection, live revisions and errors', async () => {
+      const dashboard = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      dashboard.on('pageerror', error => pageErrors.push(error.message));
+      let signedIn = false, fail = false, populated = false;
+      const literalTitle = '<img src=x onerror="window.titleExecuted=true">';
+      const item = { id: 42, title: literalTitle, simulationId: 'dashboard-fixture', revision: 3, status: 'rejected', publishedRevision: 2, createdAt: '2026-01-01T12:00:00Z', updatedAt: '2026-02-02T12:00:00Z', reviewNote: 'Please clarify the explanation.' };
+      const queries = [];
+      await dashboard.route('**/api/auth/me', route => route.fulfill({ status: signedIn ? 200 : 401, json: signedIn ? { id: 99, username: 'dashboard-fixture' } : {} }));
+      await dashboard.route('**/api/contributor/submissions?*', route => {
+        const query = new URL(route.request().url()).searchParams; queries.push(query.toString());
+        const items = !populated || query.get('status') === 'pending' ? [] : [query.has('before') ? { ...item, id: 41, title: 'Earlier submission', publishedRevision: null } : item];
+        return route.fulfill({ status: fail ? 503 : 200, json: fail ? { error: 'Service temporarily unavailable.' } : { items, hasMore: populated && items.length > 0 && !query.has('before') } });
+      });
+      await dashboard.route('**/api/contributor/submissions/42/history', route => route.fulfill({ json: { events: [{ createdAt: item.updatedAt, revision: 3, actor: 'maintainer', action: 'reject', status: 'rejected', note: '<script>not executable</script>' }] } }));
+      try {
+        await dashboard.goto(`${base}/contributions.html`);
+        await dashboard.locator('#contributions-login').waitFor();
+        assert.equal(await dashboard.getByRole('link', { name: 'Sign in or create an account', exact: true }).getAttribute('href'), '/account.html');
+        assert.equal(await dashboard.locator('#contributions-workspace').isVisible(), false);
+        signedIn = true; await dashboard.reload();
+        await dashboard.locator('#contributions-empty').waitFor();
+        assert.equal(await dashboard.locator('#contributions-empty-title').innerText(), 'No submissions yet');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), false);
+        populated = true; await dashboard.locator('#contributions-refresh').click();
+        const card = dashboard.locator('#contributions-list button').first();
+        await card.waitFor();
+        assert.equal(await card.locator('.contribution-card-title').innerText(), literalTitle);
+        assert.equal(await card.locator('[data-status="rejected"]').innerText(), 'Rejected');
+        assert.equal(await card.locator('[data-status="live"]').innerText(), 'Live revision 2');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), true);
+        await card.focus(); await dashboard.keyboard.press('Enter');
+        await dashboard.waitForFunction(() => document.getElementById('contribution-history').textContent.includes('reject'));
+        assert.equal(await card.getAttribute('aria-expanded'), 'true');
+        assert.equal(await card.getAttribute('aria-controls'), 'contribution-detail');
+        assert.equal(await dashboard.locator('#contribution-title').evaluate(el => el === document.activeElement), true);
+        assert.equal(await dashboard.locator('#contribution-live').getAttribute('href'), '/simulations/dashboard-fixture');
+        assert.equal(await dashboard.locator('#contribution-placeholder').isVisible(), false);
+        const desktopList = await dashboard.locator('#contributions-list').boundingBox();
+        const desktopDetail = await dashboard.locator('#contribution-detail').boundingBox();
+        assert.ok(desktopDetail.x > desktopList.x + desktopList.width, 'desktop details sit beside the list');
+        assert.equal(await dashboard.locator('#contributions-workspace img, #contributions-workspace script').count(), 0);
+        await dashboard.locator('#contributions-more').click();
+        await dashboard.waitForFunction(() => document.querySelectorAll('#contributions-list button').length === 2);
+        assert.ok(queries.includes('status=all&before=42'));
+        assert.equal(await dashboard.locator('#contributions-more').isVisible(), false);
+        const earlier = dashboard.locator('#contributions-list button').last();
+        await dashboard.route('**/api/contributor/submissions/41/history', route => route.fulfill({ json: { events: [] } }));
+        await earlier.click(); await dashboard.getByText('No review events yet.', { exact: true }).waitFor();
+        assert.equal(await card.getAttribute('aria-expanded'), 'false');
+        assert.equal(await earlier.getAttribute('aria-expanded'), 'true');
+        assert.equal(await dashboard.locator('#contribution-live').isVisible(), false);
+        await dashboard.setViewportSize({ width: 390, height: 844 });
+        const mobileList = await dashboard.locator('#contributions-list').boundingBox();
+        const mobileDetail = await dashboard.locator('#contribution-detail').boundingBox();
+        assert.ok(mobileDetail.y >= mobileList.y + mobileList.height, 'phone details stack below the list');
+        assert.equal(await dashboard.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+        await card.click();
+        await dashboard.waitForFunction(() => document.getElementById('contribution-history').textContent.includes('reject'));
+        await dashboard.setViewportSize({ width: 320, height: 700 });
+        assert.equal(await dashboard.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+        await dashboard.locator('#contributions-filter').selectOption('pending');
+        await dashboard.getByText('No submissions match this filter', { exact: true }).waitFor();
+        assert.ok((await dashboard.locator('#contributions-empty-text').innerText()).includes('All statuses'));
+        assert.equal(await dashboard.locator('#contribution-detail').isVisible(), false);
+        assert.equal(await dashboard.locator('#contribution-feedback').innerText(), '');
+        fail = true; await dashboard.locator('#contributions-refresh').click();
+        await dashboard.getByRole('alert').filter({ hasText: 'Service temporarily unavailable.' }).waitFor();
+        assert.equal(await dashboard.locator('#contributions-workspace').isVisible(), false);
+        fail = false; await dashboard.reload(); await dashboard.locator('#contributions-workspace').waitFor();
+        signedIn = false; await dashboard.locator('#contributions-refresh').click();
+        await dashboard.locator('#contributions-login').waitFor();
+        assert.equal(await dashboard.locator('#contributions-list button').count(), 0);
+      } finally { await dashboard.close(); }
+    });
+
     await t.test('dashboard tracks private status, literal feedback, history and signed-out privacy', async () => {
       const rejected = await reviewer.request.post(`${base}/api/admin/submissions/${receipt.id}/review`, { headers: { Authorization: `Bearer ${token}` }, data: { revision: 2, decision: 'reject', note: '<img src=x onerror="window.noteExecuted=true"> Please revise the explanation.' } });
       assert.equal(rejected.status(), 200);
@@ -264,7 +377,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.locator('#generation-consent').check();
       await author.locator('#generation-form button').click();
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
-      const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } });
+      const claimed = await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } });
       assert.equal(claimed.status(), 200); const job = await claimed.json();
       const progress = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/progress`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, code: 'validating', details: { turn: 1, attempt: 1 } } });
       assert.equal(progress.status(), 200);
@@ -277,7 +390,7 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.ok((await author.locator('#generation-events').innerText()).includes('Tool: define_simulation (error)'));
       const definition = { id: job.simulationId, title: 'AI spring draft', subject: 'physics', summary: 'A private generated draft.', canvas: { id: 'scene', label: 'Spring scene', width: 640, height: 400 }, controls: [], cards: [], graphs: [], lessons: [] };
       const moduleCode = 'export function mount(ui) { globalThis.generatedExecuted = true; return { app: {} }; }';
-      const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', artifact: { definition, moduleCode } } });
+      const completed = await reviewer.request.post(`${base}/api/worker/generation/${job.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: job.lease, model: 'scripted/test-no-paid-call', report: { verification: 'passed', review: 'passed' }, artifact: { definition, moduleCode } } });
       assert.equal(completed.status(), 200);
       await author.locator('#generation-refresh').click();
       await author.getByRole('link', { name: 'Open private draft in editor' }).click();
@@ -296,12 +409,24 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await author.locator('#generation-prompt').fill('A request that needs repairs.');
       await author.locator('#generation-consent').check(); await author.locator('#generation-form button').click();
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('queued'));
-      const failedJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` } })).json();
+      const failedJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } })).json();
       await reviewer.request.post(`${base}/api/worker/generation/${failedJob.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: failedJob.lease, model: 'scripted/test', artifact: null, failure: 'repair_limit', diagnostics: { requests: 4, validations: 4, stopReason: 'toolUse', issues: [{ path: '/moduleCode', rule: 'javascript_syntax', line: 8, column: 3 }] } } });
       await author.waitForFunction(() => document.getElementById('generation-jobs').textContent.includes('repair limit'), { timeout: 10_000 });
       await author.waitForFunction(() => document.getElementById('generation-summary').textContent.includes('Requests: 4'), { timeout: 10_000 });
       assert.ok((await author.locator('#generation-summary').innerText()).includes('/moduleCode (line 8, column 3)'));
       assert.ok((await author.locator('#generation-events').innerText()).includes('Draft repair budget exhausted'));
+      // A retained, unverified candidate is editable but must never be labeled verified.
+      const candidateReceipt = await author.request.post(`${base}/api/generation/jobs`, { headers: { 'X-CommonLab-Request': '1' }, data: { prompt: 'A candidate requiring manual attention.', acceptProviderProcessing: true } });
+      assert.equal(candidateReceipt.status(), 202);
+      const candidateJob = await (await reviewer.request.post(`${base}/api/worker/generation/claim`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { protocolVersion: 2 } })).json();
+      const candidateResult = await reviewer.request.post(`${base}/api/worker/generation/${candidateJob.id}/complete`, { headers: { Authorization: `Bearer ${workerToken}` }, data: { lease: candidateJob.lease, model: 'scripted/test-candidate', outcome: 'needs_attention', failure: 'verification_failed', report: { verification: 'failed', review: 'unavailable', tests: [{ name: 'Energy conservation', ok: false, message: 'Unexpected energy increase.' }] }, artifact: { definition: { ...definition, id: candidateJob.simulationId }, moduleCode } } });
+      assert.equal(candidateResult.status(), 200);
+      await author.goto(`${base}/generate.html`);
+      await author.waitForFunction(() => document.getElementById('generation-summary').textContent.includes('Energy conservation'));
+      assert.ok((await author.locator('#generation-summary').innerText()).includes('Independent review: unavailable'));
+      await author.goto(`${base}/submit.html?generation=${candidateJob.id}`);
+      await author.waitForFunction(() => document.getElementById('authoring-status').textContent.includes('Unverified AI candidate'));
+      assert.equal(await author.evaluate(() => window.generatedExecuted), undefined);
     });
 
     await t.test('runs an engine only inside an isolated frame with no host or network access', async () => {

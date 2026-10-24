@@ -3,9 +3,12 @@
 !worker/package.json
 !worker/package-lock.json
 !worker/*.mjs
+!worker/models.json
 !public/
-!public/simulation-schema.mjs
+!public/**
 !schema/
 !schema/simulation.schema.json
+!schema/generation-protocol.json
 !docs/
 !docs/simulation-authoring.md
+!docs/generation-engine-api.md

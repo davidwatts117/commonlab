@@ -88,6 +88,70 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('homepage contact links to the official support address on desktop and mobile', async () => {
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        await page.goto(base);
+        await page.getByRole('link', { name: 'Contact', exact: true }).click();
+        await page.waitForFunction(() => {
+          const box = document.querySelector('#contact a[href^="mailto:"]').getBoundingClientRect();
+          return box.top >= 0 && box.bottom <= innerHeight;
+        });
+        const contact = page.locator('#contact a[href^="mailto:"]');
+        assert.equal(await contact.count(), 1);
+        assert.equal(await contact.innerText(), 'support@common-lab.org');
+        assert.equal(await contact.getAttribute('href'), 'mailto:support@common-lab.org');
+        assert.equal(await contact.isVisible(), true);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.close();
+      }
+    });
+
+    await t.test('community cards get safe subject artwork without loading engines', async () => {
+      const literal = '<img src=x onerror="x = 1">';
+      const community = [
+        { id: 'community-physics', subject: 'physics', title: literal },
+        { id: 'community-chemistry', subject: 'chemistry', title: 'Community chemistry' },
+        // A valid slug must not resolve an inherited property of the artwork map.
+        { id: 'constructor', subject: 'physics', title: 'Constructor lab' },
+      ].map(fields => ({ ...structuredClone(catalog.simulations[0]), ...fields, lessons: [], assessment: undefined }));
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        const errors = [], engineRequests = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('request', request => { if (/\/simulations\/.*\.js(?:\?|$)/.test(request.url())) engineRequests.push(request.url()); });
+        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: { schemaVersion: 1, simulations: [...catalog.simulations, ...community], communitySimulationIds: community.map(definition => definition.id) } }));
+        await page.goto(base);
+        await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+        assert.equal(await page.locator('.sim-card').count(), catalog.simulations.length + community.length);
+        assert.equal(await page.locator('.sim-thumb svg').count(), catalog.simulations.length + community.length);
+        assert.equal(await page.locator('#community-simulations .sim-card').count(), community.length);
+        assert.equal(await page.locator('#original-simulations .sim-card').count(), catalog.simulations.length);
+        const artwork = [];
+        for (const definition of community) {
+          const card = page.locator(`.sim-card[href="/simulation.html?id=${definition.id}"]`);
+          assert.equal(await card.locator('.sim-name').innerText(), definition.title);
+          const svg = card.locator('.sim-thumb svg');
+          assert.equal(await svg.getAttribute('aria-hidden'), 'true');
+          assert.equal(await svg.getAttribute('viewBox'), '0 0 240 130');
+          assert.ok(await svg.locator('path, circle, ellipse, line').count() > 0);
+          const box = await svg.boundingBox();
+          assert.ok(box.width > 0 && box.height > 0, 'preview artwork is visible');
+          artwork.push(await svg.innerHTML());
+        }
+        assert.notEqual(artwork[0], artwork[1], 'subjects have distinct illustrations');
+        assert.equal(artwork[0], artwork[2], 'inherited keys use the physics fallback');
+        const pendulum = page.locator('.sim-card[href="/simulation.html?id=pendulum"] .sim-thumb svg');
+        assert.equal(await pendulum.locator('circle[cx="154"][cy="99"]').count(), 1, 'built-in pendulum artwork is preserved');
+        assert.equal(await page.locator('.sim-card img, .sim-card script, .sim-card iframe').count(), 0);
+        assert.equal(await page.evaluate(() => window.x), undefined);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        assert.deepEqual(engineRequests, []);
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+    });
+
     await t.test('all seven modules load without JS errors at desktop and phone sizes', async () => {
       for (const definition of catalog.simulations) for (const mobile of [false, true]) {
         const { page, errors } = await pageFor(definition.id, mobile);
@@ -99,6 +163,40 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `${definition.id}: horizontal overflow`);
         assert.deepEqual(errors, [], definition.id); await page.close();
       }
+    });
+
+    await t.test('nucleus readout text and stepper labels stay inside their boxes', async () => {
+      const { page, errors } = await pageFor('build-a-nucleus', true);
+      await page.waitForFunction(() => !document.getElementById('btnProtonPlus').disabled);
+      for (const width of [320, 390, 900, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const element of ['Carbon', 'Nitrogen']) {
+          if (element === 'Nitrogen') await page.locator('#btnProtonPlus').click();
+          assert.equal(await page.locator('#elementName').innerText(), element);
+          const leaks = await page.evaluate(() => {
+            const leaks = [];
+            for (const box of document.querySelectorAll('.sim-readout, .sim-stepper .sim-btn')) {
+              const bounds = box.getBoundingClientRect();
+              const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+              let text;
+              while ((text = walker.nextNode())) {
+                const range = document.createRange(); range.selectNodeContents(text);
+                for (const rect of range.getClientRects()) {
+                  if (rect.width && (rect.left < bounds.left - 1 || rect.right > bounds.right + 1 ||
+                    rect.top < bounds.top - 1 || rect.bottom > bounds.bottom + 1)) {
+                    leaks.push({ box: box.className, text: text.textContent });
+                  }
+                }
+              }
+            }
+            return leaks;
+          });
+          assert.deepEqual(leaks, [], `${element} text leaks at ${width}px`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
+        await page.locator('#btnProtonMinus').click();
+      }
+      assert.deepEqual(errors, []); await page.close();
     });
 
     await t.test('Pendulum controls, persisted assessment, and guided lesson use the same shell', async () => {
@@ -121,11 +219,40 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.deepEqual(errors, []); await page.close();
     });
 
-    await t.test('Gas controls and accessible information dialog work', async () => {
+    await t.test('Gas controls update the rendered pressure gauge and particle readout', async () => {
       const { page, errors } = await pageFor('gas-laws');
-      const before = await page.locator('#pressureDisplay').innerText();
-      await page.locator('#volumeSlider').fill('2.5'); await page.locator('#volumeSlider').dispatchEvent('input');
-      assert.ok(Number(await page.locator('#pressureDisplay').innerText()) > Number(before));
+      async function pressureFill() {
+        // Wait for drawing, then measure actual accent pixels in the gauge's center column.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        return page.evaluate(() => {
+          const canvas = document.getElementById('gasCanvas');
+          const sample = document.createElement('canvas').getContext('2d');
+          sample.fillStyle = SimLib.Theme.use('light').accent; sample.fillRect(0, 0, 1, 1);
+          const color = sample.getImageData(0, 0, 1, 1).data;
+          const scale = canvas.height / 450;
+          const pixels = canvas.getContext('2d').getImageData(Math.round(592 * canvas.width / 700), Math.ceil(60 * scale), 1, Math.floor(340 * scale)).data;
+          let count = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (pixels[i] === color[0] && pixels[i + 1] === color[1] && pixels[i + 2] === color[2]) count++;
+          }
+          return count / scale;
+        });
+      }
+      let previousPressure = Number(await page.locator('#pressureDisplay').innerText());
+      let previousFill = await pressureFill();
+      assert.ok(previousFill > 0);
+      for (const [id, value] of [['volumeSlider', '2.5'], ['tempSlider', '500'], ['molesSlider', '3']]) {
+        await page.locator(`#${id}`).fill(value); await page.locator(`#${id}`).dispatchEvent('input');
+        const pressure = Number(await page.locator('#pressureDisplay').innerText());
+        const fill = await pressureFill();
+        assert.ok(pressure > previousPressure, `${id} changes the numeric pressure`);
+        assert.ok(fill > previousFill + 1, `${id} changes the visible pressure bar`);
+        previousPressure = pressure; previousFill = fill;
+      }
+      assert.equal(await page.locator('#particleCount').innerText(), '105');
+      await page.locator('#molesSlider').fill('0.5'); await page.locator('#molesSlider').dispatchEvent('input');
+      assert.equal(await page.locator('#particleCount').innerText(), '18');
+      assert.ok(await pressureFill() < previousFill - 1);
       await page.getByRole('button', { name: "About Boyle's Law" }).click();
       assert.equal(await page.locator('dialog').isVisible(), true);
       await page.keyboard.press('Escape'); assert.equal(await page.locator('dialog').isVisible(), false);
