@@ -3,29 +3,67 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My submissions: CommonLab</title>
-  <link rel="stylesheet" href="/simulation.css"><link rel="stylesheet" href="/authoring.css">
+  <link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/contributions.css">
   <script type="module" src="/contributions-page.mjs"></script>
 </head>
-<body><main class="authoring-page">
-  <nav aria-label="Contributor navigation"><a href="/">CommonLab</a> · <a href="/submit.html">Create simulation</a> · <a href="/generate.html">AI generation</a> · <a href="/account.html">Account / sign out</a></nav>
-  <h1>My submissions</h1>
-  <p id="contributions-status" role="status">Checking your account…</p>
-  <p id="contributions-login" hidden><a href="/account.html">Sign in or create an account</a> to see your private submissions. This dashboard requires the CommonLab server.</p>
-  <section id="contributions-workspace" hidden aria-label="Your submissions">
-    <p id="contributions-account"></p>
-    <p>Revisions and publications are separate: saving a revision sends it to review, not directly to students. Refresh to check for decisions; no email notifications are sent.</p>
-    <label>Revision status<select id="contributions-filter"><option value="all">All statuses</option><option value="pending">Pending review</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option><option value="live">Live now</option></select></label>
-    <button id="contributions-refresh" type="button">Refresh status</button>
-    <ul id="contributions-list" aria-label="Submission list"></ul>
-    <button id="contributions-more" type="button" hidden>Load more submissions</button>
-    <section id="contribution-detail" hidden aria-labelledby="contribution-title">
-      <h2 id="contribution-title"></h2>
-      <p id="contribution-meta"></p>
-      <p id="contribution-feedback"></p>
-      <p><a id="contribution-edit">Edit and resubmit</a> · <a id="contribution-live" hidden>Open published simulation</a></p>
-      <h3>Review history</h3>
-      <p>History records decisions and feedback, not every historical source file. Maintainers share an administrative token, so this is not an individual reviewer audit trail.</p>
-      <ol id="contribution-history"></ol>
+<body class="paper">
+  <a class="skip-link" href="#main">Skip to submissions</a>
+  <header class="site-header contributions-header"><div class="container nav-container">
+    <a class="logo" href="/">◆ CommonLab</a>
+    <nav class="contributions-nav" aria-label="Contributor navigation">
+      <a href="/contributions.html" aria-current="page">My submissions</a>
+      <a href="/generate.html">AI generation</a>
+      <a href="/account.html">Account / sign out</a>
+    </nav>
+  </div></header>
+  <main id="main" class="container contributions-page">
+    <div class="contributions-heading">
+      <div><p class="eyebrow">Contributor workspace</p><h1>My submissions</h1>
+      <p>From your lab bench to the classroom. Track review decisions and keep improving your simulations.</p></div>
+      <a class="btn btn-primary" href="/submit.html">Create simulation <span aria-hidden="true">→</span></a>
+    </div>
+    <p id="contributions-status" class="contributions-status" role="status">Checking your account…</p>
+    <section id="contributions-login" class="contributions-panel" hidden aria-labelledby="login-heading">
+      <p class="eyebrow">Your private workspace</p><h2 id="login-heading">Keep your experiments together</h2>
+      <p>Sign in to track your submissions, read maintainer feedback, and edit your work. Only your account can see your private submissions.</p>
+      <a class="btn btn-primary" href="/account.html">Sign in or create an account</a>
+      <p class="contributions-hint">This dashboard requires the CommonLab server. You can still draft a simulation without signing in.</p>
     </section>
-  </section>
-</main></body></html>
+    <section id="contributions-workspace" hidden aria-label="Your submissions">
+      <p id="contributions-account" class="contributions-account"></p>
+      <aside class="contributions-note" aria-label="How review works"><strong>A revision is not a publication.</strong> Saving sends your work to review; an older approved revision stays live until replaced or withdrawn. Refresh to check for decisions; no email notifications are sent.</aside>
+      <div class="contributions-toolbar">
+        <label for="contributions-filter">Revision status<select id="contributions-filter"><option value="all">All statuses</option><option value="pending">Pending review</option><option value="published">Published</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option><option value="live">Live now</option></select></label>
+        <button id="contributions-refresh" class="btn btn-ghost" type="button">Refresh status</button>
+      </div>
+      <div class="contributions-layout">
+        <section aria-labelledby="submissions-heading">
+          <h2 id="submissions-heading">Your simulations</h2>
+          <ul id="contributions-list" class="contributions-list" aria-label="Submission list"></ul>
+          <div id="contributions-empty" class="contributions-panel" hidden>
+            <h3 id="contributions-empty-title">No submissions yet</h3>
+            <p id="contributions-empty-text">Build your first simulation and submit it for review. Your saved submissions will appear here.</p>
+            <a class="text-link" href="/submit.html">Create a simulation →</a>
+          </div>
+          <button id="contributions-more" class="btn btn-ghost" type="button" hidden>Load more submissions</button>
+        </section>
+        <div class="contributions-detail-column">
+          <section id="contribution-placeholder" class="contributions-panel" aria-label="Submission details">
+            <p class="eyebrow">Feedback &amp; history</p><h2>A closer look at your work</h2>
+            <p>Select a submission to see maintainer feedback, review history, and your next steps.</p>
+          </section>
+          <section id="contribution-detail" class="contributions-panel" hidden aria-labelledby="contribution-title">
+            <p class="eyebrow">Submission details</p><h2 id="contribution-title"></h2>
+            <p id="contribution-meta" class="contributions-hint"></p>
+            <h3>Maintainer feedback</h3><p id="contribution-feedback" class="contribution-feedback"></p>
+            <div class="contribution-actions"><a id="contribution-edit" class="btn btn-primary">Edit and resubmit</a><a id="contribution-live" class="text-link" hidden>Open published simulation →</a></div>
+            <h3>Review history</h3>
+            <p class="contributions-hint">Decisions and feedback, not an archive of source files. Maintainers share an administrative token; this is not an individual reviewer audit trail.</p>
+            <ol id="contribution-history" class="contribution-history"></ol>
+          </section>
+        </div>
+      </div>
+    </section>
+    <noscript><p class="contributions-panel">Enable JavaScript to view your private submissions and review history.</p></noscript>
+  </main>
+</body></html>
