@@ -57,6 +57,49 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await page.locator('h1').innerText(), 'Pendulum Lab'); await page.close();
     });
 
+    await t.test('community cards get safe subject artwork without loading engines', async () => {
+      const literal = '<img src=x onerror="x = 1">';
+      const community = [
+        { id: 'community-physics', subject: 'physics', title: literal },
+        { id: 'community-chemistry', subject: 'chemistry', title: 'Community chemistry' },
+        // A valid slug must not resolve an inherited property of the artwork map.
+        { id: 'constructor', subject: 'physics', title: 'Constructor lab' },
+      ].map(fields => ({ ...structuredClone(catalog.simulations[0]), ...fields, lessons: [], assessment: undefined }));
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        const errors = [], engineRequests = [];
+        page.on('pageerror', error => errors.push(error.message));
+        page.on('request', request => { if (/\/simulations\/.*\.js(?:\?|$)/.test(request.url())) engineRequests.push(request.url()); });
+        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: { schemaVersion: 1, simulations: [...catalog.simulations, ...community] } }));
+        await page.goto(base);
+        await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+        assert.equal(await page.locator('.sim-card').count(), catalog.simulations.length + community.length);
+        assert.equal(await page.locator('.sim-thumb svg').count(), catalog.simulations.length + community.length);
+        const artwork = [];
+        for (const definition of community) {
+          const card = page.locator(`.sim-card[href="/simulation.html?id=${definition.id}"]`);
+          assert.equal(await card.locator('.sim-name').innerText(), definition.title);
+          const svg = card.locator('.sim-thumb svg');
+          assert.equal(await svg.getAttribute('aria-hidden'), 'true');
+          assert.equal(await svg.getAttribute('viewBox'), '0 0 240 130');
+          assert.ok(await svg.locator('path, circle, ellipse, line').count() > 0);
+          const box = await svg.boundingBox();
+          assert.ok(box.width > 0 && box.height > 0, 'preview artwork is visible');
+          artwork.push(await svg.innerHTML());
+        }
+        assert.notEqual(artwork[0], artwork[1], 'subjects have distinct illustrations');
+        assert.equal(artwork[0], artwork[2], 'inherited keys use the physics fallback');
+        const pendulum = page.locator('.sim-card[href="/simulation.html?id=pendulum"] .sim-thumb svg');
+        assert.equal(await pendulum.locator('circle[cx="154"][cy="99"]').count(), 1, 'built-in pendulum artwork is preserved');
+        assert.equal(await page.locator('.sim-card img, .sim-card script, .sim-card iframe').count(), 0);
+        assert.equal(await page.evaluate(() => window.x), undefined);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        assert.deepEqual(engineRequests, []);
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+    });
+
     await t.test('all seven modules load without JS errors at desktop and phone sizes', async () => {
       for (const definition of catalog.simulations) for (const mobile of [false, true]) {
         const { page, errors } = await pageFor(definition.id, mobile);

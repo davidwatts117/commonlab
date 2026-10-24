@@ -181,7 +181,11 @@ test('public authoring and private moderation in a real browser', { timeout: 120
     await t.test('approved code mounts in the shared shell and withdrawal removes public discovery and routes', async () => {
       const page = await browser.newPage(); page.on('pageerror', error => pageErrors.push(error.message));
       await page.goto(base);
-      await page.locator('#simulation-catalog a').filter({ hasText: 'Browser uploaded lab' }).click();
+      const card = page.locator('#simulation-catalog a').filter({ hasText: 'Browser uploaded lab' });
+      await card.waitFor();
+      assert.equal(await card.locator('.sim-thumb svg circle').count() > 0, true);
+      assert.equal(await page.evaluate(() => window.draftExecuted), undefined, 'catalog artwork does not run the published engine');
+      await card.click();
       await page.waitForSelector('#simulation-root[data-ready="true"]');
       assert.equal(await page.evaluate(() => window.draftExecuted), true);
       assert.equal(await page.locator('#simulation-root img').count(), 0);
