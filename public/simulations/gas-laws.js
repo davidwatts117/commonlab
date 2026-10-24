@@ -58,7 +58,7 @@ export function mount(ui) {
           this.canvas.addEventListener('pointerleave', () => { if (!this.isDraggingPiston) this.canvas.style.cursor = 'default'; });
 
           // initialize
-          this.rebuildParticles(); this.updateSimulation();
+          this.updateSimulation();
         }
 
         // geometry & particles
@@ -78,18 +78,37 @@ export function mount(ui) {
           this.drawPressureGauge(); ctx.strokeStyle = T.border; ctx.lineWidth = 1; ctx.setLineDash([3,4]); for (let i=1;i<4;i++){ const sy = ch.top + (ch.height/4)*i; ctx.beginPath(); ctx.moveTo(ch.right - 28, sy); ctx.lineTo(ch.right - 10, sy); ctx.stroke(); } ctx.setLineDash([]); ctx.fillStyle = T.muted; ctx.font = T.font(12); ctx.textAlign = 'center'; ctx.fillText(`V = ${this.V.toFixed(1)} L`, ch.left + ch.width/2, ch.bottom + 20); ctx.fillStyle = T.faint; ctx.font = T.font(10); ctx.textAlign = 'center'; ctx.fillText('drag the piston', ch.left + ch.width/2, ch.bottom + 36);
         }
 
-        drawPressureGauge() { const ctx = this.ctx; const gx = 578, gy = 60, gw = 28, gh = 340; ctx.fillStyle = T.border; ctx.beginPath(); this.roundRect(ctx, gx, gy, gw, gh, 4); ctx.fill(); const P = this.n * this.R * this.T / this.V; const maxP = Math.max(P * 1.3, 2.0); const ratio = Math.min(P / maxP, 1); const fh = gh * ratio; const fy = gy + gh - fh; ctx.fillStyle = T.accent; ctx.beginPath(); this.roundRect(ctx, gx + 2, fy, gw - 4, fh - 2, 2); ctx.fill(); ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.beginPath(); this.roundRect(ctx, gx, gy, gw, gh, 4); ctx.stroke(); ctx.fillStyle = T.text; ctx.font = T.font(10); ctx.textAlign = 'center'; ctx.fillText('P', gx + gw/2, gy - 6); ctx.font = T.font(9); ctx.fillText(P.toFixed(1), gx + gw/2, gy + gh + 14); ctx.fillText('atm', gx + gw/2, gy + gh + 26); }
+        drawPressureGauge() {
+          const ctx = this.ctx; const gx = 578, gy = 60, gw = 28, gh = 340;
+          // A fixed scale must not track P: P / (P * 1.3) made the bar static.
+          // log(1 + P) keeps low pressures visible across the sliders' 0.41–2462 atm range.
+          const maxP = 3000;
+          const fraction = pressure => Math.max(0, Math.min(Math.log1p(pressure) / Math.log1p(maxP), 1));
+          const P = this.n * this.R * this.T / this.V;
+          ctx.fillStyle = T.border; ctx.beginPath(); this.roundRect(ctx, gx, gy, gw, gh, 4); ctx.fill();
+          const fh = (gh - 4) * fraction(P);
+          ctx.fillStyle = T.accent; ctx.beginPath(); this.roundRect(ctx, gx + 2, gy + gh - 2 - fh, gw - 4, fh, 2); ctx.fill();
+          ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.beginPath(); this.roundRect(ctx, gx, gy, gw, gh, 4); ctx.stroke();
+          ctx.fillStyle = T.text; ctx.font = T.font(10); ctx.textAlign = 'center'; ctx.fillText('P', gx + gw/2, gy - 6);
+          ctx.font = T.font(9); ctx.fillText(P.toFixed(1), gx + gw/2, gy + gh + 14); ctx.fillText('atm', gx + gw/2, gy + gh + 26);
+          ctx.textAlign = 'left'; ctx.fillText('log(1+P)', gx + gw + 10, gy - 6);
+          for (const pressure of [0, 1, 10, 100, 1000, maxP]) {
+            const y = gy + gh - 2 - (gh - 4) * fraction(pressure);
+            ctx.beginPath(); ctx.moveTo(gx + gw, y); ctx.lineTo(gx + gw + 6, y); ctx.stroke();
+            ctx.fillText(String(pressure), gx + gw + 10, y + 3);
+          }
+        }
 
-        drawThermometer(tNorm) { const ctx = this.ctx; const tx = 42, ty = 60, tw = 10, th = 340; ctx.fillStyle = T.surface2; ctx.beginPath(); this.roundRect(ctx, tx, ty, tw, th, 5); ctx.fill(); ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.beginPath(); this.roundRect(ctx, tx, ty, tw, th, 5); ctx.stroke(); const fh = th * tNorm; const fy = ty + th - fh; ctx.fillStyle = SimLib.Color.heat(tNorm); ctx.beginPath(); this.roundRect(ctx, tx + 1, fy, tw - 2, fh - 1, 3); ctx.fill(); ctx.fillStyle = SimLib.Color.heat(tNorm); ctx.beginPath(); ctx.arc(tx + tw/2, ty + th + 6, 6, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = T.muted; ctx.font = T.font(9); ctx.textAlign = 'center'; ctx.fillText(this.T + 'K', tx + tw/2, ty - 6); ctx.fillText('T', tx + tw/2, ty + th + 26); }
+        drawThermometer(tNorm) { const ctx = this.ctx; const tx = 42, ty = 60, tw = 10, th = 340; ctx.fillStyle = T.surface2; ctx.beginPath(); this.roundRect(ctx, tx, ty, tw, th, 5); ctx.fill(); ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.beginPath(); this.roundRect(ctx, tx, ty, tw, th, 5); ctx.stroke(); const fh = th * tNorm; const fy = ty + th - fh; if (fh > 1) { ctx.fillStyle = SimLib.Color.heat(tNorm); ctx.beginPath(); this.roundRect(ctx, tx + 1, fy, tw - 2, fh - 1, 3); ctx.fill(); } ctx.fillStyle = SimLib.Color.heat(tNorm); ctx.beginPath(); ctx.arc(tx + tw/2, ty + th + 6, 6, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = T.muted; ctx.font = T.font(9); ctx.textAlign = 'center'; ctx.fillText(this.T + 'K', tx + tw/2, ty - 6); ctx.fillText('T', tx + tw/2, ty + th + 26); }
 
         roundRect(ctx, x, y, w, h, r) { r = 0; if (typeof r === 'number') r = [r, r, r, r]; if (!Array.isArray(r)) r = [r, r, r, r]; const [tl,tr,br,bl] = r.map(v => Math.min(v || 0, Math.min(w,h)/2)); ctx.moveTo(x + tl, y); ctx.lineTo(x + w - tr, y); ctx.quadraticCurveTo(x + w, y, x + w, y + tr); ctx.lineTo(x + w, y + h - br); ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h); ctx.lineTo(x + bl, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - bl); ctx.lineTo(x, y + tl); ctx.quadraticCurveTo(x, y, x + tl, y); }
 
         updateSimulation() {
           this.n = parseFloat(this.molesSlider.value); this.T = parseFloat(this.tempSlider.value); this.V = parseFloat(this.volumeSlider.value);
+          this.rebuildParticles();
           const P = this.n * this.R * this.T / this.V; const P_kPa = P * 101.325; const nRT = this.n * this.R * this.T; const PV = P * this.V;
           this.molesValue.textContent = this.n.toFixed(1) + ' mol'; this.tempValue.textContent = this.T.toFixed(0) + ' K'; this.volumeValue.textContent = this.V.toFixed(1) + ' L'; this.pressureDisplay.textContent = P.toFixed(2); this.pressureKpaDisplay.textContent = P_kPa.toFixed(1); this.particleCount.textContent = this.particles.length; this.nRTproduct.textContent = nRT.toFixed(2);
           this.idealGasSub.textContent = `${P.toFixed(2)} × ${this.V.toFixed(1)} = ${this.n.toFixed(1)} × 0.0821 × ${this.T.toFixed(0)}; PV = ${PV.toFixed(2)}, nRT = ${nRT.toFixed(2)}`;
-          this.rebuildParticles();
         }
 
         // input helpers

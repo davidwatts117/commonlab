@@ -1,0 +1,59 @@
+{
+  "providers": {
+    "commonlab-openrouter": {
+      "name": "OpenRouter",
+      "api": "openai-completions",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "models": [
+        {
+          "id": "deepseek/deepseek-v4.1-flash",
+          "name": "DeepSeek: DeepSeek V4.1 Flash",
+          "reasoning": true,
+          "thinkingLevelMap": { "minimal": null, "medium": null, "max": "max" },
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 943718,
+          "cost": { "input": 0.02832, "output": 0.12, "cacheRead": 0.000566, "cacheWrite": 0 }
+        },
+        {
+          "id": "deepseek/deepseek-v4.1-flash-1017",
+          "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+          "reasoning": true,
+          "thinkingLevelMap": { "minimal": null, "medium": null, "max": "max" },
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 393216,
+          "cost": { "input": 0.15, "output": 0.6, "cacheRead": 0.003, "cacheWrite": 0 }
+        },
+        {
+          "id": "xiaomi/mimo-v2.6-flash",
+          "name": "Xiaomi: MiMo-V2.6-Flash",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 131072,
+          "cost": { "input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0 }
+        },
+        {
+          "id": "xiaomi/mimo-v2.6-pro",
+          "name": "Xiaomi: MiMo-V2.6-Pro",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1050000,
+          "maxTokens": 131072,
+          "cost": { "input": 0.435, "output": 0.87, "cacheRead": 0.0036, "cacheWrite": 0 }
+        },
+        {
+          "id": "openai/gpt-6.1-sol",
+          "name": "OpenAI: GPT-6.1 Sol",
+          "reasoning": true,
+          "thinkingLevelMap": { "off": null, "minimal": null, "xhigh": "xhigh", "max": "max" },
+          "input": ["text", "image"],
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "cost": { "input": 2, "output": 10, "cacheRead": 0.1, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}

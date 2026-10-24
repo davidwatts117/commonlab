@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["public/*.{js,mjs}", "tests/**/*.mjs"],
+      "project": ["public/**/*.{js,mjs}", "tests/**/*.mjs"]
+    },
+    "worker": {
+      "entry": [
+        "supervisor.mjs",
+        "runner.mjs",
+        "verify-child.mjs",
+        "check-models.mjs",
+        "tests/**/*.mjs"
+      ],
+      "project": ["*.mjs", "tests/**/*.mjs"]
+    }
+  }
+}
