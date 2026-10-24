@@ -132,6 +132,40 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('nucleus readout text and stepper labels stay inside their boxes', async () => {
+      const { page, errors } = await pageFor('build-a-nucleus', true);
+      await page.waitForFunction(() => !document.getElementById('btnProtonPlus').disabled);
+      for (const width of [320, 390, 900, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const element of ['Carbon', 'Nitrogen']) {
+          if (element === 'Nitrogen') await page.locator('#btnProtonPlus').click();
+          assert.equal(await page.locator('#elementName').innerText(), element);
+          const leaks = await page.evaluate(() => {
+            const leaks = [];
+            for (const box of document.querySelectorAll('.sim-readout, .sim-stepper .sim-btn')) {
+              const bounds = box.getBoundingClientRect();
+              const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+              let text;
+              while ((text = walker.nextNode())) {
+                const range = document.createRange(); range.selectNodeContents(text);
+                for (const rect of range.getClientRects()) {
+                  if (rect.width && (rect.left < bounds.left - 1 || rect.right > bounds.right + 1 ||
+                    rect.top < bounds.top - 1 || rect.bottom > bounds.bottom + 1)) {
+                    leaks.push({ box: box.className, text: text.textContent });
+                  }
+                }
+              }
+            }
+            return leaks;
+          });
+          assert.deepEqual(leaks, [], `${element} text leaks at ${width}px`);
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        }
+        await page.locator('#btnProtonMinus').click();
+      }
+      assert.deepEqual(errors, []); await page.close();
+    });
+
     await t.test('Pendulum controls, persisted assessment, and guided lesson use the same shell', async () => {
       const { page, errors } = await pageFor('pendulum');
       await page.locator('#pauseBtn').click(); assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');

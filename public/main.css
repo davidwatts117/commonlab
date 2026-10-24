@@ -805,6 +805,8 @@ select:focus-visible {
 
 /* Label reads above the value, as on a lab spec sheet. */
 .sim-readout {
+    min-width: 0;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column-reverse;
     justify-content: flex-end;
@@ -836,6 +838,7 @@ select:focus-visible {
 
 /* Buttons -------------------------------------------------------- */
 .sim-btn {
+    overflow-wrap: anywhere;
     min-height: 44px;
     padding: 10px 18px;
     border-radius: var(--sim-radius-sm);
