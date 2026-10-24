@@ -221,3 +221,20 @@ Cargo required adding `/home/agent/.cargo/bin` to `PATH`. Exercised the running 
 - [Mobile contact](contact-mobile.png)
 
 Screenshots use only the public homepage and an isolated temporary database. Email delivery and external mail-client behavior were not tested; the exact `mailto:` destination is verified without sending email. No blocking ambiguities.
+
+# Issue #40 — Graph ranges follow visible data
+
+Fixed pendulum graphs rescaling against current controls rather than the history being displayed. Energy now uses the maximum across all four visible series, with 15% headroom and a 0.1 J minimum; historical values are no longer clipped. Angle uses the visible window's absolute peak with existing minimum/headroom, without the 90° cap. Offscreen samples no longer influence either range. Physics, controls, history retention and time windows are unchanged.
+
+## Regression coverage and validation
+- Four new unit tests cover lowering mass/gravity/length, every energy series, exact window boundaries, offscreen peaks, signed angles beyond 90°, and empty/single/zero/reset histories. All four failed against the original code and pass after the fix.
+- A real-browser regression changes actual sliders and verifies that lowering mass reduces new energy without shrinking the range beneath retained peaks. Its fixture disables damping/drag to isolate the mass change from accumulated thermal energy.
+- All requested checks passed: `cargo fmt --check`; `cargo clippy --all-targets --locked -- -D warnings`; `cargo test --locked` (34 tests); `npm test` (61 tests); `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` (32 tests). `git diff --check` also passed. Rust tools required `/home/agent/.cargo/bin` on PATH.
+
+## Actual browser evidence and caveats
+Exercised the running Axum app in headed Chrome using an isolated disposable database. Changed mass from 5 to 0.1 kg after recording 12 seconds, then recorded six more seconds: the approximately 53.8 J historical peak remains visible alongside approximately 1.1 J new samples. No page errors or mobile horizontal overflow. Captured and inspected actual PNGs:
+- [Desktop](pendulum-retained-energy-desktop.png)
+- [Graphs detail](pendulum-retained-energy-graphs.png)
+- [Mobile](pendulum-retained-energy-mobile.png)
+
+The issue has no description or comments (also confirmed through the public comments endpoint), hence no comment authors/associations/timestamps or conflicting clarifications. Scope is the two rolling pendulum graphs; other built-in charts use fixed scales. Ranges intentionally shrink when peaks leave the visible window. Browser evidence advances real physics with deterministic ticks through a test-only observation hook; no production debugging API or synthetic graph data was added. No known outstanding failures.

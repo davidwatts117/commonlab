@@ -165,6 +165,45 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('Pendulum graph range keeps old energy visible after reducing mass', async () => {
+      const page = await browser.newPage();
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      await page.route('**/library.js*', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: `${await response.text()}
+          const attach = SimLib.attach;
+          SimLib.attach = options => {
+            const app = attach(options); window.testSim = app.sim; return app;
+          };` });
+      });
+      await page.goto(`${base}/simulations/pendulum`);
+      await page.waitForSelector('#simulation-root[data-ready="true"]');
+      const result = await page.evaluate(() => {
+        testSim.stop();
+        const input = (id, value) => {
+          const slider = document.getElementById(id);
+          slider.value = value; slider.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        input('dragSlider', 0); input('dampingSlider', 0);
+        input('massSlider', 5); input('gravitySlider', 20); input('lengthSlider', 3); input('angleSlider', 85);
+        for (let i = 0; i < 240; i++) testSim.onTick(1 / 60);
+        const peak = Math.max(...testSim.energyHistory.map(p => p.total));
+        input('massSlider', 0.1);
+        for (let i = 0; i < 120; i++) testSim.onTick(1 / 60);
+        const labels = [], ctx = testSim.graphCtx, fillText = ctx.fillText;
+        ctx.fillText = function (text, x, y, ...rest) {
+          labels.push({ text, x, y }); fillText.call(this, text, x, y, ...rest);
+        };
+        try { testSim.onDraw(testSim.ctx); } finally { ctx.fillText = fillText; }
+        return { peak, ceiling: Number(labels.find(p => p.x === 36 && p.y === 10).text),
+          latest: testSim.energyHistory.at(-1).total, mass: document.getElementById('massValue').textContent };
+      });
+      assert.equal(result.mass, '0.1 kg');
+      assert.ok(result.latest < result.peak / 2, 'the changed control must reduce newly recorded energy');
+      assert.ok(Math.abs(result.ceiling - result.peak * 1.15) < 0.06, 'historical peak, not current mass, must set the range');
+      assert.deepEqual(errors, []); await page.close();
+    });
+
     await t.test('Pendulum survives a hidden minute and retains a user pause on return', async () => {
       const page = await browser.newPage();
       const errors = []; page.on('pageerror', error => errors.push(error.message));
