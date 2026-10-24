@@ -37,6 +37,9 @@
    onReset()       optional: restore initial state (called by reset())
    onResize(w, h)  optional: react to a new displayed size
 
+ Hidden documents suspend ticks and resume without integrating time spent away.
+ Visible frame gaps are capped at 50 ms (before speed scaling) for stability.
+
  Usage
  -----
    const app = SimLib.attach({
@@ -543,6 +546,12 @@
       this.state = {};
       this.running = false;
       this._boundLoop = this._loop.bind(this);
+      this._frameId = null;
+      this._boundVisibility = () => {
+        this.lastTs = performance.now();
+        this._cancelFrame();
+        this._requestFrame();
+      };
       this.lastTs = null;
       this.speed = 1;
     }
@@ -553,8 +562,30 @@
     onTick(dt) {}
     onDraw(ctx) {}
     onResize(w, h) {}
-    start() { if (this.running) return; this.running = true; this.lastTs = performance.now(); this.onStart(); requestAnimationFrame(this._boundLoop); }
-    stop() { if (!this.running) return; this.running = false; this.onPause(); }
+    start() {
+      if (this.running) return;
+      this.running = true;
+      this.lastTs = performance.now();
+      global.document?.addEventListener('visibilitychange', this._boundVisibility);
+      this.onStart();
+      this._requestFrame();
+    }
+    stop() {
+      if (!this.running) return;
+      this.running = false;
+      this._cancelFrame();
+      global.document?.removeEventListener('visibilitychange', this._boundVisibility);
+      this.onPause();
+    }
+    _requestFrame() {
+      if (this.running && !global.document?.hidden && this._frameId === null) {
+        this._frameId = requestAnimationFrame(this._boundLoop);
+      }
+    }
+    _cancelFrame() {
+      if (this._frameId !== null) cancelAnimationFrame(this._frameId);
+      this._frameId = null;
+    }
     setSpeed(s) { this.speed = s; }
     /** Stop, restore initial state, and repaint. Does not restart the loop. */
     reset() {
@@ -565,15 +596,17 @@
       if (wasRunning) this.start();
     }
     _loop(ts) {
-      if (!this.running) return;
-      const dt = ((ts - this.lastTs) / 1000) * this.speed;
+      this._frameId = null;
+      if (!this.running || global.document?.hidden) return;
+      // Never turn a throttled/suspended frame into a large physics step.
+      const dt = Math.min(0.05, Math.max(0, (ts - this.lastTs) / 1000)) * this.speed;
       this.lastTs = ts;
       try { this.onTick(dt); } catch (e) { console.error('Sim tick error', e); }
       if (this.app && this.app.guidedTick) {
         try { this.app.guidedTick(dt); } catch (e) { console.error('Guided tick error', e); }
       }
       try { this.onDraw(this.ctx); } catch (e) { console.error('Sim draw error', e); }
-      requestAnimationFrame(this._boundLoop);
+      this._requestFrame();
     }
   }
   SimLib.Simulation = Simulation;
