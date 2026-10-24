@@ -14,12 +14,15 @@ function display(account) {
     }
   }).catch(() => {});
 }
-$('account-action').addEventListener('change', () => {
+function updateAction() {
   const registration = $('account-action').value === 'register';
   $('confirm-label').hidden = !registration; $('account-confirm').required = registration;
   $('account-password').autocomplete = registration ? 'new-password' : 'current-password';
   $('account-submit').textContent = registration ? 'Create account' : 'Sign in';
-});
+}
+$('account-action').value = new URLSearchParams(window.location.search).get('action') === 'register' ? 'register' : 'login';
+updateAction();
+$('account-action').addEventListener('change', updateAction);
 $('account-form').addEventListener('submit', async event => {
   event.preventDefault(); $('account-submit').disabled = true;
   try {
