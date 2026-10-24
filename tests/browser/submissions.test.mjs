@@ -181,7 +181,12 @@ test('public authoring and private moderation in a real browser', { timeout: 120
     await t.test('approved code mounts in the shared shell and withdrawal removes public discovery and routes', async () => {
       const page = await browser.newPage(); page.on('pageerror', error => pageErrors.push(error.message));
       await page.goto(base);
-      const card = page.locator('#simulation-catalog a').filter({ hasText: 'Browser uploaded lab' });
+      await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+      assert.equal(await page.locator('#original-simulations .sim-card').count(), 7);
+      assert.equal(await page.locator('#community-simulations .sim-card').count(), 1);
+      assert.equal(await page.locator('#original-simulations a').filter({ hasText: 'Browser uploaded lab' }).count(), 0);
+      assert.equal(await page.locator('#community-simulations-empty').isVisible(), false);
+      const card = page.locator('#community-simulations a').filter({ hasText: 'Browser uploaded lab' });
       await card.waitFor();
       assert.equal(await card.locator('.sim-thumb svg circle').count() > 0, true);
       assert.equal(await page.evaluate(() => window.draftExecuted), undefined, 'catalog artwork does not run the published engine');
@@ -200,6 +205,9 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.equal((await page.request.get(`${base}/simulations/browser-new-lab.html`)).status(), 404);
       await page.goto(base); await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
       assert.equal(await page.locator('#simulation-catalog a').filter({ hasText: 'Browser uploaded lab' }).count(), 0);
+      assert.equal(await page.locator('#original-simulations .sim-card').count(), 7);
+      assert.equal(await page.locator('#community-simulations .sim-card').count(), 0);
+      assert.equal(await page.locator('#community-simulations-empty').isVisible(), true);
       await page.close();
     });
 
@@ -216,6 +224,12 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       await reviewer.locator('#publish-submission').click();
       await reviewer.waitForFunction(() => document.getElementById('review-status').textContent.includes('now published'));
       const page = await browser.newPage(); page.on('pageerror', error => pageErrors.push(error.message));
+      await page.goto(base);
+      await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+      assert.equal(await page.locator('#original-simulations .sim-card').count(), 7);
+      assert.equal(await page.locator('#community-simulations .sim-card').count(), 1);
+      await page.locator('#community-simulations a').filter({ hasText: 'Browser pendulum lesson' }).click();
+      await page.waitForSelector('#simulation-root[data-ready="true"]');
       await page.goto(`${base}/simulations/browser-pendulum`);
       await page.waitForSelector('#simulation-root[data-ready="true"]');
       assert.equal(await page.locator('#simulation-title').innerText(), 'Browser pendulum lesson');

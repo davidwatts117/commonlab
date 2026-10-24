@@ -70,6 +70,18 @@ test('UI schema rejects markup/CSS/module escape hatches, unknown components, du
   assert.throws(() => validateCatalog({ ...catalog, schemaVersion: 2 }), /schema version/);
 });
 
+test('catalog provenance is optional for static hosting and only references unique public simulation IDs', () => {
+  for (const communitySimulationIds of [[], ['pendulum'], ['circuits', 'pendulum']]) {
+    const value = { ...clone(catalog), communitySimulationIds };
+    assert.equal(validateCatalog(value), value);
+  }
+  for (const communitySimulationIds of [null, {}, 'pendulum', [23], [''], ['private-draft'], ['pendulum', 'pendulum']]) {
+    assert.throws(() => validateCatalog({ ...clone(catalog), communitySimulationIds }), /community simulation/);
+  }
+  const spoofed = { ...clone(catalog.simulations[0]), communitySimulationIds: [] };
+  assert.throws(() => validateDefinition(spoofed), /unknown field/);
+});
+
 test('submission definitions cannot shadow shell slots or allocate unbounded canvas area', () => {
   const reserved = clone(catalog.simulations[0]); reserved.canvas.id = 'simulation-root';
   assert.throws(() => validateDefinition(reserved), /reserved/);

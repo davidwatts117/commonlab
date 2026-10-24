@@ -193,7 +193,20 @@
                     <a href="/submit.html" class="text-link">Create and submit a new simulation →</a>
                 </div>
                 <p id="catalog-status" role="status">Loading simulations…</p>
-                <div class="sim-grid" id="simulation-catalog"></div>
+                <div id="simulation-catalog" hidden>
+                    <section class="catalog-group" aria-labelledby="original-simulations-title">
+                        <h3 id="original-simulations-title">Original simulations</h3>
+                        <p class="catalog-intro">Labs created as part of CommonLab.</p>
+                        <div class="sim-grid" id="original-simulations"></div>
+                        <p id="original-simulations-empty" hidden>No original simulations available.</p>
+                    </section>
+                    <section class="catalog-group" aria-labelledby="community-simulations-title">
+                        <h3 id="community-simulations-title">Community simulations</h3>
+                        <p class="catalog-intro">Contributor-created labs published after maintainer review.</p>
+                        <div class="sim-grid" id="community-simulations"></div>
+                        <p id="community-simulations-empty" hidden>No community simulations published yet. <a href="/submit.html">Submit a simulation</a>.</p>
+                    </section>
+                </div>
                 <noscript><p>Enable JavaScript to browse and run simulations.</p></noscript>
             </div>
         </section>

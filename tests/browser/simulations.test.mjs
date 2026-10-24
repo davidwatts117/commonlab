@@ -51,10 +51,41 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       const page = await browser.newPage(); await page.goto(base);
       await page.waitForSelector('#simulation-catalog .sim-card');
       assert.equal(await page.locator('#simulation-catalog .sim-card').count(), catalog.simulations.length);
+      assert.equal(await page.locator('#original-simulations .sim-card').count(), catalog.simulations.length);
+      assert.equal(await page.locator('#community-simulations .sim-card').count(), 0);
+      assert.equal(await page.locator('#community-simulations-empty').isVisible(), true);
       assert.match(await page.locator('#simulation-catalog').innerText(), /guided lesson/i);
       await page.locator('#simulation-catalog .sim-card').first().click();
       await page.waitForSelector('[data-ready="true"]');
       assert.equal(await page.locator('h1').innerText(), 'Pendulum Lab'); await page.close();
+    });
+
+    await t.test('catalog groups use provenance rather than order, subject or engine, including static hosting', async () => {
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        // A community definition deliberately precedes an original with the same subject.
+        const mixed = { schemaVersion: 1, simulations: [catalog.simulations[0], catalog.simulations[1]], communitySimulationIds: ['pendulum'] };
+        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: mixed }));
+        await page.goto(`${base}/#simulations`);
+        await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+        assert.equal(await page.locator('#original-simulations .sim-name').innerText(), catalog.simulations[1].title);
+        assert.equal(await page.locator('#community-simulations .sim-name').innerText(), catalog.simulations[0].title);
+        assert.equal(await page.getByRole('region', { name: 'Original simulations', exact: true }).count(), 1);
+        assert.equal(await page.getByRole('region', { name: 'Community simulations', exact: true }).count(), 1);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        delete mixed.communitySimulationIds;
+        await page.reload();
+        await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+        assert.equal(await page.locator('#original-simulations .sim-card').count(), 2);
+        assert.equal(await page.locator('#community-simulations-empty').isVisible(), true);
+        // An all-community catalog still has an explicit, correct original empty state.
+        mixed.communitySimulationIds = ['pendulum', 'circuits'];
+        await page.reload();
+        await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
+        assert.equal(await page.locator('#original-simulations-empty').isVisible(), true);
+        assert.equal(await page.locator('#community-simulations .sim-card').count(), 2);
+        await page.close();
+      }
     });
 
     await t.test('homepage contact links to the official support address on desktop and mobile', async () => {
@@ -89,11 +120,13 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
         const errors = [], engineRequests = [];
         page.on('pageerror', error => errors.push(error.message));
         page.on('request', request => { if (/\/simulations\/.*\.js(?:\?|$)/.test(request.url())) engineRequests.push(request.url()); });
-        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: { schemaVersion: 1, simulations: [...catalog.simulations, ...community] } }));
+        await page.route('**/simulations/catalog.json', route => route.fulfill({ json: { schemaVersion: 1, simulations: [...catalog.simulations, ...community], communitySimulationIds: community.map(definition => definition.id) } }));
         await page.goto(base);
         await page.waitForFunction(() => document.getElementById('catalog-status').hidden);
         assert.equal(await page.locator('.sim-card').count(), catalog.simulations.length + community.length);
         assert.equal(await page.locator('.sim-thumb svg').count(), catalog.simulations.length + community.length);
+        assert.equal(await page.locator('#community-simulations .sim-card').count(), community.length);
+        assert.equal(await page.locator('#original-simulations .sim-card').count(), catalog.simulations.length);
         const artwork = [];
         for (const definition of community) {
           const card = page.locator(`.sim-card[href="/simulation.html?id=${definition.id}"]`);
