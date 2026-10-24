@@ -41,9 +41,38 @@ test('public authoring and private moderation in a real browser', { timeout: 120
     for (const page of [author, reviewer]) page.on('request', request => { if (request.url().includes('/simulations/browser-new-lab.js')) moduleRequests.push(request.url()); });
     let receipt;
 
+    await t.test('homepage makes account creation directly discoverable on desktop and mobile', async () => {
+      for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+        await author.setViewportSize(viewport);
+        await author.goto(base);
+        const createAccount = author.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Create contributor account', exact: true });
+        assert.equal(await createAccount.isVisible(), true);
+        assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await createAccount.click();
+        await author.waitForFunction(() => document.getElementById('account-action')?.value === 'register');
+        assert.equal(await author.locator('#account-confirm').isVisible(), true);
+        assert.equal(await author.locator('#account-confirm').getAttribute('required'), '');
+        assert.equal(await author.locator('#account-password').getAttribute('autocomplete'), 'new-password');
+        assert.equal(await author.locator('#account-submit').innerText(), 'Create account');
+        assert.equal(await author.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await author.locator('#account-action').selectOption('login');
+        assert.equal(await author.locator('#account-confirm').isVisible(), false);
+        assert.equal(await author.locator('#account-confirm').getAttribute('required'), null);
+        assert.equal(await author.locator('#account-password').getAttribute('autocomplete'), 'current-password');
+        assert.equal(await author.locator('#account-submit').innerText(), 'Sign in');
+      }
+      for (const path of ['/account.html', '/account.html?action=unexpected']) {
+        await author.goto(`${base}${path}`);
+        await author.waitForFunction(() => document.getElementById('account-status').textContent.includes('Sign in to submit'));
+        assert.equal(await author.locator('#account-action').inputValue(), 'login');
+        assert.equal(await author.locator('#account-confirm').isVisible(), false);
+      }
+    });
+
     await t.test('contributor registration, logout and login use private cookie sessions', async () => {
-      await author.goto(`${base}/account.html`);
-      await author.locator('#account-action').selectOption('register');
+      await author.goto(base);
+      await author.getByRole('link', { name: 'Create contributor account', exact: true }).click();
+      await author.locator('#account-confirm').waitFor();
       await author.locator('#account-username').fill('browser-author');
       await author.locator('#account-password').fill('test-only-browser-password');
       await author.locator('#account-confirm').fill('test-only-browser-password');
@@ -52,8 +81,13 @@ test('public authoring and private moderation in a real browser', { timeout: 120
       assert.ok((await author.locator('#account-name').innerText()).includes('browser-author'));
       assert.equal(await author.evaluate(() => document.cookie.includes('cl_session')), false);
       assert.equal((await author.context().cookies()).some(cookie => cookie.name === 'cl_session' && cookie.httpOnly && cookie.sameSite === 'Strict'), true);
+      await author.goto(`${base}/account.html?action=register`);
+      await author.locator('#account-signed-in').waitFor();
+      assert.equal(await author.locator('#account-form').isVisible(), false);
       await author.locator('#account-logout').click(); await author.locator('#account-form').waitFor();
-      await author.locator('#account-action').selectOption('login');
+      await author.goto(base);
+      await author.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Sign in', exact: true }).click();
+      await author.locator('#account-username').fill('browser-author');
       await author.locator('#account-password').fill('test-only-browser-password');
       await author.locator('#account-submit').click(); await author.locator('#account-signed-in').waitFor();
     });

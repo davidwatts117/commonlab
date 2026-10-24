@@ -133,11 +133,40 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.deepEqual(errors, []); await page.close();
     });
 
-    await t.test('Gas controls and accessible information dialog work', async () => {
+    await t.test('Gas controls update the rendered pressure gauge and particle readout', async () => {
       const { page, errors } = await pageFor('gas-laws');
-      const before = await page.locator('#pressureDisplay').innerText();
-      await page.locator('#volumeSlider').fill('2.5'); await page.locator('#volumeSlider').dispatchEvent('input');
-      assert.ok(Number(await page.locator('#pressureDisplay').innerText()) > Number(before));
+      async function pressureFill() {
+        // Wait for drawing, then measure actual accent pixels in the gauge's center column.
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        return page.evaluate(() => {
+          const canvas = document.getElementById('gasCanvas');
+          const sample = document.createElement('canvas').getContext('2d');
+          sample.fillStyle = SimLib.Theme.use('light').accent; sample.fillRect(0, 0, 1, 1);
+          const color = sample.getImageData(0, 0, 1, 1).data;
+          const scale = canvas.height / 450;
+          const pixels = canvas.getContext('2d').getImageData(Math.round(592 * canvas.width / 700), Math.ceil(60 * scale), 1, Math.floor(340 * scale)).data;
+          let count = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (pixels[i] === color[0] && pixels[i + 1] === color[1] && pixels[i + 2] === color[2]) count++;
+          }
+          return count / scale;
+        });
+      }
+      let previousPressure = Number(await page.locator('#pressureDisplay').innerText());
+      let previousFill = await pressureFill();
+      assert.ok(previousFill > 0);
+      for (const [id, value] of [['volumeSlider', '2.5'], ['tempSlider', '500'], ['molesSlider', '3']]) {
+        await page.locator(`#${id}`).fill(value); await page.locator(`#${id}`).dispatchEvent('input');
+        const pressure = Number(await page.locator('#pressureDisplay').innerText());
+        const fill = await pressureFill();
+        assert.ok(pressure > previousPressure, `${id} changes the numeric pressure`);
+        assert.ok(fill > previousFill + 1, `${id} changes the visible pressure bar`);
+        previousPressure = pressure; previousFill = fill;
+      }
+      assert.equal(await page.locator('#particleCount').innerText(), '105');
+      await page.locator('#molesSlider').fill('0.5'); await page.locator('#molesSlider').dispatchEvent('input');
+      assert.equal(await page.locator('#particleCount').innerText(), '18');
+      assert.ok(await pressureFill() < previousFill - 1);
       await page.getByRole('button', { name: "About Boyle's Law" }).click();
       assert.equal(await page.locator('dialog').isVisible(), true);
       await page.keyboard.press('Escape'); assert.equal(await page.locator('dialog').isVisible(), false);
