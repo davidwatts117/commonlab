@@ -442,14 +442,33 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
         // the branch at its resistor so the original single path remains live.
         await tool('select'); await draw(302, 225, 352, 225);
         await currentBetween(0.08, 0.10);
-        // Both click-to-place paths (free and anchored) must also survive release.
+        // The first click only anchors a wire; the second commits its endpoint.
         await page.locator('#clearBtn').click(); await tool('wire');
         let p = await point(300, 200); await page.mouse.click(p.x, p.y);
-        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
-        p = await point(345, 200); await page.mouse.click(p.x, p.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /Select a part/);
+        p = await point(450, 200); await page.mouse.move(p.x, p.y);
+        await page.mouse.click(p.x, p.y);
         assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
         await tool('select'); p = await point(400, 200); await page.mouse.click(p.x, p.y);
         assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        // Inserting into an existing live wire must add series resistance, not a bypass.
+        await page.locator('#presetSeries').click();
+        await currentBetween(0.285, 0.295);
+        await tool('resistor'); await draw(420, 430, 490, 430);
+        await currentBetween(0.06, 0.08);
+        assert.equal(await page.getByLabel('Resistance (Ω)', { exact: true }).count(), 2);
+        assert.equal(await page.locator('label[for="selNum"]').innerText(), 'Resistance (Ω)');
+        await page.locator('#undoBtn').click(); await currentBetween(0.285, 0.295);
+        // Erase several wires in one stroke, then restore the complete circuit.
+        await tool('delete'); await draw(150, 390, 750, 390);
+        await currentBetween(-0.001, 0.001);
+        await page.locator('#undoBtn').click(); await currentBetween(0.285, 0.295);
+        await tool('select'); p = await point(315, 430); await page.mouse.click(p.x, p.y);
+        assert.equal(await page.locator('label[for="selNum"]').innerText(), 'Voltage (V)');
+        await page.locator('#selNum').fill('12'); await page.locator('#selNum').press('Tab');
+        await currentBetween(0.385, 0.395);
+        await canvas.focus(); await page.keyboard.press('Control+z'); await currentBetween(0.285, 0.295);
+        await page.locator('#showValues').check();
         assert.deepEqual(errors, [], mobile ? 'phone' : 'desktop');
         await page.close();
       }
