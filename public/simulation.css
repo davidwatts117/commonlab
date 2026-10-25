@@ -8,7 +8,9 @@
 .simulation-select { display: flex; gap: .75rem; align-items: center; margin: .7rem 0; }
 .simulation-select select { min-width: 0; flex: 1; min-height: 44px; padding: .4rem .5rem; font: inherit; font-size: .85rem; color: var(--sim-ink); background: var(--sim-surface); border: 1px solid var(--sim-border-strong); border-radius: 0; }
 .simulation-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
-.simulation-readouts { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
+/* Include room for cell padding; a 90px track left too little space for values.
+   Still allow a single cell to shrink in narrow previews and wrap long content. */
+.simulation-readouts { grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); }
 .simulation-note { font-size: .78rem; line-height: 1.5; color: var(--sim-muted, #6c757d); margin: .5rem 0; overflow-wrap: anywhere; }
 .simulation-note p { margin: .3rem 0; }
 /* Long labels and info links must wrap inside the controls column instead of

@@ -13,6 +13,8 @@ All seven simulations use **one page**, `public/simulation.html`, and **one styl
 3. Run the Node catalog tests, Rust tests, and browser tests.
 4. Restart Axum so it registers the new catalog entry's URLs.
 
+Homepage cards use built-in static artwork when available, or a physics/chemistry illustration for community simulations. These are decorative previews, not captures of the running engine; browsing the catalog never executes simulation code or loads contributor-supplied images.
+
 No homepage markup, routing code, or shell code changes are needed. Axum serves the shared shell at `/simulations/<id>` and `/simulations/<id>.html`. Unregistered simulation URLs return 404. Homepage links use `/simulation.html?id=<id>` so the same frontend also works with ordinary static hosting. Browser assets must be served at the site root.
 
 The server checks the catalog version, IDs, uniqueness, and module/shell availability at startup. The browser validates the complete UI/learning definition before loading a module. `tests/simulation-catalog.test.mjs` validates the repository catalog and checks each module's DOM bindings against declared slots. Deploy the catalog, modules, and shell together; don't edit the deployed catalog without restarting the server.
@@ -105,6 +107,8 @@ export function mount(ui) {
 ```
 
 `ui` provides `definition`, `getElementById(id)` (throws for undeclared slots), and scoped `querySelector/querySelectorAll`. For dynamic rich text, `ui.setContent(id, parts)` fills a declared slot and `ui.setRows(id, rows)` fills a declared table body (rows are arrays of cells). A part is a string or `{text, strong?, sup?, color?, key?, swatch?}`: `key` draws a legend colour bar and `swatch` a colour square; the shell builds the elements, so modules never write markup. Hide or reveal a declared slot with its `hidden` property. Choice buttons have `data-value`; selectors/classes are supplied by the shared renderer. Choice groups expose their current `.value`. `ui.addEventListener('keydown', handler)` only forwards events originating on a declared, focused canvas, preventing shortcuts from hijacking controls or answers. Read defaults from the generated controls. Readout updates use `textContent`; modules must not construct page UI or inject markup.
+
+`SimLib.Simulation` suspends physics, drawing, and guided ticks while the document is hidden (for example, after switching browser tabs). Returning resumes the existing state without integrating time spent away or changing a module's own Pause setting. `running` tracks the requested loop state, even while hidden. Visible frame gaps are capped at 50 ms before speed scaling to avoid unstable physics steps after stalls; missed time is discarded, not caught up.
 
 Modules are trusted application code, **not a security sandbox**. They own simulation state, input bindings, physics, and canvas drawing. The shell owns page chrome, controls, explanations, graphs' containers, error states, fullscreen, learning UI, and page lifecycle. Avoid module-level side effects; initialize only inside `mount(ui)`.
 
