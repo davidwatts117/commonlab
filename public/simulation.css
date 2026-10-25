@@ -29,7 +29,8 @@
   .control-row .simulation-info { margin-left: auto; }
 }
 .simulation-info { border: 0; background: none; color: var(--sim-accent); font: inherit; font-size: .7rem; cursor: pointer; text-decoration: underline; }
-.simulation-graph { margin-top: 1rem; padding: .75rem; background: var(--sim-surface, #fff); border: 1px solid var(--sim-border-strong); border-radius: 0; }
+.simulation-graphs { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.simulation-graph { min-width: 0; padding: .75rem; background: var(--sim-surface, #fff); border: 1px solid var(--sim-border-strong); border-radius: 0; }
 .simulation-graph h3 { font-size: .9rem; margin: 0 0 .5rem; }
 .simulation-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .75rem; margin-bottom: .5rem; }
 .simulation-legend span { border-left: 9px solid; padding-left: .4rem; }
@@ -40,6 +41,41 @@
 .simulation-meter-ticks { display: flex; justify-content: space-between; font-size: .7rem; color: var(--sim-faint); }
 .simulation-dialog { max-width: min(560px, 90vw); border: 1px solid var(--sim-border-strong); border-radius: 0; padding: 1.5rem; line-height: 1.6; }
 .simulation-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+/* Only live simulation pages use the wider workspace; embedded authoring
+   previews keep graphs below the scene. Keep the DOM's scene/graph/control
+   order for keyboard and narrow-screen reading. */
+.sim-canvas-area > .sim-layout,
+.sim-page-header .container { max-width: none; }
+@media (min-width: 1280px) {
+  .sim-canvas-area > .sim-layout:not(.fs-active) .sim-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 24px;
+  }
+  .sim-canvas-area > .sim-layout:not(.fs-active) .sim-main > .controls-panel { padding: 1rem; gap: .75rem; }
+  .sim-canvas-area > .sim-layout:not(.fs-active) .sim-main > .simulation-dock { grid-column: 1 / -1; }
+  .sim-canvas-area > .sim-layout:not(.fs-active) .sim-stage--graphs {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+@media (min-width: 1800px) {
+  .sim-canvas-area > .sim-layout:not(.fs-active, .simulation-no-sidebar) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+    gap: 24px;
+  }
+  .sim-canvas-area > .sim-layout > .sim-main { min-width: 0; }
+  .sim-canvas-area > .sim-layout > .sim-sidebar { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 2200px) {
+  .sim-canvas-area > .sim-layout:not(.fs-active, .simulation-no-sidebar) { grid-template-columns: minmax(0, 1fr) 624px; }
+  .sim-canvas-area > .sim-layout > .sim-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* A wrapper must not change fullscreen view selection or sizing. */
+.fs-active .simulation-graphs { display: contents; }
 /* Form fields: number inputs, checkbox groups and hints. */
 .simulation-field { display: flex; flex-direction: column; gap: .3rem; margin: .7rem 0; min-width: 0; }
 .simulation-inline { display: flex; align-items: center; gap: .4rem; }
