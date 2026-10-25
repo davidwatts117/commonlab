@@ -215,7 +215,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   const firstView = definition.views?.options[0].value;
   // The stage (scene + graphs) and the controls sit side by side when the viewport fits both.
   const main = node('div', 'sim-main');
-  const stage = node('div', 'sim-stage');
+  const stage = node('div', definition.graphs.length ? 'sim-stage sim-stage--graphs' : 'sim-stage');
   const wrap = node('div', 'canvas-wrapper'); wrap.append(canvas(definition.canvas)); stage.append(wrap);
   const controls = node('div', 'controls-panel');
   viewMembers.push([wrap, firstView], [controls, firstView]);
@@ -236,6 +236,8 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     data.components?.forEach(data => card.append(component(data))); sidebar.append(card);
   }
   const dialog = node('dialog', 'simulation-dialog'); dialog.setAttribute('aria-label', 'Science explanation');
+  // Keep graphs together so wide layouts can place them beside the scene.
+  const graphs = node('div', 'simulation-graphs');
   for (const data of definition.graphs) {
     const graph = node('section', 'simulation-graph'); graph.append(node('h3', '', data.label));
     if (data.legend) {
@@ -248,9 +250,10 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     if (data.controls) {
       const tools = node('div', 'simulation-graph-controls'); data.controls.forEach(data => tools.append(component(data))); graph.append(tools);
     }
-    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); stage.append(graph);
+    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); graphs.append(graph);
     viewMembers.push([graph, data.view || firstView]);
   }
+  if (definition.graphs.length) stage.append(graphs);
   if (!definition.cards.length) root.classList.add('simulation-no-sidebar');
   if (viewBar) root.append(viewBar);
   root.append(main, sidebar, dialog);
