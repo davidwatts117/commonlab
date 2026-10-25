@@ -10,6 +10,29 @@ import { chromium } from 'playwright';
 const root = new URL('../../', import.meta.url);
 const catalog = JSON.parse(readFileSync(new URL('public/simulations/catalog.json', root), 'utf8'));
 
+async function assertCertificateSections(certificate, definition) {
+  const description = certificate.getByRole('region', { name: 'About this simulation', exact: true });
+  const participation = certificate.getByRole('region', { name: 'Recorded participation', exact: true });
+  assert.equal(await description.getByRole('heading', { level: 3 }).innerText(), 'About this simulation');
+  assert.equal(await description.getByRole('heading', { level: 4 }).innerText(), definition.title);
+  assert.equal(await description.locator('p').innerText(), definition.summary);
+  assert.equal(await description.locator('li').count(), 0);
+  assert.equal(await participation.getByRole('heading', { level: 3 }).innerText(), 'Recorded participation');
+  assert.equal(await participation.locator('li').count(), await certificate.locator('li').count());
+  // Measure in one frame: focusing the certificate can still be scrolling the page.
+  const spacing = await certificate.evaluate(el => {
+    const descriptionBox = el.querySelector('.certificate-description').getBoundingClientRect();
+    const participationBox = el.querySelector('.certificate-activities').getBoundingClientRect();
+    return participationBox.top - descriptionBox.bottom;
+  });
+  assert.ok(spacing >= 16, 'Description and record need visible spacing');
+  const divider = await participation.evaluate(el => {
+    const style = getComputedStyle(el);
+    return { width: parseFloat(style.borderTopWidth), style: style.borderTopStyle, padding: parseFloat(style.paddingTop) };
+  });
+  assert.ok(divider.width >= 1 && divider.style === 'solid' && divider.padding >= 16, 'Record needs a visible divider, including in print');
+}
+
 const stripAnsi = text => text.split(String.fromCharCode(27)).map((part, index) => index === 0 ? part : part.replace(/^\[[0-9;]*m/, '')).join('');
 test('shared simulation shell in a real browser', { timeout: 120_000 }, async t => {
   const storage = mkdtempSync(join(tmpdir(), 'commonlab-simulation-browser-'));
@@ -266,6 +289,96 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await page.locator('.guided-modal-wrap').isVisible(), true);
       await page.locator('[data-exit]').click();
       assert.equal(await page.locator('#lengthSlider').isDisabled(), false);
+      assert.deepEqual(errors, []); await page.close();
+    });
+
+    await t.test('certificates distinguish guided participation and completed checks without sending or storing names', async () => {
+      const { page, errors } = await pageFor('pendulum');
+      const name = '<img src=x onerror=alert(1)> Student';
+      const sent = [];
+      page.on('request', request => sent.push(request.url() + (request.postData() || '')));
+      const certificate = page.locator('.completion-certificate');
+      const create = page.getByRole('button', { name: 'Create completion certificate', exact: true });
+      await page.getByLabel('Your name', { exact: true }).fill('   ');
+      await create.click(); assert.equal(await certificate.isVisible(), false);
+      await page.getByLabel('Your name', { exact: true }).fill(name);
+      await create.click();
+      assert.equal(await certificate.locator('.certificate-name').innerText(), name);
+      assert.equal(await certificate.locator('img').count(), 0);
+      assert.doesNotMatch(await certificate.innerText(), /Guided experiment|Check Understanding/);
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'pendulum'));
+      // Physics engines dispatch synthetic input events when applying presets/lesson state.
+      await page.locator('#lengthSlider').dispatchEvent('input');
+      await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      await page.locator('#lengthSlider').focus(); await page.keyboard.press('ArrowRight');
+      await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: time spent:/);
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      await page.locator('[data-exit]').click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Guided experiment started \(not completed\): What controls a pendulum/);
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      // Deliberate Skip is supported by the lesson; completion is participation, not mastery.
+      for (let i = 0; i < catalog.simulations[0].lessons[0].steps.length; i++) await page.locator('[data-skip]').click();
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Guided experiment completed: What controls a pendulum/);
+      assert.match(await certificate.innerText(), /Check Understanding in progress/);
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      const questions = catalog.simulations[0].assessment.questions.filter(q => ['assessment', 'both'].includes(q.use));
+      for (let i = 0; i < questions.length; i++) {
+        await page.locator('.cfu-choice input').first().check();
+        await page.getByRole('button', { name: 'Submit answer', exact: true }).click();
+        await page.getByRole('button', { name: i === questions.length - 1 ? 'See results' : 'Continue', exact: true }).click();
+      }
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await create.click();
+      assert.match(await certificate.innerText(), /Check Understanding completed \(latest local result\)/);
+      assert.doesNotMatch(await certificate.innerText(), /in progress/);
+      assert.equal(await certificate.locator('li').count(), 3);
+      await page.evaluate(() => { window.print = () => { window.certificatePrinted = true; }; });
+      await page.getByRole('button', { name: 'Print / save as PDF', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.certificatePrinted), true);
+      await page.emulateMedia({ media: 'print' });
+      assert.equal(await certificate.isVisible(), true);
+      assert.equal(await page.locator('.certificate-form').isVisible(), false);
+      assert.equal(await page.locator('.sim-canvas-area').isVisible(), false);
+      assert.equal(await page.locator('.site-header').isVisible(), false);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'pendulum'));
+      const pdf = await page.pdf({ format: 'A4' });
+      // Chromium writes one /Type /Page object per page; catch trailing blank pages.
+      assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 1);
+      assert.equal(sent.some(request => request.includes(name) || request.includes(encodeURIComponent(name))), false);
+      const stored = await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }));
+      assert.equal(stored.includes(name), false);
+      await page.emulateMedia({ media: 'screen' });
+      await page.reload(); await page.waitForSelector('[data-ready="true"]');
+      assert.equal(await certificate.isVisible(), false);
+      assert.equal(await page.getByLabel('Your name', { exact: true }).inputValue(), '');
+      await page.locator('.guided-launcher__toggle').click(); await page.locator('.guided-card-btn').click();
+      await page.locator('[data-exit]').click();
+      await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+      await page.getByLabel('Your name', { exact: true }).fill('Student'); await create.click();
+      assert.match(await certificate.innerText(), /Simulation exploration: not recorded/);
+      assert.deepEqual(errors, []); await page.close();
+    });
+
+    await t.test('mobile simulations without learning activities offer free-exploration certificates', async () => {
+      const { page, errors } = await pageFor('gas-laws', true);
+      await page.locator('.simulation-canvas').first().click();
+      await page.getByLabel('Your name', { exact: true }).fill('A'.repeat(100));
+      await page.getByRole('button', { name: 'Create completion certificate', exact: true }).click();
+      const certificate = page.locator('.completion-certificate');
+      assert.match(await certificate.innerText(), /Gas Laws/);
+      assert.match(await certificate.innerText(), /Simulation exploration: time spent:/);
+      assert.equal(await certificate.locator('li').count(), 1);
+      await assertCertificateSections(certificate, catalog.simulations.find(sim => sim.id === 'gas-laws'));
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []); await page.close();
     });
 
