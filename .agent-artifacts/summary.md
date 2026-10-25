@@ -1,3 +1,37 @@
+# Issue #44 — Search elements in the nuclide chart
+
+Added an element search to Build a Nucleus’s Chart of Nuclides.
+
+- Search case-insensitively by full/partial element name, exact symbol, or atomic number; ignore surrounding whitespace. Exact symbols take precedence over partial names.
+- Highlight matching element columns and dim other nuclides without changing the selected nucleus or scientific colour encoding. Both colour modes and click-to-select remain usable.
+- Provide labelled input, live matching/no-match feedback, and a Clear search button that restores the chart and returns focus to the input.
+- Extend the shared closed component vocabulary with a small `search` primitive, including browser/server schema validation, scoped labels/status, shared styling, and authoring documentation. No dependencies or nuclear-data changes.
+- Add Rust/Node schema and renderer regressions plus desktop/phone-width browser tests covering matching, real chart pixels, no matches, whitespace, clearing, selection preservation, colour modes, fullscreen, and isotope selection.
+
+## Verification
+
+All requested checks passed on the final code:
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` — 35 tests
+- `npm test` — 65 tests
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 34 tests including suite parents
+- `git diff --check`
+
+Cargo required adding `/home/agent/.cargo/bin` to `PATH`. Browser regression comparisons wait for fonts and round phone-sized chart clicks to the nearest screen pixel; assertions were not weakened.
+
+## Browser evidence and scope
+
+Used the browser skill with the running local Axum app and an isolated temporary database. Exercised search, no-match feedback, clearing, and both colour modes in Chromium; captured and inspected actual changed-feature PNGs:
+- [Desktop search](nuclide-search-desktop.png)
+- [Phone-width search](nuclide-search-mobile.png)
+
+The supplied issue has an empty description and no comments. Interpreted “search for elements” as finding/highlighting isotope columns, not automatically choosing an isotope or adding isotope-notation search. Existing English element names and dataset/chart limits are unchanged. Browser checks/screenshots use the existing deterministic offline nuclear-data fallback; live IAEA availability and a full screen-reader/physical-touch audit are not covered. No outstanding check failures.
+
+Earlier task summaries below are retained as historical context; the two `nuclide-search-*.png` files are the evidence for this issue.
+
+---
+
 # Issue #15: simulations when leaving a tab
 
 Fixed the shared animation loop: returning from a background tab no longer sends the whole elapsed absence into physics, which could destabilize the pendulum or skip simulation events.

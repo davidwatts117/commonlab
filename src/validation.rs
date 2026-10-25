@@ -339,6 +339,39 @@ mod tests {
     }
 
     #[test]
+    fn search_components_validate_fields_and_slot_bindings() {
+        let catalog: Value =
+            serde_json::from_str(include_str!("../public/simulations/catalog.json")).unwrap();
+        let original = catalog["simulations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|def| def["id"] == "build-a-nucleus")
+            .unwrap();
+        validate(original).unwrap();
+        for (path, value) in [
+            ("/value", serde_json::json!(92)),
+            ("/label", serde_json::json!("")),
+            ("/output", Value::Null),
+            ("/output/id", serde_json::json!("elementSearch")),
+            ("/output/id", serde_json::json!("simulation-root")),
+        ] {
+            let mut def = original.clone();
+            *def["graphs"][0]["controls"][0].pointer_mut(path).unwrap() = value;
+            assert!(validate(&def).is_err(), "{path}");
+        }
+        let mut def = original.clone();
+        def["graphs"][0]["controls"][0]["html"] = serde_json::json!("<input>");
+        assert!(validate(&def).is_err());
+        let mut def = original.clone();
+        def["graphs"][0]["controls"][0] = serde_json::json!({
+            "type": "panel", "id": "elementSearch", "text": ""
+        });
+        validate(&def).unwrap();
+        assert!(engine_contract(&def, original).is_err());
+    }
+
+    #[test]
     fn extended_components_are_checked_wherever_they_are_nested() {
         let catalog: Value =
             serde_json::from_str(include_str!("../public/simulations/catalog.json")).unwrap();

@@ -44,6 +44,7 @@
 .simulation-field { display: flex; flex-direction: column; gap: .3rem; margin: .7rem 0; min-width: 0; }
 .simulation-inline { display: flex; align-items: center; gap: .4rem; }
 .simulation-inline input[type="number"] { width: 6rem; padding: .4rem .5rem; font: inherit; font-size: .85rem; font-weight: 600; border: 1px solid var(--sim-border-strong); border-radius: 0; background: var(--sim-surface, #fff); }
+.simulation-search { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: .4rem .5rem; font: inherit; font-size: .85rem; color: var(--sim-ink); background: var(--sim-surface); border: 1px solid var(--sim-border-strong); border-radius: 0; }
 .simulation-unit { font-size: .8rem; font-weight: 700; color: var(--sim-faint); }
 .simulation-hint { font-size: .7rem; font-weight: 600; line-height: 1.3; color: var(--sim-faint); }
 .simulation-toggles { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: .7rem 0; }
