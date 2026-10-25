@@ -4,7 +4,11 @@
 .certificate-form label { display: flex; flex-direction: column; gap: .4rem; max-width: 100%; }
 .certificate-form input { min-width: 0; max-width: 100%; padding: .5rem; font: inherit; }
 .completion-certificate { max-width: 760px; margin: 1rem auto; padding: clamp(1rem, 4vw, 3rem); border: 3px double currentColor; background: var(--paper, #fffdf7); text-align: center; overflow-wrap: anywhere; }
-.completion-certificate ul { text-align: left; margin: 1rem; }
+.certificate-description, .certificate-activities { text-align: left; margin: 1.25rem 0; }
+.certificate-activities { border-top: 1px solid currentColor; padding-top: 1rem; }
+.certificate-description h3, .certificate-activities h3 { font-size: 1rem; margin-bottom: .5rem; }
+.certificate-description h4 { font-size: 1.1rem; }
+.certificate-activities ul { margin: 0; padding-left: 1.25rem; }
 .certificate-name { font-size: 1.8rem; font-weight: bold; }
 .certificate-note { font-size: .8rem; }
 @media print {
