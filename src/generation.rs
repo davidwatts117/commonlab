@@ -43,17 +43,39 @@ pub fn router(state: SubmissionState) -> Router {
         .route("/api/worker/generation/{id}/progress", post(progress))
         .route("/api/admin/generation/access", post(access))
         .route("/api/worker/generation/claim", post(claim))
+        .route("/api/worker/generation/handshake", post(handshake))
         .route("/api/worker/generation/{id}/check", post(check))
+        .route("/api/worker/generation/{id}/heartbeat", post(check))
         .route("/api/worker/generation/{id}/complete", post(complete))
         .route("/api/worker/generation/{id}/release", post(release))
-        .layer(DefaultBodyLimit::max(256 * 1024))
+        .layer(DefaultBodyLimit::max(512 * 1024))
         .layer(axum::middleware::map_response(no_cache))
         .with_state(state)
 }
 /// A job may only be touched by the worker holding its current lease.
 const CURRENT_LEASE: &str = "SELECT j.simulation_id FROM generation_jobs j \
      JOIN contributors c ON c.id = j.contributor_id \
-     WHERE j.id = ?1 AND j.status = 'running' AND j.lease_hash = ?2 AND c.generation_allowed = 1";
+     WHERE j.id = ?1 AND j.status = 'running' AND j.lease_hash = ?2 AND c.generation_allowed = 1
+     AND j.lease_expires > unixepoch() AND j.deadline_at > unixepoch()";
+fn protocol() -> &'static Value {
+    static POLICY: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| {
+        serde_json::from_str(include_str!("../schema/generation-protocol.json"))
+            .expect("generation protocol")
+    });
+    &POLICY
+}
+fn policy_number(key: &str) -> i64 {
+    protocol()[key].as_i64().expect("policy integer")
+}
+fn policy_contains(key: &str, value: &str) -> bool {
+    protocol()[key]
+        .as_array()
+        .is_some_and(|a| a.iter().any(|v| v == value))
+}
+fn activity_code(value: &str) -> bool {
+    policy_contains("events", value) || policy_contains("failures", value)
+}
+
 fn disabled() -> ApiError {
     error(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -79,15 +101,30 @@ fn worker(state: &SubmissionState, headers: &HeaderMap) -> Result<(), ApiError> 
     Ok(())
 }
 fn expire(c: &Connection) -> Result<(), ApiError> {
-    c.execute(
-        "UPDATE generation_jobs SET status = 'failed', \
-         error = 'Worker timed out; start a new request to retry.', \
-         finished_at = unixepoch(), lease_hash = NULL \
-         WHERE status = 'running' AND lease_expires <= unixepoch()",
-        [],
-    )
-    .map_err(internal)?;
-    Ok(())
+    c.execute_batch("SAVEPOINT generation_expiry")
+        .map_err(internal)?;
+    let result = (|| {
+        // Reserve one terminal slot only for expiring jobs; never rescan the entire event history on each heartbeat.
+        c.execute("DELETE FROM generation_events WHERE id IN (
+            SELECT MIN(e.id) FROM generation_events e JOIN generation_jobs j ON j.id=e.job_id
+            WHERE (j.status='running' AND j.lease_expires<=unixepoch()) OR (j.status IN ('queued','running') AND j.deadline_at<=unixepoch())
+            GROUP BY e.job_id HAVING COUNT(*)>=100)",[]).map_err(internal)?;
+        c.execute("INSERT INTO generation_events(job_id,code,details)
+        SELECT id,CASE WHEN deadline_at<=unixepoch() THEN 'timeout' ELSE 'worker_lost' END,diagnostics
+        FROM generation_jobs WHERE (status='running' AND lease_expires<=unixepoch()) OR (status IN ('queued','running') AND deadline_at<=unixepoch())", []).map_err(internal)?;
+        c.execute("UPDATE generation_jobs SET status='failed',
+        failure_code=CASE WHEN deadline_at<=unixepoch() THEN 'timeout' ELSE 'worker_lost' END,
+        error=CASE WHEN deadline_at<=unixepoch() THEN 'The generation job reached its absolute deadline. Saved work and last-stage diagnostics are retained.' ELSE 'Worker heartbeat expired. The worker was lost; saved work and last-stage diagnostics are retained.' END,
+        finished_at=unixepoch(),lease_hash=NULL
+        WHERE (status='running' AND lease_expires<=unixepoch()) OR (status IN ('queued','running') AND deadline_at<=unixepoch())", []).map_err(internal)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = c.execute_batch("ROLLBACK TO generation_expiry");
+    }
+    c.execute_batch("RELEASE generation_expiry")
+        .map_err(internal)?;
+    result
 }
 fn lease_conflict() -> ApiError {
     error(
@@ -95,55 +132,9 @@ fn lease_conflict() -> ApiError {
         "Worker lease is expired, cancelled or no longer current",
     )
 }
-const ACTIVITY_CODES: &[&str] = &[
-    "model_request",
-    "reference_contract",
-    "reference_schema",
-    "validating",
-    "validation_passed",
-    "validation_failed",
-    "finalized",
-    "provider_error",
-    "request_limit",
-    "context_limit",
-    "not_finalized",
-    "timeout",
-    "output_limit",
-    "worker_error",
-    "model_finished",
-    "duplicate_draft",
-    "tool_batch_rejected",
-    "repairing",
-    "provider_auth",
-    "provider_rate_limit",
-    "provider_unavailable",
-    "output_truncated",
-    "repair_limit",
-    "no_progress",
-    "tool_protocol",
-    "configuration_error",
-    "development_stage",
-    "stage_completed",
-    "tool_result",
-];
 #[derive(Default, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
-struct Diagnostics {
-    turn: Option<u32>,
-    attempt: Option<u32>,
-    requests: Option<u32>,
-    context_bytes: Option<u32>,
-    input_tokens: Option<u32>,
-    output_tokens: Option<u32>,
-    tool_calls: Option<u32>,
-    validations: Option<u32>,
-    duplicates: Option<u32>,
-    stop_reason: Option<String>,
-    phase: Option<String>,
-    tool: Option<String>,
-    tool_status: Option<String>,
-    issues: Vec<DiagnosticIssue>,
-}
+#[serde(transparent)]
+struct Diagnostics(serde_json::Map<String, Value>);
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct DiagnosticIssue {
@@ -162,48 +153,47 @@ impl Diagnostics {
                 "Invalid bounded generation diagnostics",
             )
         };
-        if [
-            self.turn,
-            self.attempt,
-            self.requests,
-            self.context_bytes,
-            self.input_tokens,
-            self.output_tokens,
-            self.tool_calls,
-            self.validations,
-            self.duplicates,
-        ]
-        .into_iter()
-        .flatten()
-        .any(|n| n > 10_000_000)
-            || self.stop_reason.as_deref().is_some_and(|s| {
-                ![
-                    "stop", "length", "toolUse", "error", "aborted", "deferred", "unknown",
-                ]
-                .contains(&s)
-            })
-            || self
-                .phase
-                .as_deref()
-                .is_some_and(|s| !["plan", "definition", "implementation"].contains(&s))
-            || self.tool.as_deref().is_some_and(|s| {
-                ![
-                    "plan_simulation",
-                    "define_simulation",
-                    "submit_draft",
-                    "authoring_reference",
-                    "unknown",
-                ]
-                .contains(&s)
-            })
-            || self
-                .tool_status
-                .as_deref()
-                .is_some_and(|s| !["ok", "error", "blocked"].contains(&s))
-            || self.issues.len() > 5
-        {
-            return Err(bad());
+        for (key, value) in &self.0 {
+            let valid = if policy_contains("counters", key) {
+                value
+                    .as_u64()
+                    .is_some_and(|n| n <= policy_number("counterMax") as u64)
+            } else {
+                match key.as_str() {
+                    "phase" => value.as_str().is_some_and(|s| policy_contains("phases", s)),
+                    "reasoningEffort" => value
+                        .as_str()
+                        .is_some_and(|s| policy_contains("reasoningEfforts", s)),
+                    "tool" => value.as_str().is_some_and(|s| policy_contains("tools", s)),
+                    "cause" => value
+                        .as_str()
+                        .is_some_and(|s| policy_contains("failures", s)),
+                    "role" => value
+                        .as_str()
+                        .is_some_and(|s| ["author", "reviewer", "host"].contains(&s)),
+                    "stopReason" => value.as_str().is_some_and(|s| {
+                        [
+                            "stop", "length", "toolUse", "error", "aborted", "deferred", "unknown",
+                        ]
+                        .contains(&s)
+                    }),
+                    "toolStatus" => value
+                        .as_str()
+                        .is_some_and(|s| ["ok", "error", "blocked"].contains(&s)),
+                    "artifactHash" => value
+                        .as_str()
+                        .is_some_and(|s| s.len() == 64 && s.bytes().all(|c| c.is_ascii_hexdigit())),
+                    "issues" => value.as_array().is_some_and(|a| a.len() <= 5),
+                    _ => false,
+                }
+            };
+            if !valid {
+                return Err(bad());
+            }
         }
+        let issues: Vec<DiagnosticIssue> =
+            serde_json::from_value(self.0.get("issues").cloned().unwrap_or_else(|| json!([])))
+                .map_err(|_| bad())?;
         static PROPERTIES: std::sync::LazyLock<std::collections::HashSet<String>> =
             std::sync::LazyLock::new(|| {
                 fn collect(value: &Value, names: &mut std::collections::HashSet<String>) {
@@ -261,7 +251,7 @@ impl Diagnostics {
             "imports",
             "mount",
         ];
-        for issue in &self.issues {
+        for issue in &issues {
             if issue.line.is_some_and(|n| n == 0 || n > 1_000_000)
                 || issue.column.is_some_and(|n| n > 1_000_000)
                 || !RULES.contains(&issue.rule.as_str())
@@ -287,6 +277,8 @@ struct Progress {
     code: String,
     #[serde(default)]
     details: Diagnostics,
+    #[serde(default)]
+    event_key: Option<String>,
 }
 async fn progress(
     State(s): State<SubmissionState>,
@@ -295,7 +287,14 @@ async fn progress(
     Json(input): Json<Progress>,
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
-    if !ACTIVITY_CODES.contains(&input.code.as_str()) {
+    if !activity_code(&input.code)
+        || input.event_key.as_ref().is_some_and(|k| {
+            k.len() > 100
+                || !k
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || b"-_:".contains(&c))
+        })
+    {
         return Err(error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "Unknown activity code",
@@ -307,7 +306,9 @@ async fn progress(
         let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(internal)?;
         expire(&tx)?;
         tx.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(())).optional().map_err(internal)?.ok_or_else(lease_conflict)?;
-        tx.execute("INSERT INTO generation_events(job_id,code,details) SELECT ?1,?2,?3 WHERE (SELECT COUNT(*) FROM generation_events WHERE job_id=?1)<100", params![id, input.code, serde_json::to_string(&input.details).map_err(internal)?]).map_err(internal)?;
+        let details = serde_json::to_string(&input.details).map_err(internal)?;
+        tx.execute("INSERT OR IGNORE INTO generation_events(job_id,code,details,event_key) SELECT ?1,?2,?3,?4 WHERE (SELECT COUNT(*) FROM generation_events WHERE job_id=?1)<100", params![id, input.code, details, input.event_key]).map_err(internal)?;
+        tx.execute("UPDATE generation_jobs SET diagnostics=json_patch(diagnostics,?1) WHERE id=?2", params![details,id]).map_err(internal)?;
         tx.commit().map_err(internal)
     }).await?;
     Ok(Json(json!({"recorded":true})))
@@ -454,7 +455,7 @@ async fn list(
             expire(c)?;
             let mut q = c
                 .prepare(
-                    "SELECT id, status, created_at, finished_at, error, model, diagnostics FROM generation_jobs \
+                    "SELECT id, CASE WHEN outcome='needs_attention' THEN outcome ELSE status END, created_at, finished_at, error, model, diagnostics, heartbeat_at,deadline_at,failure_code,report FROM generation_jobs \
                      WHERE contributor_id = ?1 ORDER BY id DESC LIMIT 50",
                 )
                 .map_err(internal)?;
@@ -467,6 +468,8 @@ async fn list(
                     "error": r.get::<_, String>(4)?,
                     "model": r.get::<_, String>(5)?,
                     "diagnostics": serde_json::from_str::<Value>(&r.get::<_, String>(6)?).unwrap_or_default(),
+                    "heartbeatAt": r.get::<_,Option<i64>>(7)?, "deadlineAt": r.get::<_,Option<i64>>(8)?,
+                    "failureCode": r.get::<_,String>(9)?, "report": serde_json::from_str::<Value>(&r.get::<_,String>(10)?).unwrap_or_default(),
                 }))
             })
             .map_err(internal)?
@@ -487,7 +490,7 @@ async fn detail(
         .run(move |c| {
             expire(c)?;
             c.query_row(
-                "SELECT prompt, simulation_id, status, artifact, error, model, diagnostics FROM generation_jobs \
+                "SELECT prompt, simulation_id, CASE WHEN outcome='needs_attention' THEN outcome ELSE status END, artifact, error, model, diagnostics,heartbeat_at,deadline_at,failure_code,report FROM generation_jobs \
                  WHERE id = ?1 AND contributor_id = ?2",
                 params![id, user.id],
                 |r| {
@@ -500,6 +503,8 @@ async fn detail(
                         "error": r.get::<_, String>(4)?,
                         "model": r.get::<_, String>(5)?,
                         "diagnostics": serde_json::from_str::<Value>(&r.get::<_, String>(6)?).unwrap_or_default(),
+                        "heartbeatAt": r.get::<_,Option<i64>>(7)?, "deadlineAt": r.get::<_,Option<i64>>(8)?,
+                        "failureCode": r.get::<_,String>(9)?, "report": serde_json::from_str::<Value>(&r.get::<_,String>(10)?).unwrap_or_default(),
                     }))
                 },
             )
@@ -606,11 +611,47 @@ async fn access(
         .await?;
     Ok(Json(value))
 }
+async fn handshake(
+    State(s): State<SubmissionState>,
+    headers: HeaderMap,
+    Json(input): Json<Claim>,
+) -> Result<Json<Value>, ApiError> {
+    worker(&s, &headers)?;
+    if i64::from(input.protocol_version) != policy_number("version") {
+        return Err(error(
+            StatusCode::CONFLICT,
+            "Generation protocol mismatch; upgrade app and worker together",
+        ));
+    }
+    Ok(Json(
+        json!({"protocolVersion":policy_number("version"),"policy":protocol()}),
+    ))
+}
+#[derive(Deserialize)]
+struct Claim {
+    #[serde(rename = "protocolVersion")]
+    protocol_version: u32,
+    #[serde(default)]
+    model: String,
+}
 async fn claim(
     State(s): State<SubmissionState>,
     headers: HeaderMap,
+    Json(input): Json<Claim>,
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
+    if input.model.len() > 200 {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Invalid worker model metadata",
+        ));
+    }
+    if i64::from(input.protocol_version) != policy_number("version") {
+        return Err(error(
+            StatusCode::CONFLICT,
+            "Generation protocol mismatch; upgrade app and worker together",
+        ));
+    }
     let raw = random_hex()?;
     let hash = digest(&raw);
     let result = s
@@ -645,13 +686,15 @@ async fn claim(
                 return Ok(Value::Null);
             };
             tx.execute(
-                "UPDATE generation_jobs SET status = 'running', started_at = unixepoch(), \
-                 lease_hash = ?1, lease_expires = unixepoch() + 360 WHERE id = ?2",
-                params![hash, id],
+                "UPDATE generation_jobs SET status='running', started_at=COALESCE(started_at,unixepoch()),
+                 attempt=attempt+1,deadline_at=COALESCE(deadline_at,unixepoch()+?3),heartbeat_at=unixepoch(),
+                 lease_hash=?1,model=?5,lease_expires=MIN(unixepoch()+?4,COALESCE(deadline_at,unixepoch()+?3)) WHERE id=?2",
+                params![hash, id, policy_number("jobSeconds"), policy_number("leaseSeconds"),input.model],
             )
             .map_err(internal)?;
+            let (attempt,deadline): (i64,i64) = tx.query_row("SELECT attempt,deadline_at FROM generation_jobs WHERE id=?1",[id],|r| Ok((r.get(0)?,r.get(1)?))).map_err(internal)?;
             tx.commit().map_err(internal)?;
-            Ok(json!({"protocolVersion":1,"id":id,"prompt":prompt,"simulationId":slug,"lease":raw}))
+            Ok(json!({"protocolVersion":2,"id":id,"prompt":prompt,"simulationId":slug,"lease":raw,"attempt":attempt,"deadlineAt":deadline,"policy":protocol()}))
         })
         .await?;
     Ok(Json(result))
@@ -660,6 +703,8 @@ async fn claim(
 #[serde(deny_unknown_fields)]
 struct Lease {
     lease: String,
+    #[serde(default)]
+    details: Diagnostics,
 }
 async fn check(
     State(s): State<SubmissionState>,
@@ -668,15 +713,17 @@ async fn check(
     Json(input): Json<Lease>,
 ) -> Result<Json<Value>, ApiError> {
     worker(&s, &headers)?;
+    input.details.validate()?;
     let hash = digest(&input.lease);
     let active = s
         .store
         .run(move |c| {
-            expire(c)?;
-            c.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(()))
-                .optional()
-                .map(|row| row.is_some())
-                .map_err(internal)
+            let tx=c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(internal)?;
+            expire(&tx)?;
+            let active=tx.query_row(CURRENT_LEASE, params![id, hash], |_| Ok(())).optional().map_err(internal)?.is_some();
+            if active { tx.execute("UPDATE generation_jobs SET heartbeat_at=unixepoch(),lease_expires=MIN(unixepoch()+?1,deadline_at),diagnostics=json_patch(diagnostics,?3) WHERE id=?2",params![policy_number("leaseSeconds"),id,serde_json::to_string(&input.details).map_err(internal)?]).map_err(internal)?; }
+            tx.commit().map_err(internal)?;
+            Ok(active)
         })
         .await?;
     Ok(Json(json!({"active":active})))
@@ -701,7 +748,7 @@ async fn release(
                 .map_err(internal)?
                 .ok_or_else(lease_conflict)?;
             tx.execute(
-                "UPDATE generation_jobs SET status = 'queued', started_at = NULL, \
+                "UPDATE generation_jobs SET status = 'queued',
                  lease_hash = NULL, lease_expires = NULL WHERE id = ?1",
                 [id],
             )
@@ -711,7 +758,7 @@ async fn release(
         .await?;
     Ok(Json(json!({"id":id,"status":"queued"})))
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Complete {
     lease: String,
@@ -721,8 +768,12 @@ struct Complete {
     failure: Option<String>,
     #[serde(default)]
     diagnostics: Diagnostics,
+    #[serde(default)]
+    outcome: String,
+    #[serde(default)]
+    report: Value,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Artifact {
     definition: Value,
@@ -753,12 +804,44 @@ async fn complete(
             },
         )?;
     }
+    if input.report.to_string().len() > 16384
+        || !["", "succeeded", "needs_attention", "failed"].contains(&input.outcome.as_str())
+    {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Invalid generation report",
+        ));
+    }
+    if input.artifact.is_some()
+        && input.outcome != "needs_attention"
+        && (input.report["verification"] != "passed" || input.report["review"] != "passed")
+    {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Success requires verification and independent review",
+        ));
+    }
+    if (input.outcome == "failed" && input.artifact.is_some())
+        || (["succeeded", "needs_attention"].contains(&input.outcome.as_str())
+            && input.artifact.is_none())
+        || (input.artifact.is_some()
+            && input.outcome != "needs_attention"
+            && input.failure.is_some())
+    {
+        return Err(error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Conflicting generation outcome",
+        ));
+    }
+    let completion_hash = digest(&serde_json::to_string(&input).map_err(internal)?);
     let hash = digest(&input.lease);
     s.store
         .run(move |c| {
             let tx = c
                 .transaction_with_behavior(TransactionBehavior::Immediate)
                 .map_err(internal)?;
+            let recorded:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM generation_jobs WHERE id=?1 AND receipt_hash=?2 AND completion_hash=?3)",params![id,hash,completion_hash],|r|r.get(0)).map_err(internal)?;
+            if recorded { return Ok(()); }
             expire(&tx)?;
             let slug: String = tx
                 .query_row(CURRENT_LEASE, params![id, hash], |r| r.get(0))
@@ -782,21 +865,36 @@ async fn complete(
                     "submittedBy": "",
                     "source": {"kind": "javascript", "moduleCode": a.module_code},
                 });
-                ("succeeded", Some(bundle.to_string()), "")
+                if input.outcome=="needs_attention" {
+                    let message = if input.failure.as_deref()==Some("storage_error") {
+                        "Draft retained for manual attention after a checkpoint storage failure. Ask the operator to check the writable checkpoint volume."
+                    } else { "Draft retained for manual attention; required verification or review remains unresolved." };
+                    ("failed",Some(bundle.to_string()),message)
+                } else { ("succeeded", Some(bundle.to_string()), "") }
             } else {
                 (
                     "failed",
                     None,
                     match input.failure.as_deref() {
-                        Some("timeout") => "The agent exceeded the five-minute time limit. Try a smaller simulation.",
+                        Some("timeout") => "The generation job reached its absolute deadline. Last-stage diagnostics and saved work are retained.",
+                        Some("provider_first_timeout") => "The provider did not begin responding before the first-response deadline.",
+                        Some("provider_idle_timeout") => "The provider stream stalled before completing the current stage.",
+                        Some("provider_timeout") => "The provider request reached its total time limit.",
+                        Some("budget_exhausted") => "The job reached its configured token or estimated-cost budget.",
+                        Some("storage_error") => "The worker could not write its private checkpoint storage. Ask the operator to check the writable checkpoint volume, permissions and free space. No automatic regeneration was attempted.",
+                        Some("verification_failed") => "Runtime checks remain unresolved; the candidate was not marked successful.",
+                        Some("verification_unavailable") => "The browser verification service could not complete its checks.",
+                        Some("review_unavailable") => "Independent review was unavailable; no review pass was recorded.",
+                        Some("worker_lost" | "lease_lost") => "The worker lost its renewable lease. Last-stage diagnostics are retained.",
+                        Some("inference_interrupted") => "The worker restarted during inference. Saved artifacts and reserved usage are retained; the potentially paid call was not automatically replayed.",
                         Some("output_limit") => "The generated output exceeded the size limit. Reduce the scope.",
                         Some("request_limit") => "The agent exhausted its model request budget before completing a valid draft.",
                         Some("context_limit") => "The agent exceeded its context budget. Try fewer requirements.",
                         Some("provider_error") => "The AI provider request failed. The operator should check model availability, credentials and billing.",
                         Some("provider_auth") => "The provider rejected authentication. Ask the operator to check the configured model key and permissions.",
                         Some("provider_rate_limit") => "The provider reported a rate, quota or billing limit. Ask the operator to check provider usage and credits.",
-                        Some("provider_unavailable") => "The provider was unavailable or timed out. No automatic model retry was made.",
-                        Some("output_truncated") => "The model twice exceeded its response-token limit. No incomplete tool calls were executed; try a smaller simulation.",
+                        Some("provider_unavailable") => "The provider remained unavailable after bounded recovery. Saved work and usage diagnostics are retained.",
+                        Some("output_truncated") => "The model exceeded the bounded output-recovery budget. Complete artifacts are saved; incomplete calls were not executed.",
                         Some("repair_limit") => "The agent reached its draft repair limit. See the last validation diagnostics for the unresolved problems.",
                         Some("no_progress") => "The agent stopped making progress: it repeated an invalid draft or failed to submit usable changes.",
                         Some("tool_protocol") => "The model repeatedly violated the tool-call protocol. Batched draft submissions were blocked.",
@@ -809,12 +907,13 @@ async fn complete(
             let diagnostics = serde_json::to_string(&input.diagnostics).map_err(internal)?;
             // Reserve terminal visibility even if an older worker filled the activity cap.
             tx.execute("DELETE FROM generation_events WHERE id=(SELECT MIN(id) FROM generation_events WHERE job_id=?1) AND (SELECT COUNT(*) FROM generation_events WHERE job_id=?1)>=100", [id]).map_err(internal)?;
-            let terminal = if status == "succeeded" { "finalized" } else { input.failure.as_deref().filter(|code| ACTIVITY_CODES.contains(code)).unwrap_or("worker_error") };
+            let terminal = if status == "succeeded" { "finalized" } else if input.outcome=="needs_attention" {"needs_attention"} else { input.failure.as_deref().filter(|code| activity_code(code)).unwrap_or("worker_error") };
             tx.execute("INSERT INTO generation_events(job_id,code,details) VALUES (?1,?2,?3)", params![id,terminal,diagnostics]).map_err(internal)?;
             tx.execute(
                 "UPDATE generation_jobs SET status = ?1, artifact = ?2, error = ?3, model = ?4, \
-                 finished_at = unixepoch(), lease_hash = NULL, diagnostics = ?6 WHERE id = ?5",
-                params![status, artifact, message, input.model, id, diagnostics],
+                 finished_at = unixepoch(), lease_hash = NULL, diagnostics = ?6, outcome=?7,report=?8,
+                 failure_code=?9,receipt_hash=?10,completion_hash=?11 WHERE id = ?5",
+                params![status, artifact, message, input.model, id, diagnostics,input.outcome,input.report.to_string(),input.failure.unwrap_or_default(),hash,completion_hash],
             )
             .map_err(internal)?;
             tx.commit().map_err(internal)

@@ -1,6 +1,24 @@
 import { contributorRequest, currentContributor } from './contributor-api.mjs';
 const $ = id => document.getElementById(id);
 let request, detailRequest, generation = 0, selected = null, before = null, ownerId = null;
+const statusLabels = { pending: 'Pending review', published: 'Published', rejected: 'Rejected', withdrawn: 'Withdrawn' };
+function updatedDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+function submissionCard(item) {
+  const li = document.createElement('li'), button = document.createElement('button');
+  button.type = 'button'; button.className = 'contribution-card'; button.dataset.id = item.id;
+  button.setAttribute('aria-controls', 'contribution-detail'); button.setAttribute('aria-expanded', 'false');
+  const title = document.createElement('span'); title.className = 'contribution-card-title'; title.textContent = item.title;
+  const meta = document.createElement('span'); meta.className = 'contribution-card-meta';
+  meta.textContent = `#${item.id} · Revision ${item.revision} · Updated ${updatedDate(item.updatedAt || item.createdAt)}`;
+  const badges = document.createElement('span'); badges.className = 'contribution-badges';
+  for (const [status, text] of [[item.status, statusLabels[item.status] || item.status], ...(item.publishedRevision ? [['live', `Live revision ${item.publishedRevision}`]] : [])]) {
+    const badge = document.createElement('span'); badge.className = 'contribution-badge'; badge.dataset.status = status; badge.textContent = text; badges.append(badge);
+  }
+  button.append(title, meta, badges); button.addEventListener('click', () => showDetail(item)); li.append(button); return li;
+}
 function message(text, error = false) {
   $('contributions-status').textContent = text;
   $('contributions-status').setAttribute('role', error ? 'alert' : 'status');
@@ -8,6 +26,8 @@ function message(text, error = false) {
 function clearDetail() {
   selected = null; detailRequest?.abort();
   $('contribution-detail').hidden = true;
+  $('contribution-placeholder').hidden = false;
+  for (const button of $('contributions-list').querySelectorAll('button')) button.setAttribute('aria-expanded', 'false');
   for (const id of ['contribution-title', 'contribution-meta', 'contribution-feedback', 'contribution-history']) $(id).replaceChildren();
   $('contribution-edit').removeAttribute('href'); $('contribution-live').removeAttribute('href');
 }
@@ -15,6 +35,7 @@ function clearPrivate() {
   clearDetail(); before = null;
   $('contributions-list').replaceChildren(); $('contributions-account').textContent = '';
   $('contributions-more').hidden = true; $('contributions-workspace').hidden = true;
+  $('contributions-empty').hidden = true;
 }
 function lock() {
   ++generation; request?.abort(); clearPrivate(); ownerId = null;
@@ -31,7 +52,11 @@ async function showDetail(item) {
   $('contribution-live').hidden = !item.publishedRevision;
   // IDs come from schema-validated server records; encode even so, never use a supplied URL.
   $('contribution-live').href = `/simulations/${encodeURIComponent(item.simulationId)}`;
-  $('contribution-detail').hidden = false;
+  $('contribution-detail').hidden = false; $('contribution-placeholder').hidden = true;
+  for (const button of $('contributions-list').querySelectorAll('button')) button.setAttribute('aria-expanded', String(button.dataset.id === String(item.id)));
+  $('contribution-title').tabIndex = -1; $('contribution-title').focus({ preventScroll: true });
+  if (window.matchMedia('(max-width: 760px)').matches) $('contribution-detail').scrollIntoView({ block: 'start' });
+  $('contribution-history').textContent = 'Loading review history…';
   try {
     const result = await contributorRequest(`/api/contributor/submissions/${item.id}/history`, { signal: detailRequest.signal });
     if (generation !== version || selected !== item.id) return;
@@ -40,11 +65,12 @@ async function showDetail(item) {
       li.textContent = `${event.createdAt} · revision ${event.revision} · ${event.actor}: ${event.action} → ${event.status}${event.note ? ` (${event.note})` : ''}`;
       return li;
     });
+    if (!events.length) { const li = document.createElement('li'); li.textContent = 'No review events yet.'; events.push(li); }
     $('contribution-history').replaceChildren(...events);
     message(`Showing submission #${item.id}.`);
   } catch (error) {
     if (error.name === 'AbortError' || generation !== version || selected !== item.id) return;
-    if (error.status === 401) lock(); else message(error.message, true);
+    if (error.status === 401) lock(); else { $('contribution-history').textContent = 'Review history could not be loaded. Select this submission to try again.'; message(error.message, true); }
   }
 }
 async function refresh(append = false) {
@@ -66,15 +92,17 @@ async function refresh(append = false) {
     if (version !== generation) return;
     $('contributions-account').textContent = `Signed in as ${account.username}. Only your submissions are shown.`;
     $('contributions-login').hidden = true; $('contributions-workspace').hidden = false;
-    const rows = result.items.map(item => {
-      const li = document.createElement('li'), button = document.createElement('button');
-      button.type = 'button'; button.textContent = `#${item.id} ${item.title} · revision ${item.revision}: ${item.status}${item.publishedRevision ? ` · live revision ${item.publishedRevision}` : ''}`;
-      button.addEventListener('click', () => showDetail(item)); li.append(button); return li;
-    });
+    const rows = result.items.map(submissionCard);
     if (append) $('contributions-list').append(...rows); else $('contributions-list').replaceChildren(...rows);
     before = result.items.at(-1)?.id || cursor;
     $('contributions-more').hidden = !result.hasMore;
-    message($('contributions-list').children.length ? 'Select a submission to view feedback and history.' : 'No submissions match this filter. Create a simulation to get started.');
+    const empty = !$('contributions-list').children.length;
+    const filtered = $('contributions-filter').value !== 'all';
+    $('contributions-empty').hidden = !empty;
+    $('contribution-placeholder').hidden = empty;
+    $('contributions-empty-title').textContent = filtered ? 'No submissions match this filter' : 'No submissions yet';
+    $('contributions-empty-text').textContent = filtered ? 'Try another revision status or choose All statuses to see your submissions.' : 'Build your first simulation and submit it for review. Your saved submissions will appear here.';
+    message(empty ? (filtered ? 'No submissions match this filter.' : 'No submissions yet. Create a simulation to get started.') : 'Select a submission to view feedback and history.');
   } catch (error) {
     if (error.name === 'AbortError' || version !== generation) return;
     if (error.status === 401) lock(); else { clearPrivate(); message(error.message, true); }
