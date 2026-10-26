@@ -1,6 +1,6 @@
 # CommonLab
 
-Browser-based science simulations for safe, repeatable exploration, served by a Rust **Axum** application. The frontend stays dependency-free HTML/CSS/JavaScript; no frontend build step or login is required.
+Browser-based science simulations for safe, repeatable exploration, served by a Rust **Axum** application. The frontend is plain HTML/CSS/JavaScript with a vendored math renderer; no frontend build step or login is required.
 
 ## Run
 
@@ -89,6 +89,14 @@ For repository-authored simulations, add an entry to `public/simulations/catalog
 
 See [Simulation authoring](docs/simulation-authoring.md) for the schema, module contract, examples, and verification checklist. All seven existing simulations have been migrated.
 
+## Completion certificates
+
+After exploring any simulation, students can enter their name in **Finished exploring?** to create a completion certificate, then **Print / save as PDF**. The certificate includes the simulation, issue date, guided experiments started/completed during this visit, and any unfinished or latest locally saved Check Understanding result. Regenerate it after further activity to update the record.
+
+Simulation exploration is marked **not recorded** until a student uses a simulation control or canvas. Its **time spent** is a local estimate of visible time after interaction, paused after 60 seconds without another interaction. Hidden tabs and time away in the browser Back/Forward cache are excluded; interact again to resume. Regenerate the certificate to update the time.
+
+Names and certificates stay on the page: they are not saved in browser storage or sent to a server. Guided participation and exploration time reset on reload; existing CFU persistence is unchanged. These are participation records, not verified qualifications or proof of mastery (guided steps can be skipped).
+
 ## Guided experiments / lessons
 
 The shared engine (`guided.js`) and overlay styles (`guided.css`) are implemented. The Pendulum simulation includes the first pilot lesson, **“What controls a pendulum’s period?”**, with predictions, guided tasks, observation, three practice-only CFU checkpoints, hints, restart/exit, and a completion recap.
@@ -138,6 +146,6 @@ npm run test:browser
 
 Browser tests also cover mobile authoring, inert data/source previews, protected review, publication, engine reuse, withdrawal, and queue locking. Each browser server uses an isolated temporary SQLite database.
 
-Alternatively set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome` to use an existing Chromium binary. Node packages are development-only; the frontend still has no bundler or build step.
+Alternatively set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome` to use an existing Chromium binary. Installed Node packages are development-only; Temml is vendored under `public/vendor/temml` for local LaTeX-to-MathML rendering. The frontend still has no bundler or build step.
 
 For real-browser app checks, use `cargo run`. The development-only DOM smoke page is intentionally not served by Axum: run `python -m http.server 8001 --bind 127.0.0.1` from the repository root and open `http://localhost:8001/tests/dom-smoke.html`. Do not use that repository-wide development server for deployment. Automated coverage includes the guided engine, launcher, restart/completion, overlay/dialog behavior, and CFU bank validation, exact-match grading, submit locks/re-entry, persistence/version invalidation, storage failures, full review, and mutual exclusion using a lightweight DOM shim. Screen-reader accessibility, touch, fullscreen, and complete scientific/lesson verification remain manual work.

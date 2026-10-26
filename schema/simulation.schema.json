@@ -488,6 +488,34 @@
           "type": "object",
           "properties": {
             "type": {
+              "const": "search"
+            },
+            "id": {
+              "$ref": "#/$defs/slot"
+            },
+            "label": {
+              "$ref": "#/$defs/text"
+            },
+            "value": {
+              "$ref": "#/$defs/content"
+            },
+            "output": {
+              "$ref": "#/$defs/output"
+            }
+          },
+          "required": [
+            "type",
+            "id",
+            "label",
+            "value",
+            "output"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
               "const": "readouts"
             },
             "id": {

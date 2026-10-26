@@ -34,13 +34,15 @@ let nextId = 1;
 let tool = 'select';    // 'select' | 'wire' | 'battery' | 'bulb' | 'resistor' | 'switch' | 'delete'
 let selected = null;
 let drag = null;
+let pointer = null;
+let pendingWire = null;
 let hoverEp = null;     // endpoint under the pointer
 let ghost = null;       // preview while dragging a part from the toolbox
 let showCurrent = true;
 let showValues = false;
 let phase = 0;          // animation clock (seconds)
-let lastTs = 0;
-let animId = null;
+const history = [];
+let committed = null;
 let net = null;         // latest circuit solution
 let dirty = true;       // topology changed -> re-solve
 
@@ -58,7 +60,40 @@ function makeComp(type, ax, ay, bx, by) {
 
 function defaultComp(type, cx, cy) {
     const L = DEF[type].len;
-    return makeComp(type, cx - L / 2, cy, cx + L / 2, cy);
+    return { type, a: { x: cx - L / 2, y: cy }, b: { x: cx + L / 2, y: cy }, ...componentProps(type) };
+}
+
+function snapshot() {
+    return JSON.stringify({ comps: comps.map(c => {
+        const { id, type, a, b, voltage, resistance, closed } = c;
+        return { id, type, a, b, voltage, resistance, closed };
+    }), nextId, selectedId: selected?.id });
+}
+
+function commit() {
+    const state = snapshot();
+    // Selection alone is not an edit.
+    if (committed && JSON.stringify(JSON.parse(committed).comps) !== JSON.stringify(JSON.parse(state).comps)) {
+        history.push(committed);
+        if (history.length > 100) history.shift();
+    }
+    committed = state;
+    document.getElementById('undoBtn').disabled = history.length === 0;
+}
+
+function undo() {
+    commit();
+    const state = history.pop();
+    if (!state) return;
+    const saved = JSON.parse(state);
+    comps = saved.comps;
+    nextId = saved.nextId;
+    drag = ghost = pendingWire = hoverEp = pointer = null;
+    selected = comps.find(c => c.id === saved.selectedId) || null;
+    committed = state;
+    dirty = true;
+    updateSelectedPanel();
+    document.getElementById('undoBtn').disabled = history.length === 0;
 }
 
 function removeComp(c) {
@@ -81,6 +116,21 @@ function distToSeg(px, py, x1, y1, x2, y2) {
     t = Math.max(0, Math.min(1, t));
     const cx = x1 + t * dx, cy = y1 + t * dy;
     return { d: Math.hypot(px - cx, py - cy), x: cx, y: cy, t };
+}
+
+function segmentsNear(a, b, c, d, radius = 0) {
+    const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    if (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) return true;
+    return Math.min(distToSeg(a.x, a.y, c.x, c.y, d.x, d.y).d,
+        distToSeg(b.x, b.y, c.x, c.y, d.x, d.y).d,
+        distToSeg(c.x, c.y, a.x, a.y, b.x, b.y).d,
+        distToSeg(d.x, d.y, a.x, a.y, b.x, b.y).d) <= radius;
+}
+
+function eraseBetween(a, b) {
+    for (const c of [...comps]) {
+        if (segmentsNear(a, b, c.a, c.b, HIT)) removeComp(c);
+    }
 }
 
 function snapGrid(v) { return Math.round(v / GRID) * GRID; }
@@ -367,6 +417,34 @@ function settleSnap(c) {
     }
 }
 
+// Replace, rather than bypass, the wire under a collinear fixed-size part.
+function insertIntoWire(c) {
+    if (c.type === 'wire') return;
+    for (const w of [...comps]) {
+        if (w.type !== 'wire') continue;
+        const a = distToSeg(c.a.x, c.a.y, w.a.x, w.a.y, w.b.x, w.b.y);
+        const b = distToSeg(c.b.x, c.b.y, w.a.x, w.a.y, w.b.x, w.b.y);
+        if (a.d > 0.01 || b.d > 0.01 || Math.abs(a.t - b.t) < 0.001) continue;
+        const [first, last] = a.t < b.t ? [c.a, c.b] : [c.b, c.a];
+        comps.splice(comps.indexOf(w), 1);
+        if (Math.hypot(first.x - w.a.x, first.y - w.a.y) > 4)
+            comps.push(makeComp('wire', w.a.x, w.a.y, first.x, first.y));
+        if (Math.hypot(last.x - w.b.x, last.y - w.b.y) > 4)
+            comps.push(makeComp('wire', last.x, last.y, w.b.x, w.b.y));
+    }
+}
+
+function place(c) {
+    c.id = nextId++;
+    comps.push(c);
+    settleSnap(c);
+    insertIntoWire(c);
+    splitWires();
+    select(c);
+    dirty = true;
+    commit();
+}
+
 function fmt(v) {
     if (!isFinite(v)) return '\u221E';
     const a = Math.abs(v);
@@ -503,6 +581,7 @@ function drawValues() {
     ctx.font = T.font(11, '500');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    const occupied = [];
     for (const c of comps) {
         const u = cUnit(c), M = cMid(c);
         const px = -u.y, py = u.x;
@@ -515,11 +594,29 @@ function drawValues() {
         else if (c.type === 'switch')   txt = c.closed ? 'closed' : 'open';
         else if (c.type === 'wire')     txt = amps;
         if (!txt) continue;
-        const lx = M.x + px * 22, ly = M.y + py * 22;
         const w = ctx.measureText(txt).width + 10;
-        ctx.fillStyle = SimLib.Color.alpha(T.surface, 0.94);
-        roundRect(lx - w / 2, ly - 9, w, 18, 0);
-        ctx.fill();
+        let box = null;
+        search: for (const offset of [26, -26, 46, -46, 66, -66, 86, -86, 106, -106]) {
+            for (const along of [0, 40, -40, 80, -80]) {
+                const x = M.x + px * offset + u.x * along - w / 2;
+                const y = M.y + py * offset + u.y * along - 9;
+                const r = { x, y, w, h: 18 };
+                if (x < 4 || y < 4 || x + w > W - 4 || y + 18 > H - 4) continue;
+                if (occupied.some(o => x < o.x + o.w + 4 && x + w + 4 > o.x && y < o.y + o.h + 4 && y + 22 > o.y)) continue;
+                const left = { x: x - 7, y: y + 9 }, right = { x: x + w + 7, y: y + 9 };
+                if (comps.some(part => segmentsNear(left, right, part.a, part.b, part.type === 'bulb' ? 27 : 18))) continue;
+                box = r; break search;
+            }
+        }
+        // In a crowded scene, omit a label rather than cover a part or another value.
+        if (!box) continue;
+        occupied.push(box);
+        const lx = box.x + w / 2, ly = box.y + 9;
+        ctx.strokeStyle = T.borderStrong; ctx.lineWidth = 1;
+        line(M, { x: lx, y: ly });
+        ctx.fillStyle = T.surface;
+        roundRect(box.x, box.y, w, 18, 0);
+        ctx.fill(); ctx.stroke();
         ctx.fillStyle = T.accentDark;
         ctx.fillText(txt, lx, ly);
     }
@@ -605,15 +702,41 @@ function drawHover() {
 function buildDragComp(d) {
     const s = d.start, e = d.cur;
     const dist = Math.hypot(e.x - s.x, e.y - s.y);
-    let bx, by;
-    if (dist < 6) {
-        bx = s.x + DEF[tool].len; by = s.y;
-    } else {
-        const ux = (e.x - s.x) / dist, uy = (e.y - s.y) / dist;
-        const L = tool === 'wire' ? dist : DEF[tool].len;
-        bx = s.x + ux * L; by = s.y + uy * L;
+    if (dist < JOIN) return null;
+    const step = Math.PI / 12;
+    const angle = Math.round(Math.atan2(e.y - s.y, e.x - s.x) / step) * step;
+    const L = tool === 'wire' ? dist : DEF[tool].len;
+    let b = tool === 'wire' ? { ...e } : { x: s.x + Math.cos(angle) * L, y: s.y + Math.sin(angle) * L };
+    // An insertion follows the existing wire exactly, even on a non-15° wire.
+    if (tool !== 'wire') for (const w of comps) {
+        if (w.type !== 'wire') continue;
+        const start = distToSeg(s.x, s.y, w.a.x, w.a.y, w.b.x, w.b.y);
+        const end = distToSeg(e.x, e.y, w.a.x, w.a.y, w.b.x, w.b.y);
+        if (start.d > 0.01 || end.d >= SPLIT || Math.abs(end.t - start.t) * cLen(w) < JOIN) continue;
+        const direction = Math.sign(end.t - start.t), u = cUnit(w);
+        if ((direction > 0 ? 1 - start.t : start.t) * cLen(w) < L) continue;
+        b = { x: s.x + u.x * L * direction, y: s.y + u.y * L * direction };
+        break;
     }
-    return makeComp(tool, s.x, s.y, bx, by);
+    return { type: tool, a: { ...s }, b, ...componentProps(tool) };
+}
+
+function componentProps(type) {
+    if (type === 'battery') return { voltage: DEF.battery.voltage };
+    if (type === 'resistor') return { resistance: DEF.resistor.resistance };
+    if (type === 'bulb') return { resistance: BULB_R };
+    if (type === 'switch') return { closed: true };
+    return {};
+}
+
+function marker(p, root = false) {
+    ctx.save();
+    ctx.fillStyle = T.accent;
+    ctx.strokeStyle = T.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, root ? 7 : 3.5, 0, Math.PI * 2);
+    if (root) ctx.stroke(); else ctx.fill();
+    ctx.restore();
 }
 
 function draw() {
@@ -629,8 +752,15 @@ function draw() {
     drawDots();
     drawValues();
 
-    if (drag && drag.mode === 'draw') drawComp(buildDragComp(drag), true);
-    if (ghost) drawComp(ghost.preview, true);
+    const drawing = drag?.mode === 'draw' ? drag : pendingWire;
+    if (drawing) {
+        const preview = buildDragComp(drawing);
+        if (preview) { drawComp(preview, true); marker(preview.b); }
+        marker(drawing.start, true);
+    } else if (pointer && tool !== 'select' && tool !== 'delete') {
+        marker(snapPoint(pointer.x, pointer.y, null));
+    }
+    if (ghost) { drawComp(ghost.preview, true); marker(ghost.preview.a, true); }
 
     drawHover();
     if (selected && comps.indexOf(selected) >= 0) drawSelection(selected);
@@ -648,6 +778,7 @@ const toolbox = document.getElementById('tools');
 const toolButtons = toolbox.querySelectorAll('button');
 
 function setTool(t) {
+    if (tool !== t) { drag = null; pendingWire = null; ghost = null; }
     tool = t;
     toolbox.value = t;
     toolButtons.forEach(b => {
@@ -662,12 +793,12 @@ function updateHint() {
     const hint = document.getElementById('hint');
     const msgs = {
         select: 'Click a part to edit its value, or drag it to move. Drag a wire end dot to reconnect it.',
-        wire: 'Drag anywhere on the board to draw a wire. Its ends snap onto nearby parts or wires to connect.',
+        wire: 'Drag, or click a start and then an end, to draw a wire. Escape cancels. Ends snap to parts and wires.',
         battery: 'Drag on the board to place a battery. The + end is where you start the drag.',
         bulb: 'Drag on the board to place a bulb.',
         resistor: 'Drag on the board to place a resistor.',
         switch: 'Drag on the board to place a switch, then click it to open or close.',
-        delete: 'Click a part on the board to remove it.'
+        delete: 'Click or drag across parts to erase them. Undo restores the whole stroke.'
     };
     hint.textContent = msgs[tool] || '';
 }
@@ -697,12 +828,16 @@ function applySelected(raw, syncNum, syncRange) {
 }
 selRange.addEventListener('input', () => applySelected(selRange.value, true, false));
 selNum.addEventListener('input', () => applySelected(selNum.value, false, true));
-selNum.addEventListener('change', () => applySelected(selNum.value, true, true));
+selNum.addEventListener('change', () => { applySelected(selNum.value, true, true); commit(); });
+selRange.addEventListener('change', commit);
+selNum.addEventListener('blur', commit);
+selRange.addEventListener('blur', commit);
 selToggle.addEventListener('click', () => {
     if (!selected || selected.type !== 'switch') return;
     selected.closed = !selected.closed;
     dirty = true;
     updateSelectedPanel();
+    commit();
 });
 
 function updateSelectedPanel() {
@@ -731,6 +866,8 @@ function updateSelectedPanel() {
         selEdit = { min, max, set };
         for (const el of [selRange, selNum]) { el.min = min; el.max = max; el.step = step; el.value = get(); }
         selNum.setAttribute('aria-label', name + ' (' + unit + ')');
+        selNumField.querySelector('label').textContent = name + ' (' + unit + ')';
+        selRangeRow.querySelector('label').textContent = name + ' (' + unit + ')';
         selRangeRow.hidden = selNumField.hidden = false;
         return;
     }
@@ -823,6 +960,7 @@ function clearAll() {
     net = null;
     drag = null;
     ghost = null;
+    pendingWire = hoverEp = pointer = null;
     updateSelectedPanel();
     dirty = true;
 }
@@ -877,9 +1015,15 @@ canvas.addEventListener('pointerdown', (e) => {
     const p = toCanvas(e);
     canvas.setPointerCapture(e.pointerId);
 
+    commit();
     if (tool === 'delete') {
-        const c = compAt(p.x, p.y);
-        if (c) removeComp(c);
+        drag = { mode: 'erase', cur: p };
+        eraseBetween(p, p);
+        return;
+    }
+    if (pendingWire) {
+        drag = { ...pendingWire, cur: snapPoint(p.x, p.y, null), finishing: true };
+        pendingWire = null;
         return;
     }
 
@@ -901,8 +1045,9 @@ canvas.addEventListener('pointerdown', (e) => {
         const q = ep.comp[ep.end];
         drag = { mode: 'draw', start: { x: q.x, y: q.y }, cur: { x: q.x, y: q.y }, moved: false, anchored: true };
     } else {
-        // The wire tool draws branches from wire bodies; Select moves them.
-        const c = tool === 'wire' ? null : compAt(p.x, p.y);
+        // Placement tools insert into wires; Select moves wire bodies.
+        const hit = compAt(p.x, p.y);
+        const c = hit?.type === 'wire' || tool === 'wire' ? null : hit;
         if (c) { drag = startMove(c, p); select(c); }
         else {
             const s = snapPoint(p.x, p.y, null);
@@ -913,8 +1058,15 @@ canvas.addEventListener('pointerdown', (e) => {
 
 canvas.addEventListener('pointermove', (e) => {
     const p = toCanvas(e);
+    pointer = p;
+    if (pendingWire) pendingWire.cur = snapPoint(p.x, p.y, null);
 
     if (drag) {
+        if (drag.mode === 'erase') {
+            eraseBetween(drag.cur, p);
+            drag.cur = p;
+            return;
+        }
         if (drag.mode === 'endpoint') {
             let np = snapPoint(p.x, p.y, drag.comp);
             const other = drag.end === 'a' ? drag.comp.b : drag.comp.a;
@@ -948,7 +1100,7 @@ canvas.addEventListener('pointermove', (e) => {
         }
         if (drag.mode === 'draw') {
             drag.cur = tool === 'wire' ? snapPoint(p.x, p.y, null) : { x: p.x, y: p.y };
-            drag.moved = true;
+            if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) >= JOIN) drag.moved = true;
             return;
         }
     }
@@ -964,34 +1116,43 @@ function endDrag() {
     const d = drag;
     drag = null;
     if (d.mode === 'draw') {
-        const c = (!d.moved && !d.anchored) ? defaultComp(tool, d.start.x, d.start.y) : buildDragComp(d);
-        comps.push(c);
-        settleSnap(c);
-        select(c);
-        splitWires();
-        dirty = true;
+        if (tool === 'wire' && !d.moved && !d.finishing) {
+            pendingWire = d;
+            return;
+        }
+        const c = !d.moved && !d.finishing && tool !== 'wire'
+            ? defaultComp(tool, d.start.x + DEF[tool].len / 2, d.start.y) : buildDragComp(d);
+        if (c) place(c);
     } else if (d.mode === 'move') {
         if (!d.moved) {
             if (d.comp.type === 'switch') d.comp.closed = !d.comp.closed;
             select(d.comp);
         } else {
+            insertIntoWire(d.comp);
             splitWires();
         }
+        updateSelectedPanel();
         dirty = true;
     } else if (d.mode === 'endpoint') {
         splitWires();
         dirty = true;
     }
+    commit();
 }
 
 canvas.addEventListener('pointerup', endDrag);
-canvas.addEventListener('pointercancel', () => { drag = null; canvas.style.cursor = 'crosshair'; });
+canvas.addEventListener('pointerleave', () => { pointer = null; hoverEp = null; });
+canvas.addEventListener('pointercancel', () => {
+    drag = pendingWire = null;
+    commit();
+    canvas.style.cursor = 'crosshair';
+});
 
 canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     const p = toCanvas(e);
     const c = compAt(p.x, p.y);
-    if (c) removeComp(c);
+    if (c) { removeComp(c); commit(); }
 });
 
 // Double-click a part to jump straight to its value box.
@@ -1010,6 +1171,7 @@ canvas.addEventListener('dblclick', (e) => {
 let toolDrag = null;
 
 toolButtons.forEach(btn => {
+    btn.addEventListener('click', () => setTool(btn.dataset.value));
     btn.addEventListener('pointerdown', (ev) => {
         ev.preventDefault();
         const t = btn.dataset.value;
@@ -1027,7 +1189,22 @@ window.addEventListener('pointermove', (ev) => {
     const r = canvas.getBoundingClientRect();
     if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
         const p = { x: (ev.clientX - r.left) * (W / r.width), y: (ev.clientY - r.top) * (H / r.height) };
-        ghost = { preview: defaultComp(toolDrag.type, snapGrid(p.x), snapGrid(p.y)) };
+        const type = toolDrag.type;
+        const preview = { type, a: { x: snapGrid(p.x) - DEF[type].len / 2, y: snapGrid(p.y) },
+            b: { x: snapGrid(p.x) + DEF[type].len / 2, y: snapGrid(p.y) }, ...componentProps(type) };
+        // Dropping onto a wire uses its direction and preserves both outer ends.
+        if (type !== 'wire') for (const w of comps) {
+            if (w.type !== 'wire' || cLen(w) < DEF[type].len) continue;
+            const r = distToSeg(p.x, p.y, w.a.x, w.a.y, w.b.x, w.b.y);
+            const half = DEF[type].len / 2;
+            if (r.d >= SPLIT || r.t * cLen(w) < half || (1 - r.t) * cLen(w) < half) continue;
+            const u = cUnit(w);
+            preview.a = { x: r.x - u.x * half, y: r.y - u.y * half };
+            preview.b = { x: r.x + u.x * half, y: r.y + u.y * half };
+            break;
+        }
+        settleSnap(preview);
+        ghost = { preview };
     } else {
         ghost = null;
     }
@@ -1040,11 +1217,7 @@ window.addEventListener('pointerup', () => {
     if (td.active && ghost) {
         const c = ghost.preview;
         ghost = null;
-        comps.push(c);
-        settleSnap(c);
-        select(c);
-        splitWires();
-        dirty = true;
+        place(c);
     } else {
         ghost = null;
     }
@@ -1053,9 +1226,17 @@ window.addEventListener('pointerup', () => {
 // ═══════════════════════════════════════════════
 //  CONTROLS
 // ═══════════════════════════════════════════════
-document.getElementById('presetSeries').addEventListener('click', presetSeries);
-document.getElementById('presetParallel').addEventListener('click', presetParallel);
-document.getElementById('clearBtn').addEventListener('click', () => { clearAll(); setTool('select'); });
+document.getElementById('presetSeries').addEventListener('click', () => { presetSeries(); commit(); });
+document.getElementById('presetParallel').addEventListener('click', () => { presetParallel(); commit(); });
+document.getElementById('clearBtn').addEventListener('click', () => { clearAll(); setTool('select'); commit(); });
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { drag = pendingWire = ghost = null; commit(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault(); undo();
+    }
+});
+window.addEventListener('pointercancel', () => { toolDrag = ghost = null; });
 document.getElementById('showCurrent').addEventListener('change', (e) => { showCurrent = e.target.checked; });
 document.getElementById('showValues').addEventListener('change', (e) => { showValues = e.target.checked; });
 
@@ -1070,6 +1251,7 @@ function tick(dt) {
 }
 
 presetSeries();
+commit();
 setTool('select');
 
 // ═══ Animation (SimLib) ═══

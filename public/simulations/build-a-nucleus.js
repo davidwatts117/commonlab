@@ -549,6 +549,31 @@ const DECAY_INFO = {
 // theme-exempt-end
 
 let chartMode = 'half';
+let matchingElements = null;
+const elementSearch = document.getElementById('elementSearch');
+const elementSearchStatus = document.getElementById('elementSearchStatus');
+elementSearch.setAttribute('aria-controls', chartC.id);
+
+function searchElements() {
+    const query = elementSearch.value.trim().toLowerCase();
+    // An exact symbol takes precedence over partial element names (e.g. C).
+    const symbolZ = EL_SYMS.findIndex(sym => sym.toLowerCase() === query);
+    const matches = [];
+    for (let z=1; z<EL_NAMES.length; z++) {
+        if (symbolZ > 0 ? z === symbolZ : /^\d+$/.test(query) ? z === Number(query) : EL_NAMES[z].toLowerCase().includes(query)) matches.push(z);
+    }
+    matchingElements = query ? new Set(matches) : null;
+    elementSearchStatus.textContent = !query ? 'All elements shown.' : matches.length
+        ? 'Matching elements: ' + matches.map(z => EL_NAMES[z]+' ('+EL_SYMS[z]+', Z='+z+')').join(', ') + '. Nonmatching cells are dimmed.'
+        : 'No matching elements. Clear search to show all nuclides.';
+    drawChart();
+}
+elementSearch.addEventListener('input', searchElements);
+document.getElementById('clearElementSearch').addEventListener('click', () => {
+    elementSearch.value = '';
+    searchElements();
+    elementSearch.focus();
+});
 let ALL_NUCLIDES = [];
 let STABLE_BAND = null;
 
@@ -652,6 +677,18 @@ function drawChart() {
         chartCtx.beginPath(); chartCtx.moveTo(pad.l,y); chartCtx.lineTo(pad.l+pw,y); chartCtx.stroke();
     }
 
+    // Highlight matching element columns without changing the selected isotope.
+    if (matchingElements) {
+        for (const z of matchingElements) {
+            const x=pad.l+z*cellW;
+            chartCtx.fillStyle=T.accentSoft;
+            chartCtx.fillRect(x,pad.t,cellW,ph);
+            chartCtx.strokeStyle=T.accent;
+            chartCtx.lineWidth=1;
+            chartCtx.strokeRect(x,pad.t,cellW,ph);
+        }
+    }
+
     // Draw every known nuclide (all the gaps are filled).
     const w=Math.max(1,cellW), h=Math.max(1,cellH);
     for (const c of ALL_NUCLIDES) {
@@ -659,9 +696,11 @@ function drawChart() {
         const col=colorFor(c.z,c.n);
         if (!col) continue;
         const x=pad.l+c.z*cellW, y=pad.t+(maxN-c.n)*cellH;
+        chartCtx.globalAlpha=matchingElements && !matchingElements.has(c.z) ? 0.12 : 1;
         chartCtx.fillStyle=col;
         chartCtx.fillRect(x,y,w,h);
     }
+    chartCtx.globalAlpha=1;
 
     // Current selection
     if (Z>0 && Z<=118 && N<=179) {

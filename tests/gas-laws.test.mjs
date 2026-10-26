@@ -8,8 +8,11 @@ import { makeDocument } from './dom-shim.mjs';
 const definition = JSON.parse(readFileSync(new URL('../public/simulations/catalog.json', import.meta.url), 'utf8')).simulations.find(sim => sim.id === 'gas-laws');
 const source = readFileSync(new URL('../public/simulations/gas-laws.js', import.meta.url), 'utf8');
 
+test.after(() => { delete globalThis.document; });
+
 function setup() {
   const document = makeDocument();
+  globalThis.document = document;
   const root = document.createElement('div'); root.ownerDocument = document;
   const ui = renderSimulation(root, definition);
   const labels = [];

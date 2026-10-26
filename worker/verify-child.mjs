@@ -8,19 +8,23 @@ for (const name of [
   'main.css',
   'simulation.css',
   'simulation-ui.mjs',
+  'simulation-math.mjs',
+  'vendor/temml/temml.mjs',
+  'vendor/temml/Temml-Local.css',
+  'vendor/temml/Temml.woff2',
   'simulation-schema.mjs',
   'library.js',
 ])
   assets.set('/' + name, {
     path: `${publicRoot}/${name}`,
-    type: name.endsWith('.css') ? 'text/css' : 'text/javascript',
+    type: { css: 'text/css', woff2: 'font/woff2' }[name.split('.').pop()] || 'text/javascript',
   });
 assets.set('/verify-page.mjs', {
   path: fileURLToPath(new URL('./verify-page.mjs', import.meta.url)),
   type: 'text/javascript',
 });
 const CSP =
-  "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'";
+  "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data:; font-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'";
 const frame = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${CSP}"><link rel="stylesheet" href="/main.css"><link rel="stylesheet" href="/simulation.css"></head><body class="paper"><div id="sandbox-root"></div><script src="/library.js"></script><script type="module" src="/verify-page.mjs"></script></body></html>`;
 const parent =
   '<!doctype html><html><head><style>html,body,iframe{margin:0;width:100%;height:100%;border:0}</style></head><body><iframe sandbox="allow-scripts" src="/frame" title="Verification"></iframe></body></html>';

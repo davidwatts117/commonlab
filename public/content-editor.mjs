@@ -82,6 +82,7 @@ export function contentEditor(root, apply, reportError) {
       try { editableShape(def); }
       catch (error) { root.append(el('p', error.message)); reportError(error.message); return; }
       const cards = el('section'); cards.append(el('h3', 'Explanation cards'));
+      cards.append(el('p', String.raw`Use LaTeX in $$ ... $$ for display equations or \( ... \) for inline math in explanations. For example: $$\frac{V_1}{T_1} = \frac{V_2}{T_2}$$`));
       if (!def.cards.length) cards.append(el('p', 'Use “Add explanation card” above to start.'));
       def.cards.forEach((card, index) => {
         const box = disclosure(cards, `Explanation ${index + 1} · ${(card.title || 'Untitled').slice(0, 100)}`, `card-${index}`);

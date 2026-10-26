@@ -1,224 +1,227 @@
+# Issue #44 — Search elements in the nuclide chart
+
+Added an element search to Build a Nucleus’s Chart of Nuclides.
+
+- Search case-insensitively by full/partial element name, exact symbol, or atomic number; ignore surrounding whitespace. Exact symbols take precedence over partial names.
+- Highlight matching element columns and dim other nuclides without changing the selected nucleus or scientific colour encoding. Both colour modes and click-to-select remain usable.
+- Provide labelled input, live matching/no-match feedback, and a Clear search button that restores the chart and returns focus to the input.
+- Extend the shared closed component vocabulary with a small `search` primitive, including browser/server schema validation, scoped labels/status, shared styling, and authoring documentation. No dependencies or nuclear-data changes.
+- Add Rust/Node schema and renderer regressions plus desktop/phone-width browser tests covering matching, real chart pixels, no matches, whitespace, clearing, selection preservation, colour modes, fullscreen, and isotope selection.
+
+## Verification
+
+All requested checks passed on the final code:
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` — 35 tests
+- `npm test` — 65 tests
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 34 tests including suite parents
+- `git diff --check`
+
+Cargo required adding `/home/agent/.cargo/bin` to `PATH`. Browser regression comparisons wait for fonts and round phone-sized chart clicks to the nearest screen pixel; assertions were not weakened.
+
+## Browser evidence and scope
+
+Used the browser skill with the running local Axum app and an isolated temporary database. Exercised search, no-match feedback, clearing, and both colour modes in Chromium; captured and inspected actual changed-feature PNGs:
+- [Desktop search](nuclide-search-desktop.png)
+- [Phone-width search](nuclide-search-mobile.png)
+
+The supplied issue has an empty description and no comments. Interpreted “search for elements” as finding/highlighting isotope columns, not automatically choosing an isotope or adding isotope-notation search. Existing English element names and dataset/chart limits are unchanged. Browser checks/screenshots use the existing deterministic offline nuclear-data fallback; live IAEA availability and a full screen-reader/physical-touch audit are not covered. No outstanding check failures.
+
+Earlier task summaries below are retained as historical context; the two `nuclide-search-*.png` files are the evidence for this issue.
+
+---
+
 # Issue #15: simulations when leaving a tab
+# Merge preparation — 2026-10-25
 
-Fixed the shared animation loop: returning from a background tab no longer sends the whole elapsed absence into physics, which could destabilize the pendulum or skip simulation events.
+Merged `origin/main` into the math-rendering branch, preserving both artifact histories and all independent math, wide-layout, certificate, and circuit browser regressions. Retained the worker startup fix that allowlists the local math modules, stylesheet, and font in the verification sandbox.
 
-## Changes
-- Suspend animation/physics/guided ticks while the document is hidden; resume existing state with a fresh timestamp, preserving user Pause settings.
-- Cap visible frame gaps at 50 ms before speed scaling, discarding missed time rather than catching up.
-- Cancel pending frames on stop and prevent duplicate loops across stop/start, reset, and visibility changes. Remove visibility listeners on stop.
-- Update lifecycle documentation and the shell's library cache version. No per-engine physics or layout changes.
+Validation of the combined tree:
+- `cargo fmt --check` and `cargo clippy --all-targets --locked -- -D warnings` passed.
+- `cargo test --locked`: 34 passed.
+- `npm test`: 77 passed.
+- `npm run test:browser`: 37 passed, including suite parents.
+- `PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" CL_TEST_BROWSER=1 npm --prefix worker test`: 76 passed; the read-only-image-only test was skipped locally.
+- An isolated read-only worker container with the merged public assets passed all 18 verification, supervisor, and storage tests, including the missing-checkpoint-mount case.
+- `git diff --check` passed. The initial host worker-browser run needed the explicit browser-cache path because verification sets `HOME=/tmp`; the corrected invocation passed without code changes.
+
+Historical implementation summaries and evidence follow unchanged.
+
+---
+
+# Issue #38 — Math and formulas render correctly
+
+## Fix
+- Added locally vendored Temml 0.14.0 (MIT) to render delimited LaTeX as semantic MathML in shared explanation cards and information dialogs, including authoring/review previews.
+- Converted the built-in gas-law, pendulum, circuit and projectile equations to LaTeX, including proper fractions, roots, subscripts and superscripts. Corrected the gas-constant unit notation.
+- Added authoring guidance and a rendered default formula. Existing unmarked prose/formulas and single-dollar currency remain literal; use `\(...\)` inline or `$$...$$` / `\[...\]` for display equations.
+- Disabled trusted commands (including links/images), bounded expansion/dimensions, and retained literal source on invalid math. Wide equations scroll inside their containers rather than overflowing mobile pages. No CDN or build step is needed.
 
 ## Verification
 All requested checks passed:
 - `cargo fmt --check`
 - `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 tests passed.
-- `npm test` — 52 tests passed, including five new lifecycle regressions (all failed before the fix).
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 24 tests passed, including a new pendulum hidden-minute/resume/pause regression.
+- `cargo test --locked` — 34 tests passed
+- `npm test` — 62 tests passed
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 33 tests passed
 
-Used the installed Rust tools by adding `/home/agent/.cargo/bin` to PATH.
+Regression tests cover semantic equation structure, built-in formulas/dialogs, namespaced inert previews, literal HTML/currency, malformed and unsafe expressions, bounded macros, macro isolation, mobile overflow, and dialog focus restoration. Rust commands required adding the installed `/home/agent/.cargo/bin` to PATH.
 
-## Browser evidence and caveats
-Exercised the running Axum app in headed Chrome with a real 60-second wait, checked unchanged hidden state, stable resume, and preserved Pause/Resume behavior, with no page errors. Screenshot: [pendulum after visibility resume](pendulum-after-visibility-resume.png).
+Exercised the running app in headed Chromium using the browser skill: inspected desktop/mobile gas-law formulas, opened/closed Charles's-law help, changed temperature (readout became 400 K), and edited/rendered an equation through the visual authoring UI. No page errors occurred. Representative PNGs:
+- `math-gas-laws-desktop.png`
+- `math-gas-laws-mobile.png`
+- `math-gas-laws-dialog.png`
+- `math-authoring-preview-mobile.png`
 
-Chrome automation kept native background tabs marked visible, so both browser verification paths explicitly dispatched visibility signals; the automated regression uses a controlled clock. The PNG captures the actual running pendulum and graphs after resuming, not a mock rendering.
+## Scope and caveats
+Issue description reviewed: pati08 (COLLABORATOR), created/updated 2026-10-24 16:04:33 UTC. GitHub confirmed there are no comments or maintainer clarifications. No repository AGENTS.md was present.
 
-The issue has no body. Assumed educational simulations should preserve their state while hidden, not catch up to wall-clock time. Very slow visible rendering intentionally slows simulated time to keep steps bounded; this is not a fixed-timestep physics rewrite.
+Rendering is deliberately opt-in via delimiters so prose-like formulas and existing submissions are not reinterpreted. Canvas labels, live numeric readouts, and assessment text are unchanged. Native MathML requires a modern browser; full assistive-technology and cross-browser audits were not performed. No physics, authentication, persistence or server behavior changed.
 
-# Issue #17 — circuit wire placement and connections
+---
 
-Fixed wire drawing on an empty board and connections between wires.
+# Issue #2 — Finish circuits
 
-- `public/simulations/circuits.js`: construct the finished component from the saved drag state instead of reading cleared state; let the Wire tool start branches on existing wires; snap endpoints onto wire interiors before the existing junction-splitting step. Select-tool movement is preserved, and the wire hint describes the behavior.
-- `tests/browser/simulations.test.mjs`: desktop/phone-sized regression coverage for free-space drawing, endpoint connections, slightly off-wire junction snapping, dragged parts, click placement, and Select-tool movement. Electrical assertions verify an open circuit, a closed 100-ohm circuit, and a second parallel branch. The regression failed on the original code.
+Implemented the circuit-editor improvements listed by pati08 (COLLABORATOR, comment created/updated 2026-10-25T00:24:49Z). The issue description is empty; the supplied thread contains one comment and no conflicting clarifications.
 
-## Validation
-# Issue #23: separate original and community simulations
-
-The homepage now has distinct **Original simulations** and **Community simulations** groups, accessible headings, and explicit empty states. Existing launch links, subject labels, and lesson badges are preserved.
-
-- Axum adds server-owned `communitySimulationIds` catalog metadata from public submission snapshots. Private drafts never appear; withdrawal removes the community entry. Published variants remain community simulations even when reusing an original engine.
-- Browser validation checks provenance IDs without changing the closed submission-definition schema. Static repository catalogs can omit the metadata and continue displaying their entries as originals.
-- Regression coverage checks publication/withdrawal, approved snapshots across edits/restarts, malformed provenance, static fallback, grouping independent of catalog order, engine reuse, and desktop/mobile layout.
+## Changes
+- Added Undo for placement, movement/reconnection, numeric edits, switches, deletion, clearing and presets. An eraser stroke is one undoable action; Ctrl/Cmd+Z is canvas-scoped.
+- Fixed-size parts can replace a span of existing wire without leaving an electrical bypass. Toolbox drops follow the wire direction and preserve its outer connections.
+- New fixed-size placement snaps to 15° increments, hides projections near the root, and shows root/target markers. Previews no longer allocate component IDs.
+- Wires support dragging or two clicks, with Escape/tool-switch cancellation. Erasing sweeps between pointer events.
+- Value labels avoid components and each other, with opaque backing and leader lines. Numeric editor labels visibly show V or Ω. Updated in-app instructions.
+- Changes are limited to the circuit module/catalog entry, regression tests and these artifacts; no dependencies or solver changes.
 
 ## Verification
+All requested checks passed (Rust tools required `/home/agent/.cargo/bin` on PATH):
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` — 34 tests
+- `npm test` — 64 tests, including seven new circuit regressions
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 31 tests
+- `git diff --check`
 
+Regressions cover two-click wires/cancellation, angle and length constraints, preview stability, insertion topology and solved current, diagonal/toolbox insertion, swept erasing, undo coverage, visible units and label geometry. Existing desktop/phone circuit tests retain open/closed/parallel electrical checks and now exercise insertion, erasing, numeric edits and keyboard undo.
+
+## Browser evidence
+Used the browser skill with the running Axum app, an isolated temporary database and headed Chrome. Insertion changed the displayed series current from 0.29 A to 0.07 A; Undo restored 0.29 A. Actual public-app PNGs:
+- [Insertion, labels and units](circuits-insertion-values.png)
+- [15° preview and root/target markers](circuits-angle-preview.png)
+- [Pending two-click wire](circuits-two-click-wire.png)
+- [Phone layout after insertion](circuits-mobile-insertion.png)
+
+## Defaults and caveats
+Undo retains up to 100 edits in memory for this page session; redo/persistence were not requested. Insertion requires enough room within one uninterrupted wire segment; existing wire angles take precedence over 15° snapping when inserting. Extremely crowded labels are omitted rather than obscuring circuitry. Phone-size automation uses pointer input, not a comprehensive physical-touch or accessibility audit. No known failing checks.
+Screenshots use only the public homepage and an isolated temporary database. Email delivery and external mail-client behavior were not tested; the exact `mailto:` destination is verified without sending email. No blocking ambiguities.
+
+# PR #26 feedback follow-up
+
+## Feedback addressed
+
+Addressed pati08's [comment 6389316398](https://github.com/davidwatts117/commonlab/pull/26#issuecomment-6389316398): the exploration indicator previously appeared merely by loading the page; add time spent. Read the supplied PR description and full conversation; there were no review summaries or inline comments. No `AGENTS.md` was present in the worktree or ancestor directories.
+
+## Changes
+
+- `public/completion-certificate.mjs`: exploration now explicitly says **not recorded** until a trusted interaction with a simulation control or canvas. Certificate form entry, synthetic engine events, guided navigation, and assessment controls do not trigger it.
+- Add local minutes/seconds spent exploring, measured with a monotonic clock. Count visible time following interaction, cap each idle interval at 60 seconds, and suspend on hidden tabs/pagehide (including Back/Forward cache). Another simulation interaction resumes counting. Remove listeners on teardown.
+- `public/simulation-page.mjs`: pass the simulation root to scope interaction tracking.
+- `README.md` and certificate copy explain the estimate, idle cutoff, visit-only lifetime, and regeneration to update the snapshot. Names/time are not persisted or sent anywhere. Existing guided/assessment behavior and print/PDF support are preserved.
+- Regression coverage in `tests/completion-certificate.test.mjs` and `tests/browser/simulations.test.mjs`: no automatic credit, trusted keyboard/canvas activity, ignored synthetic and learning events, timing/idle limits, hidden tabs, bfcache suspension, cleanup, reload reset, privacy, mobile layout, and single-page PDF output. Existing assertions retained and updated only for the changed exploration wording.
+
+## Validation
+
+All requested checks passed on the final code:
+
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` (32 tests)
+- `npm test` (53 tests)
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` (25 tests including suite parents)
+- `git diff --check`
+
+Initial Rust/browser invocations could not locate Cargo; reran successfully after adding `/home/agent/.cargo/bin` to `PATH`.
+
+## Visual evidence
+
+Actual local Axum app screenshots from Chromium, using only the fictitious name “Sample Student” and an isolated temporary database:
+
+- `desktop-no-interaction.png`: explicit unrecorded exploration state.
+- `desktop-print-exploration.png`: print rendering with interaction-gated time spent.
+- `mobile-exploration.png`: 390px-wide Gas Laws certificate after a touchscreen canvas interaction.
+
+## Unaddressed items / caveats
+
+No supplied feedback was left unaddressed. Time is an estimate, not evidence of attention or mastery; the disclosed 60-second idle cap can undercount passive observation. No arbitrary minimum study duration or certificate eligibility gate was introduced, since the feedback requested interaction and time reporting, not a new qualification policy. Reload resets tracking; already generated certificates remain snapshots until regenerated.
+
+No commits, pushes, branch/remote changes, or PR/review actions were performed. Files and artifacts are left for controller publication on the existing feature branch.
+
+---
+
+# Latest follow-up: distinguish description from participation
+
+## Feedback addressed
+
+Addressed pati08's latest [comment 6390039011](https://github.com/davidwatts117/commonlab/pull/26#issuecomment-6390039011), requesting a clearer divide between the simulation/activity description and the list of things the student did.
+
+Read the supplied PR description and entire conversation; no review summaries or inline comments were supplied. Inspected the existing PR diff, implementation, and tests. No `AGENTS.md` exists in the worktree or ancestor directories. No blocking clarification was needed.
+
+## Focused changes
+
+- `public/completion-certificate.mjs`: separate named sections and headings for **About this simulation** (title and description) and **Recorded participation** (existing activity list). Remove the now-unnecessary connecting phrase “For engaging in”. Render all content as literal text, as before.
+- `public/completion-certificate.css`: left-align section content, add spacing and a solid divider above the participation record. The divider remains visible in monochrome print/PDF without relying on background graphics. Keep the centered certificate header, recipient, and footer.
+- `public/simulation.html`: bump the certificate stylesheet version.
+- Regression tests in `tests/completion-certificate.test.mjs` verify section labels, headings, content separation/order, and regeneration without duplicate sections. Browser assertions verify accessible sections, actual spacing/divider on desktop, mobile, and print, while retaining the existing single-page A4 PDF, privacy, timing, and activity assertions. No existing tests were weakened.
+
+## Validation
+
+All requested checks passed on the final code, with `/home/agent/.cargo/bin` added to `PATH`:
+
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` (32 tests)
+- `npm test` (54 tests)
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` (25 tests including suite parents)
+- `git diff --check`
+
+The first unit-test run exposed a limitation of the existing DOM shim: tag selectors do not handle digits in heading names. The new test now locates headings by their actual `tagName`; real-browser tests independently verify heading roles and levels. The shared shim and existing assertions were not changed.
+
+## Current visual evidence
+
+Captured and inspected actual local Axum app PNGs in Chromium, using an isolated temporary database and only the fictitious name “Sample Student”:
+
+- `certificate-sections-desktop.png`: Pendulum description clearly separated from exploration, completed guided activity, and an in-progress check.
+- `certificate-sections-print.png`: the same certificate under print media, with the divider intact.
+- `certificate-sections-mobile.png`: Gas Laws free-exploration certificate at a 390px phone viewport after a touchscreen interaction.
+
+The earlier screenshots and summary above are preserved as historical evidence from the prior follow-up; the `certificate-sections-*.png` files show the current layout.
+
+## Unaddressed items / caveats
+
+No supplied feedback is left unaddressed. The earlier [comment 6389316398](https://github.com/davidwatts117/commonlab/pull/26#issuecomment-6389316398) and follow-up [6389465065](https://github.com/davidwatts117/commonlab/pull/26#issuecomment-6389465065) are already reflected in the existing interaction-gated exploration/time implementation; no redundant tracking changes or new eligibility policy were introduced. Existing estimate, idle-cap, snapshot, reload, guided, and assessment behavior remains unchanged.
+
+No commits, pushes, branch/remote changes, or PR/review actions were performed. Changes and artifacts remain in the worktree for controller publication on the existing feature branch.
+
+# Issue #13 — Use horizontal room better
+
+Implemented the clarified scope: shared simulation pages only, rearranging graphs and explanations to reduce scrolling rather than merely enlarging the canvas.
+
+## Changes
+- Live workspaces use the available page width with existing gutters.
+- From 1280px, graphs sit beside the scene; controls occupy a readable 420px column with compact spacing.
+- From 1800px, explanations start beside the workspace; from 2200px, reference cards use two columns.
+- Empty graph/reference columns are omitted. Narrow-screen reading order, fullscreen views, component bindings, and the sticky action dock are preserved. Authoring previews do not adopt the new wide-page columns.
+- Documented the responsive layout in `docs/simulation-authoring.md`.
+
+## Validation
 All requested checks passed:
 - `cargo fmt --check`
 - `cargo clippy --all-targets --locked -- -D warnings`
 - `cargo test --locked` — 32 tests
 - `npm test` — 48 tests
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 24 tests
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 25 tests
 
-Rust tools required adding `/home/agent/.cargo/bin` to the command PATH; no repository configuration was changed.
-
-## Browser artifacts
-
-Using the browser skill and a running Axum app with a disposable local database, published a clean installed-engine fixture, checked both groups, launched the community lab, and exercised its length control at desktop and mobile widths. Screenshots contain only public simulation content:
-- `catalog-desktop.png` — complete populated catalog with both groups.
-- `catalog-mobile.png` — community group and launch card on a narrow viewport.
-
-## Scope and assumptions
-
-“Original” means repository-authored; “community” means a maintainer-published submission, regardless of engine or generation method. Separate groups were chosen rather than adding tabs, new pages, or filters. No database migration is needed. Deploy the updated server and frontend together; static catalogs without provenance are treated as originals. No known outstanding failures.
-
-# Issue #16: Text occasionally leaks outside of boxes
-
-Fixed reproduced overflow in the shared simulation controls: Build a Nucleus's “Carbon” value crossed a readout border at 390px, and neutron button labels crossed their borders at 320px.
-
-- Increased the shared readout grid's minimum cell width from 90px to 120px, allowing a single cell to shrink for narrower containers.
-- Allowed readout content and simulation button labels to wrap rather than overflow or be clipped. No text or functionality was removed.
-- Added browser regression coverage measuring actual text rectangles against readout/button borders, before and after changing Carbon to Nitrogen, at 320, 390, 900 and 1280px. Page overflow and JavaScript errors are checked too.
-
-## Verification
-
-All requested checks passed:
-
-- `cargo fmt --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 passed
-- `npm test` — 47 passed
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 24 passed
-
-Rust commands used `/home/agent/.cargo/bin` on PATH. No dependency changes were needed.
-
-## Browser evidence
-
-Actual Chromium captures of the running, unmodified app using an isolated temporary database:
-
-- `circuit-wire-open-space.png`: standalone wire drawn on an empty board.
-- `circuit-wire-junctions.png`: wire-to-wire connections and two mid-wire junctions; the parallel circuit carries 0.18 A.
-
-Scope/assumptions: connections remain endpoint-based, including endpoints placed on wire interiors; mere interior crossings do not create junctions. Phone-size tests exercise pointer interactions, not a comprehensive physical-touch/accessibility audit. No known remaining blockers for this issue.
-- `cargo test --locked`
-- `npm test` (47 tests)
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` (24 tests)
-
-Rust required adding `/home/agent/.cargo/bin` to this shell's PATH. Original CSS was separately replayed in Chromium to confirm the text-border crossings.
-
-## Screenshots
-
-Captured from the running local Axum app with Chromium/Playwright:
-
-- `nucleus-mobile.png`: corrected Carbon readout grid at 390px.
-- `nucleus-narrow.png`: corrected Nitrogen readouts and wrapped stepper labels at 320px, after clicking the proton control.
-
-## Scope and caveats
-
-The issue has a title only; scope is the reproduced readout and button overflow, fixed through shared styles rather than simulation-specific exceptions. At very narrow widths, labels may break within words and readouts use fewer columns to keep all text visible. Nuclear-data requests were blocked during browser verification to use the existing deterministic offline fallback. Canvas-rendered text and unrelated layout changes are outside this focused fix.
-# Issue #24 — Community simulation previews
-
-The homepage only rendered artwork for seven hard-coded built-in IDs, leaving community thumbnails blank. Cards now fall back to trusted physics or chemistry SVG illustrations while preserving existing built-in artwork. Own-property lookup also ensures valid IDs such as `constructor` receive real artwork.
-
-No schema, API, storage, or submission-workflow changes. Previews remain decorative, not engine screenshots: catalog browsing never executes simulation code or accepts contributor image markup. This is the minimal interpretation of the title-only issue; custom image uploads are out of scope. Existing wrapping limitations for unusually long unbroken title tokens are unchanged.
-
-## Regression coverage
-- Desktop/mobile community artwork for both subjects and inherited-property IDs.
-- Existing built-in artwork, literal hostile titles, visible SVG dimensions, no engine requests, and no horizontal overflow for the fixtures.
-- Actual submission → approval → catalog artwork → engine launch → withdrawal flow.
-
-## Verification
-All requested checks passed (Rust tools required adding `/home/agent/.cargo/bin` to `PATH`):
-# Issue #18 — Design the “My submissions” page
-
-Redesigned the existing private dashboard to match CommonLab’s graph-paper palette and shared site styles, without changing backend APIs or review rules.
-
-- Added responsive submission cards, separate revision/live-status badges, update dates, selected-card styling, and a feedback/history panel.
-- Added clear signed-out, first-submission, filtered-empty, loading, and history-error states; retained filters, pagination, edit/live links, and private-content clearing.
-- Improved keyboard selection, focus handling, mobile detail navigation, and long-text wrapping. Titles and feedback remain literal text.
-- Added browser regression coverage for desktop/mobile layout, empty states, pagination, keyboard selection, live older revisions, literal rendering, errors, and session expiry. Existing end-to-end ownership/privacy tests remain intact.
-
-## Verification
-All requested checks pass:
-- `cargo fmt --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 tests
-- `npm test` — 47 tests
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 24 tests
-
-Also exercised the running server with disposable demo submissions and inspected these actual browser PNG captures:
-- `my-submissions-desktop.png` — rejected latest revision, older live revision, feedback and history.
-- `my-submissions-mobile.png` — responsive cards and selected detail.
-- `my-submissions-empty-mobile.png` — filtered-empty guidance.
-- `my-submissions-signed-out.png` — account entry state.
-
-## Scope and caveats
-The issue supplied only a title, so the existing homepage design and documented dashboard behavior were used as the reference. No new search, deletion, notifications, backend behavior, or external frontend dependencies were added. Screenshots contain only locally created demo data; the temporary database was removed. Automated keyboard/mobile checks are not a full screen-reader accessibility audit.
-# Issue #35 — Gas Laws indicators
-
-## Fix
-- The pressure bar was always about 77% full because its maximum was recalculated as `P × 1.3`. It now uses a fixed 0–3000 atm scale, labeled `log(1+P)` with pressure ticks. This keeps changes visible across the built-in controls’ approximately 0.41–2462 atm range; numeric pressure readouts are unchanged.
-- Rebuild particles before updating their count, eliminating the one-input delay after changing moles.
-- Avoid drawing a negative-height thermometer fill at the minimum temperature.
-
-## Regression coverage and audit
-- Four new unit tests cover pressure changes from all three sliders, fixed scale and range endpoints, synchronized readouts/live equation/particle counts, thermometer and particle speed, and piston dragging.
-- Browser regression measures actual pressure-bar pixels for volume, temperature and moles changes, including decreasing pressure and immediate particle-count updates.
-- Reviewed related built-in indicator/control bindings and exercised the existing cross-simulation browser suite; no additional disconnected indicators were identified. This is representative coverage, not a complete scientific or accessibility audit.
-- Confirmed all four new unit tests fail against the original engine and pass with the fix.
-
-## Validation
-All requested checks passed (Cargo required adding `/home/agent/.cargo/bin` to `PATH`):
-- `cargo fmt --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 tests passed
-- `npm test` — 51 tests passed
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 23 tests passed
-
-## Browser evidence
-Exercised the running Axum app in headed Chrome: changed moles/temperature, dragged the piston from 5.0 L to 2.5 L, verified pressure/count, and checked the mobile layout without horizontal overflow or page errors. Screenshots show the actual public simulation:
-- `gas-laws-default.png` — 7.39 atm, 53 particles
-- `gas-laws-high-pressure.png` — 246.17 atm, 525 particles
-- `gas-laws-mobile.png` — high-pressure state at phone width
-
-The fixed scale intentionally uses a nonlinear mapping, explicitly labeled on the canvas. If future control ranges exceed 3000 atm, the gauge range should be revisited. No unrelated simulation engines, server behavior, or dependencies changed.
-# Issue #20: Contributor account creation discovery
-
-Added visible **Create contributor account** and **Sign in** links to the homepage navigation. The creation link opens `/account.html?action=register` with password confirmation, new-password autocomplete, and the Create account button already enabled for registration. Existing account URLs still default to sign-in; unknown action values also safely fall back to sign-in. The existing Action selector and authenticated-session behavior remain intact.
-
-Updated `docs/contributors.md` and added real-browser regression coverage for desktop/mobile discovery, registration defaults, switching modes, unknown actions, existing sessions, and registration/logout/sign-in through the homepage links. The new discovery test failed before the fix because the homepage link was missing.
-
-## Validation
-
-All requested checks passed:
-- `cargo fmt --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 tests passed
-- `npm test` — 47 tests passed
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 24 tests passed
-- `git diff --check`
-
-Browser-skill verification additionally published two synthetic community examples against an isolated temporary Axum/SQLite instance, inspected desktop/mobile rendering, and launched the published simulation successfully. No real accounts or private data were used. Representative actual-app screenshots:
-- `community-previews-desktop.png`
-- `community-previews-mobile.png`
-
-Rust tools required adding `/home/agent/.cargo/bin` to PATH in this environment. Also exercised the running app in headed Chromium at desktop and phone sizes, checked for horizontal overflow, and inspected these actual screenshots (empty account fields; no credentials/private data):
-- [Desktop homepage](homepage-account-desktop.png)
-- [Mobile homepage](homepage-account-mobile.png)
-- [Mobile registration reached from the homepage](registration-mobile.png)
-
-## Scope and caveats
-
-The title-only issue was interpreted as a discoverability problem, not a request to redesign authentication. Changes are limited to navigation, initial form mode, documentation, and tests; account APIs, permissions, password rules, and submission behavior are unchanged. Browsing simulations still requires no account. No blocking ambiguities were found.
-
-# Issue #19 — Official contact address
-
-Updated the homepage footer’s displayed email and `mailto:` destination from `hello@commonlab.org` to **support@common-lab.org**. Repository search found no other public contact email requiring replacement; no unrelated behavior changed.
-
-Added desktop/mobile browser regression coverage for Contact navigation, the exact email text and destination, visibility, and absence of horizontal overflow. Confirmed the regression fails against the original address and passes after the fix.
-
-## Validation
-All requested checks passed:
-- `cargo fmt --check`
-- `cargo clippy --all-targets --locked -- -D warnings`
-- `cargo test --locked` — 32 tests
-- `npm test` — 51 tests
-- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 27 tests
-- `git diff --check`
-
-Cargo required adding `/home/agent/.cargo/bin` to `PATH`. Exercised the running Axum app using the browser skill with Chrome at desktop/mobile widths; inspected actual footer screenshots:
-- [Desktop contact](contact-desktop.png)
-- [Mobile contact](contact-mobile.png)
+Used the existing Rust installation via `$HOME/.cargo/bin` on PATH. Added regression tests for graph grouping/slot order and all seven simulations across eleven viewport widths (390–2560px), including breakpoint boundaries, overflow, canvas proportions, dock sizing, reference columns, interactions, and fullscreen tabs. Confirmed the baseline layout fails the new side-by-side placement expectations by serving the original assets through browser request interception. No existing tests were weakened.
 
 Screenshots use only the public homepage and an isolated temporary database. Email delivery and external mail-client behavior were not tested; the exact `mailto:` destination is verified without sending email. No blocking ambiguities.
 
@@ -247,3 +250,10 @@ Used the browser skill with the running Axum app, a disposable local database, a
 - [Mobile illustration and graph](landing-graph-mobile.png)
 
 The supplied issue has an empty description and no comments or author/timestamp metadata. Interpreted the title as referring to the landing hero’s visibly segmented oscillation, not the intentionally dashed pendulum construction lines or interactive simulation graphs. Screenshots contain only public homepage content. Visual verification was limited to Chrome; no known outstanding failures.
+Exercised the running Axum app with Playwright: resizing, changing pendulum length, submitting a self-check, and holding the titration tap to populate its readings log. Inspected these actual-app PNG captures:
+- `pendulum-wide.png` — 1920px, scene/graphs/controls/explanations alongside.
+- `pendulum-phone.png` — 390px, stacked layout without horizontal overflow.
+- `titration-wide.png` — 2560px, two-column references and working readings log/dock.
+
+## Caveats
+Breakpoints are conservative readability defaults. Long controls/reference content can still require vertical scrolling, especially below the wide-layout thresholds. Browser validation used Chromium, not a cross-browser or screen-reader audit. No simulation physics, schemas, backend behavior, or unrelated page layouts were changed.

@@ -1,0 +1,21 @@
+.certificate-host { margin-top: 2rem; margin-bottom: 2rem; }
+.certificate-host[hidden], .certificate-host [hidden] { display: none !important; }
+.certificate-form { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.certificate-form label { display: flex; flex-direction: column; gap: .4rem; max-width: 100%; }
+.certificate-form input { min-width: 0; max-width: 100%; padding: .5rem; font: inherit; }
+.completion-certificate { max-width: 760px; margin: 1rem auto; padding: clamp(1rem, 4vw, 3rem); border: 3px double currentColor; background: var(--paper, #fffdf7); text-align: center; overflow-wrap: anywhere; }
+.certificate-description, .certificate-activities { text-align: left; margin: 1.25rem 0; }
+.certificate-activities { border-top: 1px solid currentColor; padding-top: 1rem; }
+.certificate-description h3, .certificate-activities h3 { font-size: 1rem; margin-bottom: .5rem; }
+.certificate-description h4 { font-size: 1.1rem; }
+.certificate-activities ul { margin: 0; padding-left: 1.25rem; }
+.certificate-name { font-size: 1.8rem; font-weight: bold; }
+.certificate-note { font-size: .8rem; }
+@media print {
+  body:has(.completion-certificate:not([hidden])) { min-height: 0; background: white; color: black; }
+  body:has(.completion-certificate:not([hidden])) > :not(main),
+  body:has(.completion-certificate:not([hidden])) main > :not(.certificate-host),
+  .certificate-host:has(.completion-certificate:not([hidden])) > :not(.completion-certificate) { display: none !important; }
+  .certificate-host { width: 100%; max-width: none; margin: 0; padding: 0; }
+  .completion-certificate { max-width: none; margin: 0; background: white; color: black; box-shadow: none; break-inside: avoid; }
+}

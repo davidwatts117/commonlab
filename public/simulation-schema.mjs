@@ -90,6 +90,10 @@ export function validateDefinition(def) {
         if (control.unit !== undefined) text(control.unit, 'unit');
         if (control.hint) output(control.hint);
         break;
+      case 'search':
+        object(control, ['type', 'id', 'label', 'value', 'output'], 'search');
+        id(control.id); text(control.label, 'search label'); text(control.value, 'search value', true); output(control.output);
+        break;
       case 'actions':
         object(control, ['type', 'buttons'], 'actions'); list(control.buttons, 'buttons'); control.buttons.forEach(button);
         break;
