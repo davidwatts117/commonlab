@@ -604,6 +604,11 @@
           "type": "actions",
           "buttons": [
             {
+              "id": "undoBtn",
+              "label": "Undo",
+              "variant": "ghost"
+            },
+            {
               "id": "presetSeries",
               "label": "Series Loop",
               "variant": "soft"
@@ -717,7 +722,7 @@
           "title": "How To Use",
           "formulas": [],
           "paragraphs": [
-            "Drag a part from the toolbox onto the board, or pick a tool and drag on the board to draw the part. Join two parts by dragging one end dot onto the other; a grey dot appears where they connect. Click a part to select it, then type an exact voltage or resistance in the box below the board (or double-click the part as a shortcut). Right-click, or use Erase, to remove a part."
+            "Drag a part from the toolbox onto the board, or pick a tool and drag to place it. Wires also support clicking a start and then an end; Escape cancels. Fixed parts snap to 15° angles, or follow an existing wire when inserted along it. Drop a part onto a wire to replace that span, keeping the outer connections. Use Move to select, edit or move parts, or reconnect wire ends. Click or drag with Erase to remove parts. Undo restores the last edit or entire eraser stroke; Ctrl/Cmd+Z works while the board is focused."
           ]
         }
       ],
