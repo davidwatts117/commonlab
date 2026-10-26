@@ -34,6 +34,25 @@ run('real opaque-origin Chromium renders desktop/mobile and counts real assertio
   assert.equal(r.screenshots.length, 4);
   assert.ok(r.screenshots.some((i) => i.viewport.width === 390));
 });
+run('trusted math modules, stylesheet and font load in the opaque verification frame', async () => {
+  const a = structuredClone(SMOKE_ARTIFACT);
+  a.definition.cards = [{
+    title: 'Energy',
+    paragraphs: [],
+    formulas: [String.raw`\(E = \frac{1}{2}mv^2\)`],
+  }];
+  a.tests.module = `export async function run(api){
+    api.assert(document.querySelector('.equation-formula math'), 'formula renders MathML');
+    const fonts = await document.fonts.load('16px Temml');
+    api.assert(fonts.length > 0 && fonts.every(f => f.status === 'loaded'), 'local math font loads');
+    let blocked = false;
+    try { await fetch('/simulation-page.mjs'); } catch { blocked = true; }
+    api.assert(blocked, 'assets outside the trusted allowlist remain blocked');
+  }`;
+  const r = await verifyArtifact(a, { timeoutMs: 15000 });
+  assert.equal(r.ok, true, formatVerification(r));
+  assert.ok(r.tests.results.some((t) => t.assertions === 3));
+});
 run('failing declarative assertions identify their exact step, slot and actual value', async () => {
   const a = structuredClone(SMOKE_ARTIFACT);
   a.definition.controls = [{ type: 'text', id: 'probeValue', text: 'actual value', hidden: false }];

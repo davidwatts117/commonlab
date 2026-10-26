@@ -1,6 +1,7 @@
 import { validateDefinition } from './simulation-schema.mjs';
+import { renderMathText } from './simulation-math.mjs';
 
-/** Render only approved components. Metadata/content is always text, never HTML. */
+/** Render only approved components. Content is text or delimited math, never HTML. */
 export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   validateDefinition(definition);
   const doc = root.ownerDocument;
@@ -13,6 +14,9 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     // Preview namespaces prevent draft slot IDs from shadowing author/reviewer form IDs.
     if (id) { el.id = `${idPrefix}${id}`; slots.set(id, el); }
     return el;
+  }
+  function mathText(tag, cls, text) {
+    return renderMathText(node(tag, cls), text);
   }
   function button(data, label = data.label) {
     if (data.variant === 'display') return node('span', 'control-value', label, data.id);
@@ -44,7 +48,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   }
   function showInfo(key, opener) {
     const data = definition.info[key];
-    dialog.replaceChildren(node('h2', '', data.title), node('p', 'equation-formula', data.formula), node('p', '', data.explanation), node('p', '', data.detail));
+    dialog.replaceChildren(node('h2', '', data.title), mathText('p', 'equation-formula', data.formula), mathText('p', '', data.explanation), mathText('p', '', data.detail));
     const close = node('button', 'sim-btn sim-btn--soft', 'Close'); close.type = 'button';
     close.addEventListener('click', () => dialog.close()); dialog.append(close);
     dialog.onclose = () => opener.focus(); dialog.showModal();
@@ -225,7 +229,7 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   const firstView = definition.views?.options[0].value;
   // The stage (scene + graphs) and the controls sit side by side when the viewport fits both.
   const main = node('div', 'sim-main');
-  const stage = node('div', 'sim-stage');
+  const stage = node('div', definition.graphs.length ? 'sim-stage sim-stage--graphs' : 'sim-stage');
   const wrap = node('div', 'canvas-wrapper'); wrap.append(canvas(definition.canvas)); stage.append(wrap);
   const controls = node('div', 'controls-panel');
   viewMembers.push([wrap, firstView], [controls, firstView]);
@@ -241,11 +245,13 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
   const sidebar = node('aside', 'sim-sidebar'); sidebar.setAttribute('aria-label', 'Science explanations');
   for (const data of definition.cards) {
     const card = node('div', 'equation-card'); card.append(node('h3', '', data.title));
-    data.formulas.forEach(text => card.append(node('div', 'equation-formula', text)));
-    data.paragraphs.forEach(text => card.append(node('p', 'eq-explanation', text)));
+    data.formulas.forEach(text => card.append(mathText('div', 'equation-formula', text)));
+    data.paragraphs.forEach(text => card.append(mathText('p', 'eq-explanation', text)));
     data.components?.forEach(data => card.append(component(data))); sidebar.append(card);
   }
   const dialog = node('dialog', 'simulation-dialog'); dialog.setAttribute('aria-label', 'Science explanation');
+  // Keep graphs together so wide layouts can place them beside the scene.
+  const graphs = node('div', 'simulation-graphs');
   for (const data of definition.graphs) {
     const graph = node('section', 'simulation-graph'); graph.append(node('h3', '', data.label));
     if (data.legend) {
@@ -258,9 +264,10 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
     if (data.controls) {
       const tools = node('div', 'simulation-graph-controls'); data.controls.forEach(data => tools.append(component(data))); graph.append(tools);
     }
-    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); stage.append(graph);
+    graph.append(canvas(data)); if (data.caption) graph.append(node('p', 'simulation-note', data.caption)); graphs.append(graph);
     viewMembers.push([graph, data.view || firstView]);
   }
+  if (definition.graphs.length) stage.append(graphs);
   if (!definition.cards.length) root.classList.add('simulation-no-sidebar');
   if (viewBar) root.append(viewBar);
   root.append(main, sidebar, dialog);

@@ -142,7 +142,7 @@ $('add-component').addEventListener('click', () => editDefinition(def => {
   };
   def.controls.push(choices[type]);
 }));
-$('add-card').addEventListener('click', () => editDefinition(def => def.cards.push({ title: 'Science explanation', formulas: ['F = ma'], paragraphs: ['Explain the relationship learners are exploring.'] })));
+$('add-card').addEventListener('click', () => editDefinition(def => def.cards.push({ title: 'Science explanation', formulas: ['$$F = ma$$'], paragraphs: ['Explain the relationship learners are exploring.'] })));
 $('add-graph').addEventListener('click', () => editDefinition(def => def.graphs.push({ id: newSlot(def, 'graph'), label: 'Measurement graph', width: 700, height: 240 })));
 
 async function importText(input, target, max) {

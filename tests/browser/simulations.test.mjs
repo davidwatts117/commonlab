@@ -189,6 +189,165 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('gas-law cards and dialogs render local MathML at desktop and phone sizes', async () => {
+      for (const mobile of [false, true]) {
+        const { page, errors } = await pageFor('gas-laws', mobile);
+        // Math assets must work without a CDN, including after a fresh reload.
+        await page.route('https://**', route => route.abort());
+        await page.reload();
+        await page.waitForSelector('#simulation-root[data-ready="true"]');
+        assert.equal(await page.locator('.equation-formula math').count(), 5);
+        assert.equal(await page.locator('.equation-formula msub').count(), 16);
+        assert.equal(await page.locator('.equation-formula mfrac').count(), 6);
+        assert.equal(await page.locator('.eq-explanation msup').count(), 2);
+        for (const math of await page.locator('.equation-formula math').all()) {
+          assert.equal(await math.isVisible(), true);
+          const box = await math.boundingBox();
+          assert.ok(box.width > 0 && box.height > 0);
+        }
+        for (const [index, name] of ["Boyle's Law", "Charles's Law", "Avogadro's Law"].entries()) {
+          const opener = page.getByRole('button', { name: `About ${name}`, exact: true });
+          await opener.click();
+          assert.equal(await page.locator('dialog math').isVisible(), true);
+          assert.equal(await page.locator('dialog mfrac').count(), index === 0 ? 0 : 2);
+          await page.keyboard.press('Escape');
+          assert.equal(await opener.evaluate(el => el === document.activeElement), true);
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+    });
+
+    await t.test('inert authoring preview renders math safely and confines wide equations', async () => {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${base}/submit.html`);
+      await page.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      const definition = structuredClone(catalog.simulations.find(sim => sim.id === 'gas-laws'));
+      const literal = '<img src=x onerror="window.mathInjected=true">';
+      definition.cards = [{ title: 'Math preview', formulas: [
+        String.raw`$$\frac{x_1}{y^2} = \sqrt{z}$$`,
+        `$$${Array(100).fill('x_1').join('+')}$$`,
+        String.raw`$$\frac{$$`,
+        String.raw`$$\href{javascript:alert(1)}{click}$$`,
+        String.raw`$$\includegraphics{https://example.com/track}$$`,
+      ], paragraphs: [`${literal} costs $5. Inline \\(a^2\\).`] }];
+      await page.locator('details').filter({ has: page.locator('#definition-json') }).locator('summary').click();
+      await page.locator('#definition-json').fill(JSON.stringify(definition));
+      await page.locator('#validate-preview').click();
+      const preview = page.locator('#definition-preview');
+      assert.equal(await preview.locator('math').count(), 3);
+      assert.equal(await preview.locator('mfrac').count(), 1);
+      assert.equal(await preview.locator('msqrt').count(), 1);
+      assert.ok((await preview.innerText()).includes(literal));
+      assert.ok((await preview.innerText()).includes(String.raw`$$\frac{$$`));
+      assert.equal(await preview.locator('img, a, script').count(), 0);
+      assert.equal(await page.evaluate(() => window.mathInjected), undefined);
+      assert.equal(await page.locator('#author-preview-gasCanvas').count(), 1);
+      assert.equal(await preview.locator('.equation-formula .simulation-math').nth(1).evaluate(el => el.scrollWidth > el.clientWidth), true);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
+    await t.test('wide workspaces bring graphs and explanations alongside without narrow-screen overflow', async () => {
+      for (const { id } of catalog.simulations) {
+        const { page, errors } = await pageFor(id);
+        for (const width of [390, 900, 1279, 1280, 1440, 1799, 1800, 1920, 2199, 2200, 2560]) {
+          await page.setViewportSize({ width, height: 900 });
+          const boxes = await page.evaluate(() => {
+            const rect = selector => {
+              const el = document.querySelector(selector);
+              if (!el || !el.getClientRects().length) return null;
+              const { x, y, right, bottom, width, height } = el.getBoundingClientRect();
+              return { x, y, right, bottom, width, height };
+            };
+            return {
+              scene: rect('.canvas-wrapper'), graphs: rect('.simulation-graphs'),
+              controls: rect('.sim-main > .controls-panel'), main: rect('.sim-main'),
+              sidebar: rect('.sim-sidebar'), root: rect('#simulation-root'), dock: rect('.simulation-dock'),
+              cardColumns: getComputedStyle(document.querySelector('.sim-sidebar')).gridTemplateColumns.split(' ').length,
+              overflow: document.documentElement.scrollWidth - innerWidth,
+              canvases: [...document.querySelectorAll('.simulation-canvas')].map(canvas => ({
+                width: canvas.getBoundingClientRect().width, height: canvas.getBoundingClientRect().height,
+                ratio: Number(canvas.style.aspectRatio.split('/')[0]) / Number(canvas.style.aspectRatio.split('/')[1]),
+              })),
+            };
+          });
+          const context = `${id} at ${width}px`;
+          assert.ok(boxes.overflow <= 1, `${context}: horizontal overflow`);
+          for (const canvas of boxes.canvases) {
+            assert.ok(canvas.width > 0 && canvas.height > 0, `${context}: invisible canvas`);
+            assert.ok(Math.abs(canvas.width / canvas.height - canvas.ratio) < 0.02, `${context}: distorted canvas`);
+          }
+          if (width >= 1280) {
+            assert.ok(boxes.controls.x >= boxes.scene.right, `${context}: controls not beside scene`);
+            assert.ok(Math.abs(boxes.controls.width - 420) < 1, `${context}: unreadable controls width`);
+            if (boxes.graphs) {
+              assert.ok(boxes.graphs.x >= boxes.scene.right, `${context}: graphs not beside scene`);
+              assert.ok(Math.abs(boxes.graphs.y - boxes.scene.y) < 1, `${context}: graphs start below scene`);
+              assert.ok(boxes.graphs.right <= boxes.controls.x, `${context}: graphs overlap controls`);
+            }
+          } else if (boxes.graphs) {
+            assert.ok(boxes.graphs.y >= boxes.scene.bottom, `${context}: narrow graphs must stack`);
+          }
+          if (width >= 1800 && boxes.sidebar) {
+            assert.ok(boxes.sidebar.x >= boxes.main.right, `${context}: explanations not beside workspace`);
+            assert.ok(Math.abs(boxes.sidebar.y - boxes.scene.y) < 1, `${context}: explanations start below workspace`);
+            assert.equal(boxes.cardColumns, width >= 2200 ? 2 : 1, `${context}: reference columns waste available space`);
+          } else if (boxes.sidebar) {
+            assert.ok(boxes.sidebar.y >= boxes.main.bottom, `${context}: explanations overlap workspace`);
+          }
+          if (boxes.dock) {
+            // The sticky dock intentionally overlays the scene while scrolling,
+            // but its layout row must span the workspace rather than squeeze it.
+            assert.ok(Math.abs(boxes.dock.width - boxes.main.width) < 1, `${context}: dock does not span workspace`);
+            assert.ok(boxes.dock.right <= boxes.root.right, `${context}: dock escapes workspace`);
+          }
+          if (width >= 1440) assert.ok(boxes.root.width > 1280, `${context}: workspace still capped`);
+        }
+        if (id === 'pendulum') {
+          await page.locator('#pauseBtn').click();
+          await page.locator('#lengthSlider').fill('2');
+          assert.equal(await page.locator('#lengthValue').innerText(), '2.00 m');
+          await page.getByRole('button', { name: 'Check Understanding', exact: true }).click();
+          assert.equal(await page.locator('.cfu-choice').first().isVisible(), true);
+        }
+        assert.deepEqual(errors, [], id); await page.close();
+      }
+    });
+
+    await t.test('fullscreen keeps graphs, controls and view tabs usable after wide layout', async () => {
+      for (const id of ['pendulum', 'build-a-nucleus']) {
+        const { page, errors } = await pageFor(id);
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await page.getByRole('button', { name: 'Fullscreen simulation', exact: true }).click();
+        await page.waitForFunction(() => document.fullscreenElement?.id === 'simulation-root' && document.fullscreenElement.classList.contains('fs-active'));
+        assert.equal(await page.locator('.controls-panel').isVisible(), true);
+        assert.equal(await page.locator('.sim-sidebar').isVisible(), false);
+        assert.equal(await page.locator('.simulation-canvas').first().isVisible(), true);
+        assert.equal(await page.locator('.sim-stage').evaluate(el => getComputedStyle(el).display), 'flex');
+        if (id === 'build-a-nucleus') {
+          await page.getByRole('tab').nth(1).click();
+          assert.equal(await page.locator('#chartCanvas').isVisible(), true);
+          assert.equal(await page.locator('#nucleusCanvas').isVisible(), false);
+          await page.getByRole('tab').first().click();
+          assert.equal(await page.locator('#nucleusCanvas').isVisible(), true);
+          assert.equal(await page.locator('#chartCanvas').isVisible(), false);
+        } else {
+          assert.equal(await page.locator('#angleGraphCanvas').isVisible(), true);
+          await page.locator('#pauseBtn').click();
+          assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');
+        }
+        await page.evaluate(() => document.exitFullscreen());
+        await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector('#simulation-root').classList.contains('fs-active'));
+        assert.equal(await page.locator('.simulation-graphs').evaluate(el => getComputedStyle(el).display), 'flex');
+        assert.equal(await page.locator('.simulation-graph').first().isVisible(), true);
+        assert.deepEqual(errors, []); await page.close();
+      }
+    });
+
     await t.test('Pendulum survives a hidden minute and retains a user pause on return', async () => {
       const page = await browser.newPage();
       const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -633,14 +792,33 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
         // the branch at its resistor so the original single path remains live.
         await tool('select'); await draw(302, 225, 352, 225);
         await currentBetween(0.08, 0.10);
-        // Both click-to-place paths (free and anchored) must also survive release.
+        // The first click only anchors a wire; the second commits its endpoint.
         await page.locator('#clearBtn').click(); await tool('wire');
         let p = await point(300, 200); await page.mouse.click(p.x, p.y);
-        assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
-        p = await point(345, 200); await page.mouse.click(p.x, p.y);
+        assert.match(await page.locator('#selectedPanel').innerText(), /Select a part/);
+        p = await point(450, 200); await page.mouse.move(p.x, p.y);
+        await page.mouse.click(p.x, p.y);
         assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
         await tool('select'); p = await point(400, 200); await page.mouse.click(p.x, p.y);
         assert.match(await page.locator('#selectedPanel').innerText(), /^Wire/);
+        // Inserting into an existing live wire must add series resistance, not a bypass.
+        await page.locator('#presetSeries').click();
+        await currentBetween(0.285, 0.295);
+        await tool('resistor'); await draw(420, 430, 490, 430);
+        await currentBetween(0.06, 0.08);
+        assert.equal(await page.getByLabel('Resistance (Ω)', { exact: true }).count(), 2);
+        assert.equal(await page.locator('label[for="selNum"]').innerText(), 'Resistance (Ω)');
+        await page.locator('#undoBtn').click(); await currentBetween(0.285, 0.295);
+        // Erase several wires in one stroke, then restore the complete circuit.
+        await tool('delete'); await draw(150, 390, 750, 390);
+        await currentBetween(-0.001, 0.001);
+        await page.locator('#undoBtn').click(); await currentBetween(0.285, 0.295);
+        await tool('select'); p = await point(315, 430); await page.mouse.click(p.x, p.y);
+        assert.equal(await page.locator('label[for="selNum"]').innerText(), 'Voltage (V)');
+        await page.locator('#selNum').fill('12'); await page.locator('#selNum').press('Tab');
+        await currentBetween(0.385, 0.395);
+        await canvas.focus(); await page.keyboard.press('Control+z'); await currentBetween(0.285, 0.295);
+        await page.locator('#showValues').check();
         assert.deepEqual(errors, [], mobile ? 'phone' : 'desktop');
         await page.close();
       }
