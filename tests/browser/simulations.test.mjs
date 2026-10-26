@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createHash } from 'node:crypto';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -395,6 +396,83 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       assert.equal(await page.evaluate(() => testSim.simTime), resumed.time);
       assert.equal(await page.locator('#pauseBtn').innerText(), 'Resume');
       assert.deepEqual(errors, []); await page.close();
+    });
+
+    await t.test('nuclide element search highlights matches, preserves selection and clears on desktop/mobile', async () => {
+      for (const mobile of [false, true]) {
+        const { page, errors } = await pageFor('build-a-nucleus', mobile);
+        await page.waitForFunction(() => document.getElementById('isotopeNotation').textContent === '12C');
+        const search = page.getByRole('searchbox', { name: 'Search elements (name, symbol or atomic number)' });
+        const status = page.locator('#elementSearchStatus');
+        const chart = page.locator('#chartCanvas');
+        const image = async () => createHash('sha256').update(await chart.evaluate(canvas => canvas.toDataURL())).digest('hex');
+        // Ensure canvas text uses the final font before comparing full chart renders.
+        await page.evaluate(() => document.fonts.ready);
+        await search.fill(' ');
+        await search.fill('');
+        const pixel = (z, n) => chart.evaluate((canvas, { z, n }) => {
+          const x = Math.floor(46 + (z + 0.5) * (canvas.width - 56) / 119);
+          const y = Math.floor(12 + (180 - n + 0.5) * (canvas.height - 38) / 180);
+          return [...canvas.getContext('2d').getImageData(x, y, 1, 1).data];
+        }, { z, n });
+        const baseline = await image();
+        const iron = await pixel(26, 30);
+        const uranium = await pixel(92, 146);
+        let highlighted;
+        for (const query of ['  uRaNiUm  ', 'U', '92', 'uran']) {
+          await search.fill(query);
+          assert.match(await status.innerText(), /^Matching elements: Uranium \(U, Z=92\)/);
+          assert.equal(await page.locator('#isotopeNotation').innerText(), '12C');
+          assert.deepEqual(await pixel(92, 146), uranium, 'Matching isotopes keep their colour');
+          assert.notDeepEqual(await pixel(26, 30), iron, 'Other elements are dimmed');
+          if (highlighted) assert.equal(await image(), highlighted, 'Name, symbol, number and partial name find the same column');
+          highlighted = await image();
+        }
+        await page.locator('#chartModePick [data-value="decay"]').click();
+        assert.equal(await search.inputValue(), 'uran');
+        assert.match(await status.innerText(), /Uranium/);
+        assert.notEqual(await image(), highlighted);
+        await page.locator('#chartModePick [data-value="half"]').click();
+        assert.equal(await image(), highlighted);
+        await search.fill('C');
+        assert.match(await status.innerText(), /^Matching elements: Carbon \(C, Z=6\)\./);
+        assert.doesNotMatch(await status.innerText(), /Calcium/);
+        await search.fill('chlor');
+        assert.match(await status.innerText(), /Chlorine \(Cl, Z=17\)/);
+        await search.fill('ium');
+        assert.match(await status.innerText(), /Helium/);
+        assert.match(await status.innerText(), /Uranium/);
+        for (const query of ['not-an-element', '0', '119', '<img src=x onerror=alert(1)>']) {
+          await search.fill(query);
+          assert.match(await status.innerText(), /^No matching elements\./);
+          assert.equal(await page.locator('#simulation-root img').count(), 0);
+        }
+        await search.fill('   ');
+        assert.equal(await status.innerText(), 'All elements shown.');
+        assert.equal(await image(), baseline);
+        await search.fill('92');
+        await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+        assert.equal(await search.inputValue(), '');
+        assert.equal(await search.evaluate(el => el === document.activeElement), true);
+        assert.equal(await image(), baseline);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        // Search remains available on the chart's fullscreen tab.
+        await page.locator('.btn-fullscreen').click();
+        await page.getByRole('tab', { name: 'Chart of Nuclides', exact: true }).click();
+        await search.fill('92');
+        assert.equal(await search.isVisible(), true);
+        await chart.scrollIntoViewIfNeeded();
+        const size = await chart.boundingBox();
+        // Choose the nearest screen pixel: cells are only about one pixel high on phones.
+        await chart.click({ position: {
+          x: Math.round(size.x + (46 + 92 * 944 / 119) / 1000 * size.width) - size.x,
+          y: Math.round(size.y + (12 + (180 - 146) * 622 / 180) / 660 * size.height) - size.y,
+        } });
+        assert.equal(await page.locator('#isotopeNotation').textContent(), '238U');
+        assert.match(await status.innerText(), /Uranium/);
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
     });
 
     await t.test('nucleus readout text and stepper labels stay inside their boxes', async () => {

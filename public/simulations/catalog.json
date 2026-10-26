@@ -1760,9 +1760,29 @@
           "label": "Chart of Nuclides",
           "width": 1000,
           "height": 660,
-          "caption": "Click a cell to select that isotope. Cells that are blank are nuclides that do not exist.",
+          "caption": "Search by element name (e.g. Uranium), symbol (U), or atomic number (92) to highlight its isotopes. Clear the search to show all nuclides. Click a cell to select that isotope; blank cells are nuclides that do not exist.",
           "view": "chart",
           "controls": [
+            {
+              "type": "search",
+              "id": "elementSearch",
+              "label": "Search elements (name, symbol or atomic number)",
+              "value": "",
+              "output": {
+                "id": "elementSearchStatus",
+                "text": "All elements shown."
+              }
+            },
+            {
+              "type": "actions",
+              "buttons": [
+                {
+                  "id": "clearElementSearch",
+                  "label": "Clear search",
+                  "variant": "soft"
+                }
+              ]
+            },
             {
               "type": "choices",
               "id": "chartModePick",

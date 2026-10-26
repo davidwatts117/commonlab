@@ -57,6 +57,7 @@ Simulation IDs are lowercase slugs, up to 80 characters; the module filename is 
 | `actions` | `buttons: [{id,label,variant,active?,pressed?}]`; variants: `primary`, `ghost`, `soft`, `outline`, `display` |
 | `choices` | `id`, `label`, `style` (`toolbar`, `segments`, `chips`), `options: [{value,label}]`, initial `value` |
 | `select` | `id`, `label`, `options: [{value,label}]`, initial `value` |
+| `search` | `id`, `label`, initial string `value`, `output: {id,text}`; labelled search input with a described, live status output |
 | `readouts` | optional group `id` and `hidden`; `items: [{id,label,value,tone}]`, tones: `default`, `highlight`, `success` |
 | `text` | `text`, optional `id` and `label` for dynamic notes; optional `style` (`note`, `message`, `alert`) and `hidden` |
 | `number` | `id`, `label`, numeric `min/max/step/value`; optional `unit` text and `hint: {id,text}` |

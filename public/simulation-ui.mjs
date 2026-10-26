@@ -136,6 +136,16 @@ export function renderSimulation(root, definition, { idPrefix = '' } = {}) {
         if (data.hint) wrap.append(node('div', 'simulation-hint', data.hint.text, data.hint.id));
         return wrap;
       }
+      case 'search': {
+        const wrap = node('div', 'simulation-field');
+        const label = node('label', 'simulation-label', data.label); label.htmlFor = `${idPrefix}${data.id}`;
+        const input = node('input', 'simulation-search', undefined, data.id);
+        input.type = 'search'; input.value = data.value;
+        const status = node('p', 'simulation-note', data.output.text, data.output.id);
+        status.setAttribute('role', 'status');
+        input.setAttribute('aria-describedby', status.id);
+        wrap.append(label, input, status); return wrap;
+      }
       case 'toggles': {
         const wrap = node('div', 'simulation-toggles', undefined, data.id);
         for (const item of data.items) {

@@ -173,12 +173,37 @@ test('extended components validate cross-field rules and slot ids wherever they 
     ['build-a-nucleus', d => { d.views.value = 'missing'; }, /initial selection/],
     ['build-a-nucleus', d => { d.graphs[0].view = 'missing'; }, /declared views/],
     ['build-a-nucleus', d => { delete d.views; }, /declared views/],
-    ['build-a-nucleus', d => { d.graphs[0].controls[1].id = 'simulation-root'; }, /reserved/],
+    ['build-a-nucleus', d => { d.graphs[0].controls.find(c => c.type === 'panel').id = 'simulation-root'; }, /reserved/],
   ];
   for (const [id, mutate, message] of bad) {
     const definition = byId(id); mutate(definition);
     assert.throws(() => validateDefinition(definition), message, `${id}: ${message}`);
   }
+});
+
+test('search inputs have namespaced labels and live status outputs and reject invalid definitions', () => {
+  const definition = clone(catalog.simulations.find(def => def.id === 'build-a-nucleus'));
+  const document = documentWithDialogs(); const root = rootFor(document);
+  const ui = renderSimulation(root, definition, { idPrefix: 'preview-' });
+  const input = ui.getElementById('elementSearch');
+  const status = ui.getElementById('elementSearchStatus');
+  assert.equal(input.type, 'search');
+  assert.equal(input.value, '');
+  assert.equal(root.querySelector('label').htmlFor, input.id);
+  assert.equal(input.getAttribute('aria-describedby'), status.id);
+  assert.equal(status.getAttribute('role'), 'status');
+  assert.equal(status.textContent, 'All elements shown.');
+  for (const mutate of [
+    c => { c.value = 92; },
+    c => { c.label = ''; },
+    c => { delete c.output; },
+    c => { c.output.id = c.id; },
+    c => { c.placeholder = '<script>'; },
+  ]) {
+    const invalid = clone(definition); mutate(invalid.graphs[0].controls[0]);
+    assert.throws(() => validateDefinition(invalid), /Simulation definition/);
+  }
+  ui.destroy();
 });
 
 test('module-filled panels and tables receive text parts, never markup', () => {
