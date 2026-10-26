@@ -188,6 +188,68 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       }
     });
 
+    await t.test('gas-law cards and dialogs render local MathML at desktop and phone sizes', async () => {
+      for (const mobile of [false, true]) {
+        const { page, errors } = await pageFor('gas-laws', mobile);
+        // Math assets must work without a CDN, including after a fresh reload.
+        await page.route('https://**', route => route.abort());
+        await page.reload();
+        await page.waitForSelector('#simulation-root[data-ready="true"]');
+        assert.equal(await page.locator('.equation-formula math').count(), 5);
+        assert.equal(await page.locator('.equation-formula msub').count(), 16);
+        assert.equal(await page.locator('.equation-formula mfrac').count(), 6);
+        assert.equal(await page.locator('.eq-explanation msup').count(), 2);
+        for (const math of await page.locator('.equation-formula math').all()) {
+          assert.equal(await math.isVisible(), true);
+          const box = await math.boundingBox();
+          assert.ok(box.width > 0 && box.height > 0);
+        }
+        for (const [index, name] of ["Boyle's Law", "Charles's Law", "Avogadro's Law"].entries()) {
+          const opener = page.getByRole('button', { name: `About ${name}`, exact: true });
+          await opener.click();
+          assert.equal(await page.locator('dialog math').isVisible(), true);
+          assert.equal(await page.locator('dialog mfrac').count(), index === 0 ? 0 : 2);
+          await page.keyboard.press('Escape');
+          assert.equal(await opener.evaluate(el => el === document.activeElement), true);
+        }
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        assert.deepEqual(errors, []);
+        await page.close();
+      }
+    });
+
+    await t.test('inert authoring preview renders math safely and confines wide equations', async () => {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      const errors = []; page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${base}/submit.html`);
+      await page.waitForFunction(() => !document.getElementById('submission-fields').disabled);
+      const definition = structuredClone(catalog.simulations.find(sim => sim.id === 'gas-laws'));
+      const literal = '<img src=x onerror="window.mathInjected=true">';
+      definition.cards = [{ title: 'Math preview', formulas: [
+        String.raw`$$\frac{x_1}{y^2} = \sqrt{z}$$`,
+        `$$${Array(100).fill('x_1').join('+')}$$`,
+        String.raw`$$\frac{$$`,
+        String.raw`$$\href{javascript:alert(1)}{click}$$`,
+        String.raw`$$\includegraphics{https://example.com/track}$$`,
+      ], paragraphs: [`${literal} costs $5. Inline \\(a^2\\).`] }];
+      await page.locator('details').filter({ has: page.locator('#definition-json') }).locator('summary').click();
+      await page.locator('#definition-json').fill(JSON.stringify(definition));
+      await page.locator('#validate-preview').click();
+      const preview = page.locator('#definition-preview');
+      assert.equal(await preview.locator('math').count(), 3);
+      assert.equal(await preview.locator('mfrac').count(), 1);
+      assert.equal(await preview.locator('msqrt').count(), 1);
+      assert.ok((await preview.innerText()).includes(literal));
+      assert.ok((await preview.innerText()).includes(String.raw`$$\frac{$$`));
+      assert.equal(await preview.locator('img, a, script').count(), 0);
+      assert.equal(await page.evaluate(() => window.mathInjected), undefined);
+      assert.equal(await page.locator('#author-preview-gasCanvas').count(), 1);
+      assert.equal(await preview.locator('.equation-formula .simulation-math').nth(1).evaluate(el => el.scrollWidth > el.clientWidth), true);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      assert.deepEqual(errors, []);
+      await page.close();
+    });
+
     await t.test('wide workspaces bring graphs and explanations alongside without narrow-screen overflow', async () => {
       for (const { id } of catalog.simulations) {
         const { page, errors } = await pageFor(id);

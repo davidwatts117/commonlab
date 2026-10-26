@@ -1,4 +1,11 @@
+@import url('./vendor/temml/Temml-Local.css');
+
 /* The only simulation-page stylesheet. Definitions cannot supply CSS or markup. */
+/* Keep wide authored equations scrollable within their card/dialog, not the page. */
+.equation-card { min-width: 0; }
+.equation-formula { box-sizing: border-box; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }
+.simulation-math { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }
+.simulation-math math { margin: .2em 0; }
 #simulation-root[hidden], #simulation-root [hidden], #simulation-status[hidden] { display: none !important; }
 .simulation-canvas { display: block; width: 100%; height: auto; border-radius: 0; background: var(--sim-bg, #fafbfc); touch-action: none; }
 .simulation-canvas:focus-visible { outline: 2px solid var(--sim-accent); outline-offset: 3px; }

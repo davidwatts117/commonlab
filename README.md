@@ -1,6 +1,6 @@
 # CommonLab
 
-Browser-based science simulations for safe, repeatable exploration, served by a Rust **Axum** application. The frontend stays dependency-free HTML/CSS/JavaScript; no frontend build step or login is required.
+Browser-based science simulations for safe, repeatable exploration, served by a Rust **Axum** application. The frontend is plain HTML/CSS/JavaScript with a vendored math renderer; no frontend build step or login is required.
 
 ## Run
 
@@ -146,6 +146,6 @@ npm run test:browser
 
 Browser tests also cover mobile authoring, inert data/source previews, protected review, publication, engine reuse, withdrawal, and queue locking. Each browser server uses an isolated temporary SQLite database.
 
-Alternatively set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome` to use an existing Chromium binary. Node packages are development-only; the frontend still has no bundler or build step.
+Alternatively set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome` to use an existing Chromium binary. Installed Node packages are development-only; Temml is vendored under `public/vendor/temml` for local LaTeX-to-MathML rendering. The frontend still has no bundler or build step.
 
 For real-browser app checks, use `cargo run`. The development-only DOM smoke page is intentionally not served by Axum: run `python -m http.server 8001 --bind 127.0.0.1` from the repository root and open `http://localhost:8001/tests/dom-smoke.html`. Do not use that repository-wide development server for deployment. Automated coverage includes the guided engine, launcher, restart/completion, overlay/dialog behavior, and CFU bank validation, exact-match grading, submit locks/re-entry, persistence/version invalidation, storage failures, full review, and mutual exclusion using a lightweight DOM shim. Screen-reader accessibility, touch, fullscreen, and complete scientific/lesson verification remain manual work.

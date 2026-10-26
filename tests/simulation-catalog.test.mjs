@@ -8,8 +8,10 @@ import { makeDocument } from './dom-shim.mjs';
 
 const catalog = JSON.parse(readFileSync(new URL('../public/simulations/catalog.json', import.meta.url), 'utf8'));
 const clone = value => structuredClone(value);
+test.after(() => { delete globalThis.document; });
 function documentWithDialogs() {
   const document = makeDocument();
+  globalThis.document = document; // Temml's browser DOM entry point uses the global document.
   const create = document.createElement.bind(document);
   document.createElement = tag => {
     const el = create(tag);
@@ -40,6 +42,28 @@ test('catalog validates all seven simulations and every module is mount-only cod
     // Every legacy DOM binding must refer to a declared slot in the fixed shell.
     for (const match of source.matchAll(/document\.getElementById\('([^']+)'\)/g)) {
       assert.ok(ui.getElementById(match[1]), `${definition.id}: ${match[1]}`);
+    }
+  }
+});
+
+test('built-in equations render in shared cards, namespaced previews and information dialogs', () => {
+  for (const definition of catalog.simulations) {
+    const document = documentWithDialogs();
+    const root = rootFor(document);
+    renderSimulation(root, definition, { idPrefix: 'preview-' });
+    for (const formula of root.querySelectorAll('.equation-formula')) {
+      if (formula.textContent.includes('$$')) assert.fail(`${definition.id}: unrendered equation`);
+    }
+    if (definition.id === 'gas-laws') {
+      assert.equal(root.querySelectorAll('.equation-formula math').length, 5);
+      assert.equal(root.querySelectorAll('.equation-formula mfrac').length, 6);
+      assert.equal(root.querySelectorAll('.eq-explanation msup').length, 2);
+      const help = root.querySelectorAll('.simulation-info')[1];
+      help.click();
+      assert.equal(root.querySelector('dialog').open, true);
+      assert.equal(root.querySelectorAll('dialog mfrac').length, 2);
+      root.querySelector('dialog button').click();
+      assert.equal(document.activeElement, help);
     }
   }
 });

@@ -46,7 +46,7 @@
         </details>
         <details>
           <summary>Advanced definition JSON: controls, graphs, lessons, and all content</summary>
-          <p class="authoring-hint">Edit the approved components as JSON. Use a template for examples. Text is displayed literally, never as HTML. Existing engines need their original controls and slot IDs; new controls require engine bindings. Lessons need an engine adapter.</p>
+          <p class="authoring-hint">Edit the approved components as JSON. Use a template for examples. Text is never interpreted as HTML. Cards and info dialogs support delimited LaTeX, for example <code>$$F = ma$$</code> (double backslashes in JSON). Existing engines need their original controls and slot IDs; new controls require engine bindings. Lessons need an engine adapter.</p>
           <label>Import definition JSON<input id="definition-file" type="file" accept=".json,application/json"></label>
           <label>Definition JSON<textarea id="definition-json" class="code-editor" rows="18" spellcheck="false" required></textarea></label>
         </details>
