@@ -223,6 +223,33 @@ All requested checks passed:
 
 Used the existing Rust installation via `$HOME/.cargo/bin` on PATH. Added regression tests for graph grouping/slot order and all seven simulations across eleven viewport widths (390–2560px), including breakpoint boundaries, overflow, canvas proportions, dock sizing, reference columns, interactions, and fullscreen tabs. Confirmed the baseline layout fails the new side-by-side placement expectations by serving the original assets through browser request interception. No existing tests were weakened.
 
+Screenshots use only the public homepage and an isolated temporary database. Email delivery and external mail-client behavior were not tested; the exact `mailto:` destination is verified without sending email. No blocking ambiguities.
+
+# Issue #39 — Smooth landing-page graph
+
+Replaced the hero illustration’s coarse straight-line polyline with a static cubic Bézier path. Matching endpoint tangents remove visible corners while preserving the damped oscillation, graph extent, color, stroke weight, axes, labels, and responsive layout. No JavaScript, dependencies, or simulation-engine changes were needed. An inline comment documents the curve formula and sampling.
+
+## Regression coverage
+- Added a unit test for continuous cubic geometry, matching tangents, increasing time, original endpoints, styling, and agreement with the original damped-cosine shape. Confirmed it fails before the fix.
+- Added desktop/mobile Chrome coverage checking rendered bounds, curve length, no segmented polyline, and no horizontal overflow, with JavaScript disabled.
+
+## Verification
+All requested checks passed:
+- `cargo fmt --check`
+- `cargo clippy --all-targets --locked -- -D warnings`
+- `cargo test --locked` — 34 tests passed.
+- `npm test` — 58 tests passed.
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/google-chrome npm run test:browser` — 32 tests passed.
+- `git diff --check`
+
+Cargo required adding `/home/agent/.cargo/bin` to this shell’s PATH; repository configuration is unchanged.
+
+## Browser evidence and scope
+Used the browser skill with the running Axum app, a disposable local database, and headed Chrome at 1280px and 390px widths. Inspected actual rendered PNGs, verified Explore simulations navigation, and observed no JavaScript page errors:
+- [Desktop hero and graph](landing-graph-desktop.png)
+- [Mobile illustration and graph](landing-graph-mobile.png)
+
+The supplied issue has an empty description and no comments or author/timestamp metadata. Interpreted the title as referring to the landing hero’s visibly segmented oscillation, not the intentionally dashed pendulum construction lines or interactive simulation graphs. Screenshots contain only public homepage content. Visual verification was limited to Chrome; no known outstanding failures.
 Exercised the running Axum app with Playwright: resizing, changing pendulum length, submitting a self-check, and holding the titration tap to populate its readings log. Inspected these actual-app PNG captures:
 - `pendulum-wide.png` — 1920px, scene/graphs/controls/explanations alongside.
 - `pendulum-phone.png` — 390px, stacked layout without horizontal overflow.

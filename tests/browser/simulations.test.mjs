@@ -71,6 +71,28 @@ test('shared simulation shell in a real browser', { timeout: 120_000 }, async t 
       return { page, errors };
     }
 
+    await t.test('landing graph renders a smooth static curve at desktop and phone sizes', async () => {
+      for (const width of [1280, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 }, javaScriptEnabled: false });
+        await page.goto(base);
+        const curve = page.locator('.hero-figure svg path.hero-wave');
+        await curve.scrollIntoViewIfNeeded();
+        assert.equal(await curve.isVisible(), true);
+        assert.equal(await page.locator('.hero-figure polyline').count(), 0);
+        const bounds = await curve.evaluate(element => {
+          const { x, y, width, height } = element.getBBox();
+          return { x, y, width, height, length: element.getTotalLength() };
+        });
+        assert.equal(bounds.x, 40);
+        assert.equal(bounds.width, 460);
+        assert.ok(bounds.y >= 366 && bounds.y <= 367);
+        assert.ok(bounds.height > 53 && bounds.height < 55);
+        assert.ok(bounds.length > 580 && bounds.length < 620);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.close();
+      }
+    });
+
     await t.test('homepage cards are populated from the catalog', async () => {
       const page = await browser.newPage(); await page.goto(base);
       await page.waitForSelector('#simulation-catalog .sim-card');
